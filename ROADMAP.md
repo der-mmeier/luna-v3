@@ -54,24 +54,25 @@ Akzeptanzkriterien:
 
 ---
 
-## 0.2.0 — Application und Kernel
+## 0.2.0 — Projektziel und Architekturdefinition
 
 Ziel:
-Eine zentrale Anwendungsklasse einführen.
+Das technische Zielbild von Luna V3 klären, bevor weitere Laufzeitklassen entstehen.
 
 Umfang:
 
-- `src/Application.php`
-- `src/Kernel.php`
-- Bootstrap erstellt Application
-- Application startet Kernel
-- Erste Response-Ausgabe über Kernel
+- `docs/PROJECT_GOALS.md`
+- `docs/ARCHITECTURE.md`
+- Entscheidungspunkte für Routing, MVC, Module und Controller-Lifecycle sammeln
+- Datenbankmodell, Konfiguration und Error Handling grob einordnen
+- technische Laufzeit skizzieren, ohne konkrete Klassen vorwegzunehmen
 
 Akzeptanzkriterien:
 
-- `public/index.php` bleibt schlank
-- Bootstrap enthält keine Business-Logik
-- Kernel ist zentraler Einstiegspunkt für Request-Verarbeitung
+- Projektziel ist als internes PHP-8.2+-Framework dokumentiert
+- offene Architekturfragen sind explizit benannt
+- geplante Runtime ist grob nachvollziehbar
+- keine neuen PHP-Klassen werden für diesen Meilenstein implementiert
 
 ---
 
