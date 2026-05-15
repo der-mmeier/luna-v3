@@ -10,18 +10,18 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+---
+
+## [0.1.0] - 2026-05-16
+
+### Added
+
 - Projektstruktur für Luna V3 vorbereitet
 - Composer-Konfiguration mit PSR-4 Autoloading
 - Dotenv als Dependency hinzugefügt
 - Public Entry Point vorbereitet
 - Bootstrap-Klasse vorbereitet
-
----
-
-## [0.1.0] - geplant
-
-### Added
-
+- `.env.example` mit lokalen Beispielwerten ergänzt
 - Initiales Projektfundament
 - AGENTS.md für Codex
 - ROADMAP.md
