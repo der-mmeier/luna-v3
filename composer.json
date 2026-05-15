@@ -1,0 +1,22 @@
+{
+  "name": "der-mmeier/luna-v3",
+  "description": "Luna V3 PHP Framework",
+  "type": "project",
+  "license": "proprietary",
+  "require": {
+    "php": ">=8.2",
+    "ext-pdo": "*",
+    "vlucas/phpdotenv": "^v5.6.3"
+  },
+  "autoload": {
+    "psr-4": {
+      "Luna\\": "src/"
+    }
+  },
+  "config": {
+    "sort-packages": true,
+    "preferred-install": "dist"
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}
