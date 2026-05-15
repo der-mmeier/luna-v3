@@ -70,3 +70,31 @@ Bootstrap lädt Dotenv nur, wenn eine lokale `.env` existiert. Der Public Entry 
 ### Offene Punkte
 
 - Keine.
+
+---
+
+## 2026-05-16 — Meilenstein 0.2.0 neu ausgerichtet
+
+### Ziel
+
+Projektziel und Architekturdefinition vor weiteren PHP-Implementierungen dokumentieren.
+
+### Aufgabe
+
+ROADMAP.md überarbeiten, Meilenstein 0.2.0 von Application und Kernel auf Projektziel und Architekturdefinition ändern, `docs/PROJECT_GOALS.md` und `docs/ARCHITECTURE.md` anlegen sowie Changelog und Protokoll aktualisieren.
+
+### Geänderte Dateien
+
+- ROADMAP.md
+- docs/PROJECT_GOALS.md
+- docs/ARCHITECTURE.md
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+Luna V3 ist als internes PHP-8.2+-Framework beschrieben. Offene Entscheidungen zu Router, MVC, Modulen, Controller-Lifecycle, Datenbankmodell, Konfiguration und Error Handling sind dokumentiert. Die geplante Laufzeit ist grob skizziert, ohne neue PHP-Klassen zu implementieren.
+
+### Offene Punkte
+
+- Architekturentscheidungen für die folgenden Meilensteine treffen.

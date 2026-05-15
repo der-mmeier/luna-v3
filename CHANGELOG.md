@@ -10,6 +10,10 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- Meilenstein 0.2.0 als Projektziel- und Architekturdefinitionsphase neu ausgerichtet
+- `docs/PROJECT_GOALS.md` mit Zielbild und offenen Architekturfragen ergänzt
+- `docs/ARCHITECTURE.md` mit grober geplanter Laufzeit ergänzt
+
 ---
 
 ## [0.1.0] - 2026-05-16
