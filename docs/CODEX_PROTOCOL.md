@@ -98,3 +98,34 @@ Luna V3 ist als internes PHP-8.2+-Framework beschrieben. Offene Entscheidungen z
 ### Offene Punkte
 
 - Architekturentscheidungen für die folgenden Meilensteine treffen.
+
+---
+
+## 2026-05-16 — Luna V3 als Workbench neu definiert
+
+### Ziel
+
+Luna V3 fachlich von einem generischen internen Framework zu einer Integrations- und Mapping-Workbench neu ausrichten.
+
+### Aufgabe
+
+Produktdokumentation ohne PHP-Code-Änderungen aktualisieren, `docs/PRODUCT_SPEC.md`, `docs/SECURITY_MODEL.md` und `docs/DATA_MODEL_DRAFT.md` anlegen, ROADMAP.md neu ausrichten sowie Changelog und Codex-Protokoll aktualisieren.
+
+### Geänderte Dateien
+
+- ROADMAP.md
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+- docs/PROJECT_GOALS.md
+- docs/ARCHITECTURE.md
+- docs/PRODUCT_SPEC.md
+- docs/SECURITY_MODEL.md
+- docs/DATA_MODEL_DRAFT.md
+
+### Ergebnis
+
+Luna V3 ist als webbasierte PHP-8.2+-Workbench für Integrationsprojekte definiert. Die Dokumentation beschreibt Workspaces, Luna-Systemdatenbank, externe Datenquellen, Connection Manager, verschlüsselte Secrets, Schema Explorer, Mapping Designer, Value Mapping, Transferdatenbank, Job Runner, Report Engine, Endpoint Builder und Audit Log. Sicherheitsregeln und ein erster Datenmodell-Entwurf sind dokumentiert.
+
+### Offene Punkte
+
+- Workbench-Architektur in den kommenden Meilensteinen technisch ausarbeiten.
