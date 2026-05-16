@@ -1,40 +1,50 @@
 # Architektur — Luna V3
 
-Dieses Dokument skizziert die geplante technische Laufzeit von Luna V3. Es beschreibt bewusst noch keine konkreten Klassenverträge, damit Architekturentscheidungen vor der Implementierung geklärt werden können.
+Dieses Dokument skizziert die geplante technische Laufzeit von Luna V3 als Integrations- und Mapping-Workbench. Es beschreibt die Architektur grob und legt noch keine konkreten Klassenverträge fest.
 
-## Geplante Laufzeit
+## Laufzeitidee
 
-Ein Request erreicht zuerst den öffentlichen Einstiegspunkt im `public`-Verzeichnis. Dieser Einstiegspunkt lädt den Composer-Autoloader, startet die Bootstrap-Phase und übergibt die weitere Verarbeitung später an die zentrale Laufzeit des Frameworks.
+Ein Request erreicht den Public Front Controller unter `/public`. Dort wird der Composer-Autoloader geladen und die technische Bootstrap-Phase gestartet. Die Bootstrap-Phase lädt nur die Luna-Core-Konfiguration, zum Beispiel Umgebung, Debug-Modus, Systemdatenbank-Zugang und `APP_KEY`.
 
-Die Bootstrap-Phase bereitet nur die technische Umgebung vor. Dazu gehört vor allem das optionale Laden lokaler Umgebungswerte. Fachlogik, Routing-Entscheidungen und Response-Erzeugung gehören nicht in diese Phase.
+Externe Datenquellen werden nicht über `.env` konfiguriert. Sie werden später über die Admin UI angelegt, verschlüsselt in der Luna-Systemdatenbank gespeichert und über den Connection Manager genutzt.
 
-Nach dem Bootstrap soll eine zentrale Anwendungslaufzeit entstehen. Sie wird später den HTTP-Request erfassen, Konfiguration bereitstellen, Routing ausführen, Controller oder Handler aufrufen und eine HTTP-Response ausgeben.
+## Geplante Hauptbereiche
 
-## Grober Ablauf
+- Application Core für zentrale Laufzeit, Konfiguration und Service-Zugriff
+- Admin UI für Workspaces, Connections, Schema Explorer, Mappings, Jobs, Reports und Endpoints
+- Luna-Systemdatenbank für interne Metadaten und verschlüsselte Connection-Secrets
+- Connection Manager für externe Datenquellen
+- Schema Explorer für Tabellen, Spalten, Kommentare und Beispieldaten
+- Mapping Designer für Feldzuordnungen, Transformationsregeln und Value Mapping
+- Job Runner für Transfers und geplante Verarbeitung
+- Report Engine für Auswertungen und E-Mail-Versand
+- Endpoint Builder für einfache private API-Endpunkte
+- Audit Log für sicherheits- und fachrelevante Ereignisse
+
+## Grober Ablauf eines UI-Requests
 
 1. Public Front Controller wird aufgerufen.
 2. Composer-Autoloader wird geladen.
-3. Bootstrap lädt technische Umgebung.
-4. Laufzeit erzeugt oder kapselt den HTTP-Request.
-5. Routing entscheidet über Zielmodul und Zielaktion.
-6. Controller oder Handler verarbeitet den Request.
-7. Response wird zentral zurückgegeben und ausgegeben.
-8. Fehler werden zentral behandelt und passend zur Umgebung dargestellt.
+3. Bootstrap lädt Luna-Core-Konfiguration aus `.env`.
+4. Application Core verarbeitet den HTTP-Request.
+5. Routing wählt Admin-, API- oder Systemaktion.
+6. Fachkomponente nutzt Systemdatenbank oder externe read-only Connection.
+7. Response wird zentral erzeugt und ausgegeben.
+8. Fehler und relevante Änderungen werden auditierbar protokolliert.
+
+## Grober Ablauf eines Jobs
+
+1. Job Runner erhält einen manuellen oder geplanten Auftrag.
+2. Mapping- und Connection-Metadaten werden aus der Luna-Systemdatenbank geladen.
+3. Benötigte Secrets werden nur im Arbeitsspeicher entschlüsselt.
+4. Quellverbindungen werden standardmäßig read-only genutzt.
+5. Daten werden transformiert und in eine Transferdatenbank geschrieben.
+6. Laufstatus, Fehler und Statistiken werden protokolliert.
+7. Optional erzeugt die Report Engine einen E-Mail-Report.
 
 ## Architekturgrenzen
 
-- Der Front Controller bleibt möglichst dünn.
-- Bootstrap bleibt auf technische Initialisierung begrenzt.
-- Routing, Controller-Lifecycle, Konfiguration und Fehlerbehandlung werden getrennt betrachtet.
-- Datenbankzugriffe laufen später über eine zentrale PDO-basierte Schicht.
-- Frontend, Backend und API sollen strukturell trennbar sein, ohne gemeinsame Basislogik zu duplizieren.
-
-## Noch nicht festgelegt
-
-- Ob Routing intern umgesetzt oder über Slim angebunden wird.
-- Welche konkrete MVC-Verzeichnisstruktur verbindlich wird.
-- Ob Module feste Framework-Konzepte oder Projektkonventionen werden.
-- Wie Controller-Hooks konkret heißen und wann sie laufen.
-- Wie stark Datenbankmodelle abstrahiert werden.
-- Wie Konfigurationswerte validiert und bereitgestellt werden.
-- Wie Error Handling und Logging technisch zusammenspielen.
+- Luna V3 verwaltet keine externen Datenbanken wie ein phpMyAdmin-Ersatz.
+- Die Workbench soll Integrationsflüsse beschreiben und ausführen, nicht beliebige Anwendungen generieren.
+- Secrets dürfen nicht in Logs, Reports oder Fehlermeldungen erscheinen.
+- API-Endpunkte bleiben einfache Integrationsschnittstellen und ersetzen keine vollständige API-Plattform.

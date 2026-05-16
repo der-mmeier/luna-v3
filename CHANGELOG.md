@@ -10,9 +10,12 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
-- Meilenstein 0.2.0 als Projektziel- und Architekturdefinitionsphase neu ausgerichtet
-- `docs/PROJECT_GOALS.md` mit Zielbild und offenen Architekturfragen ergänzt
-- `docs/ARCHITECTURE.md` mit grober geplanter Laufzeit ergänzt
+- Luna V3 als Integrations- und Mapping-Workbench neu definiert
+- `docs/PRODUCT_SPEC.md` mit Produktdefinition, Nicht-Zielen und Kernfunktionen ergänzt
+- `docs/SECURITY_MODEL.md` mit Secret-, `.env`-, API- und Logging-Regeln ergänzt
+- `docs/DATA_MODEL_DRAFT.md` mit Entwurf für die Luna-Systemdatenbank ergänzt
+- Roadmap auf Workbench-Meilensteine von 0.1.0 bis 1.0.0 neu ausgerichtet
+- Projektziel- und Architekturdokumentation an die Workbench-Ausrichtung angepasst
 
 ---
 
