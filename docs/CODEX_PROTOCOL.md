@@ -197,3 +197,41 @@ Request/Response-Abstraktion, Routing-Grundlage, Fehlerantworten für unbekannte
 ### Offene Punkte
 
 - Admin UI, Login, Datenbank, Migrationen, Controller, Templates, Mapping, Jobs, Endpoint Builder und API-Secret-Prüfung bleiben Folge-Meilensteine.
+
+---
+
+## 2026-05-17 — Meilenstein 0.5.0 Admin UI mit Bootstrap
+
+### Ziel
+
+Eine einfache webbasierte Admin-Oberfläche für die Luna Workbench bereitstellen.
+
+### Aufgabe
+
+Bootstrap-basiertes Admin-Layout, Navigation für Workspaces, Connections, Schema Explorer, Mappings, Jobs und Reports, statische Form- und Tabellenkomponenten sowie einen serverseitigen ViewRenderer implementieren. Keine Datenbank, kein Login, keine echte Speicherung und keine Fachlogik umsetzen.
+
+### Geänderte Dateien
+
+- src/View/ViewRenderer.php
+- resources/views/layouts/admin.php
+- resources/views/admin/dashboard.php
+- resources/views/admin/workspaces.php
+- resources/views/admin/connections.php
+- resources/views/admin/schema.php
+- resources/views/admin/mappings.php
+- resources/views/admin/jobs.php
+- resources/views/admin/reports.php
+- public/assets/css/admin.css
+- src/Core/Paths.php
+- src/Core/Application.php
+- routes/web.php
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+Die Admin UI ist als statische serverseitige Oberfläche vorbereitet. `ViewRenderer` rendert Templates aus `resources/views`, `Application` registriert ihn als Service `view`, und Web-Routen liefern Dashboard, Workspaces, Connections, Schema Explorer, Mappings, Jobs und Reports. API-Routen aus 0.4.0 bleiben unverändert nutzbar.
+
+### Offene Punkte
+
+- Datenbank, Login, Rechtesystem, echte Workspace- und Connection-Erstellung, Mapping-Speicherung, Job-Ausführung und Report-Erzeugung bleiben Folge-Meilensteine.
