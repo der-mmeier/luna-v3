@@ -24,6 +24,7 @@ final class Router
         }
 
         try {
+            $request = $request->withRouteParams($route->parameters($request) ?? []);
             $result = ($route->handler())($request);
         } catch (Throwable) {
             return Response::text('Internal Server Error', 500);

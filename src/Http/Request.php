@@ -19,6 +19,7 @@ final class Request
         private readonly array $post = [],
         private readonly array $server = [],
         private readonly array $headers = [],
+        private readonly array $routeParams = [],
     ) {
     }
 
@@ -68,6 +69,27 @@ final class Request
         $normalized = self::normalizeHeaderName($key);
 
         return $this->headers[$normalized] ?? $default;
+    }
+
+    public function route(string $key, mixed $default = null): mixed
+    {
+        return $this->routeParams[$key] ?? $default;
+    }
+
+    /**
+     * @param array<string, string> $params
+     */
+    public function withRouteParams(array $params): self
+    {
+        return new self(
+            $this->method,
+            $this->path,
+            $this->query,
+            $this->post,
+            $this->server,
+            $this->headers,
+            $params,
+        );
     }
 
     public function isMethod(string $method): bool

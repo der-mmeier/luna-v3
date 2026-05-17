@@ -27,9 +27,13 @@ Typische Luna-Core-Werte:
 - Externe Verbindungen werden über die UI angelegt.
 - Zugangsdaten externer Verbindungen werden verschlüsselt in der Luna-Systemdatenbank gespeichert.
 - Externe Credentials liegen nicht im Klartext in der Luna-Systemdatenbank.
+- Passwörter und API-Secrets externer Connections liegen verschlüsselt in `luna_connection_secrets`.
+- Secrets werden in der Admin UI nie im Klartext angezeigt.
+- Secrets dürfen weder geloggt noch in Exceptions oder Formularwerten ausgegeben werden.
 - Secrets werden nur zur Laufzeit entschlüsselt, wenn eine Verbindung hergestellt werden muss.
 - Quellverbindungen sollen standardmäßig read-only sein.
 - Schreibzugriffe müssen bewusst als Ziel- oder Transferverbindung konfiguriert werden.
+- Ohne Login/Auth ist die Connection-Admin-UI nur für lokale Entwicklung vorgesehen und darf nicht öffentlich betrieben werden.
 
 ## Web-Deployment
 
