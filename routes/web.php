@@ -8,11 +8,16 @@ use Luna\Connections\ExternalPdoConnectionFactory;
 use Luna\Core\Application;
 use Luna\Http\Request;
 use Luna\Http\Response;
+use Luna\Jobs\JobRunner;
 use Luna\Mapping\MappingValidator;
 use Luna\Mapping\TransformType;
+use Luna\Reports\ReportMailer;
 use Luna\Repository\AuditLogRepository;
 use Luna\Repository\ConnectionProfileRepository;
+use Luna\Repository\JobRepository;
+use Luna\Repository\JobRunRepository;
 use Luna\Repository\MappingRepository;
+use Luna\Repository\ReportRepository;
 use Luna\Repository\SchemaMetadataRepository;
 use Luna\Repository\WorkspaceRepository;
 use Luna\Routing\RouteCollection;
@@ -134,6 +139,27 @@ if (! function_exists('mappingFieldsData')) {
     }
 }
 
+if (! function_exists('jobValues')) {
+    function jobValues(Request $request): array
+    {
+        return [
+            'workspace_id' => $request->post('workspace_id'),
+            'mapping_set_id' => $request->post('mapping_set_id'),
+            'name' => (string) $request->post('name', ''),
+            'type' => 'mapping_transfer',
+            'status' => (string) $request->post('status', 'draft'),
+            'run_mode' => (string) $request->post('run_mode', 'manual'),
+            'transfer_mode' => (string) $request->post('transfer_mode', 'insert'),
+            'dry_run_default' => $request->post('dry_run_default') !== null ? '1' : '',
+            'batch_size' => (int) $request->post('batch_size', 100),
+            'row_limit' => $request->post('row_limit'),
+            'report_enabled' => $request->post('report_enabled') !== null ? '1' : '',
+            'report_recipients' => (string) $request->post('report_recipients', ''),
+            'notes' => (string) $request->post('notes', ''),
+        ];
+    }
+}
+
 return static function (RouteCollection $routes, Application $app): void {
     $view = $app->services()->get('view');
 
@@ -152,6 +178,11 @@ return static function (RouteCollection $routes, Application $app): void {
     $metadata = static fn (): SchemaMetadataRepository => $app->services()->get('repository.schema_metadata');
     $mappings = static fn (): MappingRepository => $app->services()->get('repository.mappings');
     $audit = static fn (): AuditLogRepository => $app->services()->get('repository.audit_log');
+    $jobs = static fn (): JobRepository => $app->services()->get('repository.jobs');
+    $runs = static fn (): JobRunRepository => $app->services()->get('repository.job_runs');
+    $reports = static fn (): ReportRepository => $app->services()->get('repository.reports');
+    $jobRunner = static fn (): JobRunner => $app->services()->get('jobs.runner');
+    $reportMailer = static fn (): ReportMailer => $app->services()->get('reports.mailer');
     $validator = static fn (): MappingValidator => $app->services()->get('mapping.validator');
     $pdoFactory = static fn (): ExternalPdoConnectionFactory => $app->services()->get('connections.pdo_factory');
     $safeAll = static function (Closure $repositoryFactory): array {
@@ -684,23 +715,96 @@ return static function (RouteCollection $routes, Application $app): void {
         ]));
     }, 'admin.mappings.validate', 'web');
 
-    $routes->get('/admin/jobs', static fn (): Response => $admin('admin/jobs', [
+    $routes->post('/admin/mappings/{id}/dry-run', static function (Request $request) use ($jobRunner): Response {
+        $runId = $jobRunner()->runMappingOnce((int) $request->route('id'), true, 25);
+        return new Response('', 302, ['Location' => '/admin/jobs/runs/' . $runId]);
+    }, 'admin.mappings.dry_run', 'web');
+
+    $routes->post('/admin/mappings/{id}/run', static function (Request $request) use ($jobRunner): Response {
+        if ($request->post('confirm') !== 'run') {
+            return Response::text('Transfer confirmation missing.', 400);
+        }
+        $runId = $jobRunner()->runMappingOnce((int) $request->route('id'), false);
+        return new Response('', 302, ['Location' => '/admin/jobs/runs/' . $runId]);
+    }, 'admin.mappings.run', 'web');
+
+    $routes->get('/admin/jobs', static fn (): Response => $admin('admin/jobs/index', [
         'title' => 'Jobs',
         'active' => 'jobs',
-        'jobs' => [
-            ['name' => 'Demo Transfer', 'status' => 'Bereit', 'lastRun' => '-'],
-            ['name' => 'Report Versand', 'status' => 'Geplant', 'lastRun' => '-'],
-        ],
+        'jobs' => safeList($jobs),
     ]), 'admin.jobs', 'web');
 
-    $routes->get('/admin/reports', static fn (): Response => $admin('admin/reports', [
+    $routes->get('/admin/jobs/create', static fn (): Response => $admin('admin/jobs/create', [
+        'title' => 'Job anlegen',
+        'active' => 'jobs',
+        'workspaces' => safeList($workspaces),
+        'mappings' => safeList($mappings),
+        'values' => ['status' => 'draft', 'run_mode' => 'manual', 'transfer_mode' => 'insert', 'dry_run_default' => '1', 'batch_size' => 100],
+        'errors' => [],
+    ]), 'admin.jobs.create', 'web');
+
+    $routes->post('/admin/jobs', static function (Request $request) use ($admin, $jobs, $audit, $workspaces, $mappings): Response {
+        $values = jobValues($request);
+        $errors = trim($values['name']) === '' ? ['Name ist erforderlich.'] : [];
+        if ($errors !== []) {
+            return $admin('admin/jobs/create', ['title' => 'Job anlegen', 'active' => 'jobs', 'workspaces' => safeList($workspaces), 'mappings' => safeList($mappings), 'values' => $values, 'errors' => $errors]);
+        }
+        $id = $jobs()->create($values);
+        $audit()->log(empty($values['workspace_id']) ? null : (int) $values['workspace_id'], 'job.created', 'job', (string) $id, 'Job erstellt.');
+        return new Response('', 302, ['Location' => '/admin/jobs/' . $id]);
+    }, 'admin.jobs.store', 'web');
+
+    $routes->get('/admin/jobs/{id}', static function (Request $request) use ($admin, $jobs, $runs): Response {
+        $id = (int) $request->route('id');
+        return $admin('admin/jobs/show', ['title' => 'Job', 'active' => 'jobs', 'job' => $jobs()->find($id), 'runs' => $runs()->runsForJob($id)]);
+    }, 'admin.jobs.show', 'web');
+
+    $routes->post('/admin/jobs/{id}', static function (Request $request) use ($jobs, $audit): Response {
+        $id = (int) $request->route('id');
+        $values = jobValues($request);
+        $jobs()->update($id, $values);
+        $audit()->log(empty($values['workspace_id']) ? null : (int) $values['workspace_id'], 'job.updated', 'job', (string) $id, 'Job aktualisiert.');
+        return new Response('', 302, ['Location' => '/admin/jobs/' . $id]);
+    }, 'admin.jobs.update', 'web');
+
+    $routes->post('/admin/jobs/{id}/dry-run', static function (Request $request) use ($jobRunner): Response {
+        $runId = $jobRunner()->runJob((int) $request->route('id'), true);
+        return new Response('', 302, ['Location' => '/admin/jobs/runs/' . $runId]);
+    }, 'admin.jobs.dry_run', 'web');
+
+    $routes->post('/admin/jobs/{id}/run', static function (Request $request) use ($jobRunner): Response {
+        if ($request->post('confirm') !== 'run') {
+            return Response::text('Transfer confirmation missing.', 400);
+        }
+        $runId = $jobRunner()->runJob((int) $request->route('id'), false);
+        return new Response('', 302, ['Location' => '/admin/jobs/runs/' . $runId]);
+    }, 'admin.jobs.run', 'web');
+
+    $routes->get('/admin/jobs/{id}/runs', static function (Request $request) use ($admin, $jobs, $runs): Response {
+        $id = (int) $request->route('id');
+        return $admin('admin/jobs/runs', ['title' => 'Job Runs', 'active' => 'jobs', 'job' => $jobs()->find($id), 'runs' => $runs()->runsForJob($id)]);
+    }, 'admin.jobs.runs', 'web');
+
+    $routes->get('/admin/jobs/runs/{runId}', static function (Request $request) use ($admin, $runs): Response {
+        $runId = (int) $request->route('runId');
+        return $admin('admin/jobs/run', ['title' => 'Job Run', 'active' => 'jobs', 'run' => $runs()->findRun($runId), 'logs' => $runs()->logsForRun($runId)]);
+    }, 'admin.jobs.run_show', 'web');
+
+    $routes->get('/admin/reports', static fn (): Response => $admin('admin/reports/index', [
         'title' => 'Reports',
         'active' => 'reports',
-        'reports' => [
-            ['name' => 'Transfer Status', 'type' => 'E-Mail', 'schedule' => 'Manuell'],
-            ['name' => 'Fehlerübersicht', 'type' => 'E-Mail', 'schedule' => 'Täglich geplant'],
-        ],
+        'reports' => safeList($reports),
     ]), 'admin.reports', 'web');
+
+    $routes->get('/admin/reports/{id}', static function (Request $request) use ($admin, $reports): Response {
+        return $admin('admin/reports/show', ['title' => 'Report', 'active' => 'reports', 'report' => $reports()->find((int) $request->route('id')), 'result' => null]);
+    }, 'admin.reports.show', 'web');
+
+    $routes->post('/admin/reports/{id}/send', static function (Request $request) use ($admin, $reports, $reportMailer): Response {
+        $id = (int) $request->route('id');
+        $result = $reportMailer()->send($id);
+        return $admin('admin/reports/show', ['title' => 'Report', 'active' => 'reports', 'report' => $reports()->find($id), 'result' => $result]);
+    }, 'admin.reports.send', 'web');
 
     $routes->get('/health', static fn (): Response => Response::json([
         'status' => 'ok',

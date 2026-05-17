@@ -5,15 +5,38 @@ declare(strict_types=1);
 use Luna\Bootstrap;
 use Luna\Database\MigrationRunner;
 use Luna\Database\SystemDatabase;
+use Luna\Jobs\JobRunner;
+use Luna\Repository\JobRunRepository;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 $app = Bootstrap::init(dirname(__DIR__));
 $command = $argv[1] ?? null;
 
+function printRunSummary(string $title, array $run): void
+{
+    echo $title . ': ' . (int) $run['id'] . "\n";
+    echo 'Status: ' . (string) $run['status'] . "\n";
+    echo 'Dry run: ' . ((int) $run['dry_run'] === 1 ? 'yes' : 'no') . "\n";
+    echo 'Source rows: ' . (int) $run['source_count'] . "\n";
+    echo 'Transformed rows: ' . (int) $run['transformed_count'] . "\n";
+    echo 'Written rows: ' . (int) $run['written_count'] . "\n";
+    echo 'Skipped rows: ' . (int) $run['skipped_count'] . "\n";
+    echo 'Errors: ' . (int) $run['error_count'] . "\n";
+
+    if (! empty($run['error_message'])) {
+        echo 'Message: ' . (string) $run['error_message'] . "\n";
+    }
+}
+
+function exitCodeForRun(array $run): int
+{
+    return (string) $run['status'] === 'failed' ? 1 : 0;
+}
+
 if ($command === null) {
-    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test>\n");
-    exit(1);
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|job:run|mapping:dry-run|mapping:run>\n");
+    exit(2);
 }
 
 try {
@@ -58,8 +81,81 @@ try {
         exit(0);
     }
 
+    if ($command === 'job:run') {
+        $jobId = isset($argv[2]) ? (int) $argv[2] : 0;
+        $dryRun = in_array('--dry-run', $argv, true) ? true : null;
+
+        if ($jobId <= 0) {
+            fwrite(STDERR, "Usage: php bin/luna job:run <jobId> [--dry-run]\n");
+            exit(2);
+        }
+
+        /** @var JobRunner $runner */
+        $runner = $app->services()->get('jobs.runner');
+        $runId = $runner->runJob($jobId, $dryRun);
+        /** @var JobRunRepository $runs */
+        $runs = $app->services()->get('repository.job_runs');
+        $run = $runs->findRun($runId);
+        if ($run === null) {
+            fwrite(STDERR, "Job run could not be loaded.\n");
+            exit(1);
+        }
+        printRunSummary('Job run', $run);
+        exit(exitCodeForRun($run));
+    }
+
+    if ($command === 'mapping:dry-run') {
+        $mappingSetId = isset($argv[2]) ? (int) $argv[2] : 0;
+
+        if ($mappingSetId <= 0) {
+            fwrite(STDERR, "Usage: php bin/luna mapping:dry-run <mappingSetId>\n");
+            exit(2);
+        }
+
+        /** @var JobRunner $runner */
+        $runner = $app->services()->get('jobs.runner');
+        $runId = $runner->runMappingOnce($mappingSetId, true);
+        /** @var JobRunRepository $runs */
+        $runs = $app->services()->get('repository.job_runs');
+        $run = $runs->findRun($runId);
+        if ($run === null) {
+            fwrite(STDERR, "Mapping dry run could not be loaded.\n");
+            exit(1);
+        }
+        printRunSummary('Mapping dry run', $run);
+        exit(exitCodeForRun($run));
+    }
+
+    if ($command === 'mapping:run') {
+        $mappingSetId = isset($argv[2]) ? (int) $argv[2] : 0;
+
+        if ($mappingSetId <= 0) {
+            fwrite(STDERR, "Usage: php bin/luna mapping:run <mappingSetId> --force\n");
+            exit(2);
+        }
+
+        if (! in_array('--force', $argv, true)) {
+            fwrite(STDERR, "Refusing to run real transfer without --force.\n");
+            fwrite(STDERR, "Real transfers write to the configured target connection.\n");
+            exit(2);
+        }
+
+        /** @var JobRunner $runner */
+        $runner = $app->services()->get('jobs.runner');
+        $runId = $runner->runMappingOnce($mappingSetId, false);
+        /** @var JobRunRepository $runs */
+        $runs = $app->services()->get('repository.job_runs');
+        $run = $runs->findRun($runId);
+        if ($run === null) {
+            fwrite(STDERR, "Mapping transfer run could not be loaded.\n");
+            exit(1);
+        }
+        printRunSummary('Mapping transfer run', $run);
+        exit(exitCodeForRun($run));
+    }
+
     fwrite(STDERR, sprintf("Unknown command: %s\n", $command));
-    exit(1);
+    exit(2);
 } catch (Throwable $exception) {
     fwrite(STDERR, $exception->getMessage() . "\n");
     exit(1);

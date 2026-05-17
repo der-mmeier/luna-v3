@@ -12,13 +12,22 @@ use Luna\Database\MigrationRunner;
 use Luna\Database\PdoConnectionFactory;
 use Luna\Database\SystemDatabase;
 use Luna\Http\Response;
+use Luna\Jobs\JobRunner;
 use Luna\Mapping\MappingValidator;
+use Luna\Reports\ReportEngine;
+use Luna\Reports\ReportMailer;
 use Luna\Repository\AuditLogRepository;
 use Luna\Repository\ConnectionProfileRepository;
+use Luna\Repository\JobRepository;
+use Luna\Repository\JobRunRepository;
 use Luna\Repository\MappingRepository;
+use Luna\Repository\ReportRepository;
 use Luna\Repository\SchemaMetadataRepository;
 use Luna\Repository\WorkspaceRepository;
 use Luna\Security\EncryptionService;
+use Luna\Transfer\MappingExecutor;
+use Luna\Transfer\MappingRowTransformer;
+use Luna\Transfer\TargetWriter;
 use Luna\View\ViewRenderer;
 
 final class Application
@@ -96,11 +105,41 @@ final class Application
         ));
         $this->services->set(MappingRepository::class, new MappingRepository($systemDatabase));
         $this->services->set(AuditLogRepository::class, new AuditLogRepository($systemDatabase));
+        $this->services->set(JobRepository::class, new JobRepository($systemDatabase));
+        $this->services->set(JobRunRepository::class, new JobRunRepository($systemDatabase));
+        $this->services->set(ReportRepository::class, new ReportRepository($systemDatabase));
         $this->services->set(SchemaMetadataRepository::class, new SchemaMetadataRepository($systemDatabase));
         $this->services->set(MappingValidator::class, new MappingValidator(
             $this->services->get(MappingRepository::class),
             $this->services->get(ConnectionProfileRepository::class),
             $externalPdoFactory,
+        ));
+        $this->services->set(MappingRowTransformer::class, new MappingRowTransformer($this->services->get(MappingRepository::class)));
+        $this->services->set(TargetWriter::class, new TargetWriter());
+        $this->services->set(MappingExecutor::class, new MappingExecutor(
+            $this->services->get(MappingRepository::class),
+            $this->services->get(MappingValidator::class),
+            $this->services->get(ConnectionProfileRepository::class),
+            $externalPdoFactory,
+            $this->services->get(MappingRowTransformer::class),
+            $this->services->get(TargetWriter::class),
+        ));
+        $this->services->set(ReportEngine::class, new ReportEngine(
+            $this->services->get(JobRunRepository::class),
+            $this->services->get(ReportRepository::class),
+            $this->services->get(AuditLogRepository::class),
+        ));
+        $this->services->set(ReportMailer::class, new ReportMailer(
+            $this->services->get(ReportRepository::class),
+            $this->config,
+            $this->services->get(AuditLogRepository::class),
+        ));
+        $this->services->set(JobRunner::class, new JobRunner(
+            $this->services->get(JobRepository::class),
+            $this->services->get(JobRunRepository::class),
+            $this->services->get(MappingExecutor::class),
+            $this->services->get(ReportEngine::class),
+            $this->services->get(AuditLogRepository::class),
         ));
 
         $this->services->set('paths', $this->paths);
@@ -117,6 +156,13 @@ final class Application
         $this->services->set('repository.schema_metadata', $this->services->get(SchemaMetadataRepository::class));
         $this->services->set('repository.mappings', $this->services->get(MappingRepository::class));
         $this->services->set('repository.audit_log', $this->services->get(AuditLogRepository::class));
+        $this->services->set('repository.jobs', $this->services->get(JobRepository::class));
+        $this->services->set('repository.job_runs', $this->services->get(JobRunRepository::class));
+        $this->services->set('repository.reports', $this->services->get(ReportRepository::class));
         $this->services->set('mapping.validator', $this->services->get(MappingValidator::class));
+        $this->services->set('mapping.executor', $this->services->get(MappingExecutor::class));
+        $this->services->set('jobs.runner', $this->services->get(JobRunner::class));
+        $this->services->set('reports.engine', $this->services->get(ReportEngine::class));
+        $this->services->set('reports.mailer', $this->services->get(ReportMailer::class));
     }
 }

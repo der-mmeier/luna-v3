@@ -24,6 +24,13 @@ use Luna\Mapping\MappingValidationResult;
             <form method="post" action="/admin/mappings/<?= (int) $mapping['id'] ?>/validate">
                 <button class="btn btn-primary" type="submit">Validieren</button>
             </form>
+            <form method="post" action="/admin/mappings/<?= (int) $mapping['id'] ?>/dry-run">
+                <button class="btn btn-outline-success" type="submit">Dry Run</button>
+            </form>
+            <form method="post" action="/admin/mappings/<?= (int) $mapping['id'] ?>/run">
+                <input type="hidden" name="confirm" value="run">
+                <button class="btn btn-outline-danger" type="submit">Echten Transfer starten</button>
+            </form>
         </div>
     </div>
 
