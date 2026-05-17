@@ -319,3 +319,44 @@ Connections können über die Admin UI angelegt, verschlüsselt gespeichert und 
 ### Offene Punkte
 
 - Kein Login/Auth, kein Mapping Designer, keine Transfers, keine Jobs, keine Reports und keine API-Endpunkte für externe Daten.
+
+---
+
+## 2026-05-17 — Meilenstein 0.8.0 Mapping Designer
+
+### Ziel
+
+Datenflüsse und Feldzuordnungen visuell verwalten.
+
+### Aufgabe
+
+Mapping Designer für Mapping Sets, Source-/Target-Auswahl, Feldzuordnungen, Transformationsarten, Value Mapping, Validierung und Audit-Log-Einträge implementieren. Keine Transfers, Jobs, Reports, produktiven Zieltabellenänderungen oder Mapping-Ausführung umsetzen.
+
+### Geänderte Dateien
+
+- routes/web.php
+- src/Core/Application.php
+- src/Repository/MappingRepository.php
+- src/Repository/AuditLogRepository.php
+- src/Mapping/MappingValidator.php
+- src/Mapping/MappingDraft.php
+- src/Mapping/MappingValidationResult.php
+- src/Mapping/TransformType.php
+- resources/views/admin/mappings/index.php
+- resources/views/admin/mappings/create.php
+- resources/views/admin/mappings/show.php
+- resources/views/admin/mappings/fields.php
+- resources/views/admin/mappings/value-rules.php
+- resources/views/admin/mappings/validation.php
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+- docs/DATA_MODEL_DRAFT.md
+- docs/SECURITY_MODEL.md
+
+### Ergebnis
+
+Mapping Sets sind workspace-bezogen speicherbar. Mapping Fields und Value Rules werden in den bestehenden Luna-Systemtabellen persistiert. Änderungen an Mapping Sets, Feldern, Value Rules und Validierungsläufen werden in `luna_audit_log` protokolliert. Die Validierung liest externe Schemas nur lesend und gibt Fehler, Warnungen und Infos ohne Secrets aus.
+
+### Offene Punkte
+
+- Keine Transferausführung, keine Jobs, keine Reports, kein Login/Auth-System, keine API-Endpunkte zur Mapping-Ausführung und keine automatische KI-Mappinglogik.

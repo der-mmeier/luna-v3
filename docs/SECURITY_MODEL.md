@@ -55,6 +55,13 @@ Typische Luna-Core-Werte:
 - Connection-Strings müssen vor Ausgabe maskiert werden.
 - Job-Logs enthalten technische Laufdaten, aber keine Zugangsdaten.
 
+## Mapping-Daten
+
+- Mapping Sets, Mapping Fields und Value Rules enthalten keine Connection-Secrets.
+- Value Mappings sind fachliche Übersetzungsregeln und keine Credentials.
+- Externe Datenbanken werden für Mapping-Validierung nur lesend über Schema-Metadaten abgefragt.
+- Mapping-Validierung darf keine Zieltabellen beschreiben oder verändern.
+
 ## Audit Log
 
 Das Audit Log dokumentiert sicherheitsrelevante Ereignisse, ohne sensible Werte preiszugeben:

@@ -8,13 +8,131 @@ use Luna\Connections\ExternalPdoConnectionFactory;
 use Luna\Core\Application;
 use Luna\Http\Request;
 use Luna\Http\Response;
+use Luna\Mapping\MappingValidator;
+use Luna\Mapping\TransformType;
+use Luna\Repository\AuditLogRepository;
 use Luna\Repository\ConnectionProfileRepository;
+use Luna\Repository\MappingRepository;
 use Luna\Repository\SchemaMetadataRepository;
 use Luna\Repository\WorkspaceRepository;
 use Luna\Routing\RouteCollection;
 use Luna\Schema\SampleDataReader;
 use Luna\Schema\SchemaInspector;
 use Luna\View\ViewRenderer;
+
+if (! function_exists('safeList')) {
+    function safeList(Closure $repositoryFactory): array
+    {
+        try {
+            return $repositoryFactory()->all();
+        } catch (Throwable) {
+            return [];
+        }
+    }
+}
+
+if (! function_exists('mappingSetValues')) {
+    function mappingSetValues(Request $request): array
+    {
+        return [
+            'workspace_id' => $request->post('workspace_id'),
+            'name' => (string) $request->post('name', ''),
+            'description' => (string) $request->post('description', ''),
+            'source_connection_id' => $request->post('source_connection_id'),
+            'source_table' => (string) $request->post('source_table', ''),
+            'target_connection_id' => $request->post('target_connection_id'),
+            'target_table' => (string) $request->post('target_table', ''),
+            'status' => (string) $request->post('status', 'draft'),
+        ];
+    }
+}
+
+if (! function_exists('mappingSetErrors')) {
+    function mappingSetErrors(array $values): array
+    {
+        $errors = [];
+
+        if (trim((string) $values['name']) === '') {
+            $errors[] = 'Name ist erforderlich.';
+        }
+
+        if (! in_array((string) $values['status'], ['draft', 'active', 'archived'], true)) {
+            $errors[] = 'Status ist ungültig.';
+        }
+
+        return $errors;
+    }
+}
+
+if (! function_exists('mappingFieldValues')) {
+    function mappingFieldValues(Request $request): array
+    {
+        return [
+            'source_column' => (string) $request->post('source_column', ''),
+            'source_json_path' => (string) $request->post('source_json_path', ''),
+            'target_column' => (string) $request->post('target_column', ''),
+            'transform_type' => (string) $request->post('transform_type', 'direct'),
+            'default_value' => (string) $request->post('default_value', ''),
+            'is_required' => $request->post('is_required') !== null ? '1' : '',
+            'notes' => (string) $request->post('notes', ''),
+            'sort_order' => (int) $request->post('sort_order', 0),
+        ];
+    }
+}
+
+if (! function_exists('mappingViewData')) {
+    function mappingViewData(Closure $mappings, int $id, array $extra = []): array
+    {
+        try {
+            $mapping = $mappings()->find($id);
+
+            return $extra + [
+                'mapping' => $mapping,
+                'fields' => $mapping === null ? [] : $mappings()->fieldsForSet($id),
+                'error' => null,
+            ];
+        } catch (Throwable) {
+            return $extra + [
+                'mapping' => null,
+                'fields' => [],
+                'error' => 'Mapping konnte nicht geladen werden.',
+            ];
+        }
+    }
+}
+
+if (! function_exists('mappingFieldsData')) {
+    function mappingFieldsData(Closure $mappings, Closure $connections, Closure $pdoFactory, int $id, array $extra = []): array
+    {
+        $data = mappingViewData($mappings, $id, $extra);
+        $data['sourceColumns'] = [];
+        $data['targetColumns'] = [];
+        $data['columnWarning'] = null;
+
+        if ($data['mapping'] === null) {
+            return $data;
+        }
+
+        try {
+            $source = $connections()->find((int) $data['mapping']['source_connection_id']);
+            $target = $connections()->find((int) $data['mapping']['target_connection_id']);
+
+            if ($source !== null && ! empty($data['mapping']['source_table'])) {
+                $sourceConfig = ExternalDatabaseConfig::fromProfile($source, $connections()->secretsFor((int) $source['id']));
+                $data['sourceColumns'] = (new SchemaInspector($pdoFactory()->create($sourceConfig)))->columns((string) $data['mapping']['source_table']);
+            }
+
+            if ($target !== null && ! empty($data['mapping']['target_table'])) {
+                $targetConfig = ExternalDatabaseConfig::fromProfile($target, $connections()->secretsFor((int) $target['id']));
+                $data['targetColumns'] = (new SchemaInspector($pdoFactory()->create($targetConfig)))->columns((string) $data['mapping']['target_table']);
+            }
+        } catch (Throwable) {
+            $data['columnWarning'] = 'Spalten konnten nicht gelesen werden. Textfelder bleiben nutzbar.';
+        }
+
+        return $data;
+    }
+}
 
 return static function (RouteCollection $routes, Application $app): void {
     $view = $app->services()->get('view');
@@ -32,6 +150,9 @@ return static function (RouteCollection $routes, Application $app): void {
     $connections = static fn (): ConnectionProfileRepository => $app->services()->get('repository.connections');
     $workspaces = static fn (): WorkspaceRepository => $app->services()->get('repository.workspaces');
     $metadata = static fn (): SchemaMetadataRepository => $app->services()->get('repository.schema_metadata');
+    $mappings = static fn (): MappingRepository => $app->services()->get('repository.mappings');
+    $audit = static fn (): AuditLogRepository => $app->services()->get('repository.audit_log');
+    $validator = static fn (): MappingValidator => $app->services()->get('mapping.validator');
     $pdoFactory = static fn (): ExternalPdoConnectionFactory => $app->services()->get('connections.pdo_factory');
     $safeAll = static function (Closure $repositoryFactory): array {
         try {
@@ -319,14 +440,249 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/schema/' . $connectionId . '/table?table=' . rawurlencode($tableName)]);
     }, 'admin.schema.column_note', 'web');
 
-    $routes->get('/admin/mappings', static fn (): Response => $admin('admin/mappings', [
-        'title' => 'Mappings',
+    $routes->get('/admin/mappings', static function () use ($admin, $mappings): Response {
+        try {
+            $items = $mappings()->all();
+            $error = null;
+        } catch (Throwable) {
+            $items = [];
+            $error = 'Luna-Systemdatenbank ist nicht erreichbar.';
+        }
+
+        return $admin('admin/mappings/index', [
+            'title' => 'Mappings',
+            'active' => 'mappings',
+            'mappings' => $items,
+            'error' => $error,
+        ]);
+    }, 'admin.mappings', 'web');
+
+    $routes->get('/admin/mappings/create', static fn (): Response => $admin('admin/mappings/create', [
+        'title' => 'Mapping anlegen',
         'active' => 'mappings',
-        'mappings' => [
-            ['source' => 'customers.customer_id', 'target' => 'transfer_customer.external_id', 'rule' => 'Direkt'],
-            ['source' => 'customers.email', 'target' => 'transfer_customer.email', 'rule' => 'Trim'],
-        ],
-    ]), 'admin.mappings', 'web');
+        'workspaces' => $safeAll($workspaces),
+        'connections' => $safeAll($connections),
+        'values' => ['status' => 'draft'],
+        'errors' => [],
+    ]), 'admin.mappings.create', 'web');
+
+    $routes->post('/admin/mappings', static function (Request $request) use ($admin, $mappings, $audit, $workspaces, $connections): Response {
+        $values = mappingSetValues($request);
+        $errors = mappingSetErrors($values);
+
+        if ($errors !== []) {
+            return $admin('admin/mappings/create', [
+                'title' => 'Mapping anlegen',
+                'active' => 'mappings',
+                'workspaces' => safeList($workspaces),
+                'connections' => safeList($connections),
+                'values' => $values,
+                'errors' => $errors,
+            ]);
+        }
+
+        try {
+            $id = $mappings()->createSet($values);
+            $audit()->log(
+                empty($values['workspace_id']) ? null : (int) $values['workspace_id'],
+                'mapping_set.created',
+                'mapping_set',
+                (string) $id,
+                'Mapping Set erstellt.',
+                ['name' => $values['name']],
+            );
+
+            return new Response('', 302, ['Location' => '/admin/mappings/' . $id]);
+        } catch (Throwable) {
+            return $admin('admin/mappings/create', [
+                'title' => 'Mapping anlegen',
+                'active' => 'mappings',
+                'workspaces' => safeList($workspaces),
+                'connections' => safeList($connections),
+                'values' => $values,
+                'errors' => ['Mapping Set konnte nicht gespeichert werden.'],
+            ]);
+        }
+    }, 'admin.mappings.store', 'web');
+
+    $routes->get('/admin/mappings/{id}', static function (Request $request) use ($admin, $mappings): Response {
+        $id = (int) $request->route('id');
+
+        return $admin('admin/mappings/show', mappingViewData($mappings, $id, [
+            'title' => 'Mapping',
+            'active' => 'mappings',
+            'alert' => null,
+            'validation' => null,
+        ]));
+    }, 'admin.mappings.show', 'web');
+
+    $routes->post('/admin/mappings/{id}', static function (Request $request) use ($admin, $mappings, $audit, $workspaces, $connections): Response {
+        $id = (int) $request->route('id');
+        $values = mappingSetValues($request);
+        $errors = mappingSetErrors($values);
+
+        if ($errors !== []) {
+            return $admin('admin/mappings/create', [
+                'title' => 'Mapping bearbeiten',
+                'active' => 'mappings',
+                'workspaces' => safeList($workspaces),
+                'connections' => safeList($connections),
+                'values' => $values + ['id' => $id],
+                'errors' => $errors,
+            ]);
+        }
+
+        $mappings()->updateSet($id, $values);
+        $audit()->log(
+            empty($values['workspace_id']) ? null : (int) $values['workspace_id'],
+            'mapping_set.updated',
+            'mapping_set',
+            (string) $id,
+            'Mapping Set aktualisiert.',
+            ['name' => $values['name']],
+        );
+
+        return $admin('admin/mappings/show', mappingViewData($mappings, $id, [
+            'title' => 'Mapping',
+            'active' => 'mappings',
+            'alert' => ['type' => 'warning', 'message' => 'Mapping aktualisiert. Bitte erneut validieren.'],
+            'validation' => null,
+        ]));
+    }, 'admin.mappings.update', 'web');
+
+    $routes->get('/admin/mappings/{id}/fields', static function (Request $request) use ($admin, $mappings, $connections, $pdoFactory): Response {
+        $id = (int) $request->route('id');
+
+        return $admin('admin/mappings/fields', mappingFieldsData($mappings, $connections, $pdoFactory, $id, [
+            'title' => 'Feldzuordnungen',
+            'active' => 'mappings',
+            'transformTypes' => TransformType::labels(),
+        ]));
+    }, 'admin.mappings.fields', 'web');
+
+    $routes->post('/admin/mappings/{id}/fields', static function (Request $request) use ($mappings, $audit): Response {
+        $id = (int) $request->route('id');
+        $set = $mappings()->find($id);
+        $fieldId = $mappings()->addField($id, mappingFieldValues($request));
+        $audit()->log(
+            isset($set['workspace_id']) ? (int) $set['workspace_id'] : null,
+            'mapping_field.created',
+            'mapping_field',
+            (string) $fieldId,
+            'Mapping Field erstellt.',
+            ['mapping_set_id' => $id],
+        );
+
+        return new Response('', 302, ['Location' => '/admin/mappings/' . $id . '/fields']);
+    }, 'admin.mappings.fields.store', 'web');
+
+    $routes->post('/admin/mappings/{id}/fields/{fieldId}', static function (Request $request) use ($mappings, $audit): Response {
+        $id = (int) $request->route('id');
+        $fieldId = (int) $request->route('fieldId');
+        $set = $mappings()->find($id);
+        $mappings()->updateField($fieldId, mappingFieldValues($request));
+        $audit()->log(
+            isset($set['workspace_id']) ? (int) $set['workspace_id'] : null,
+            'mapping_field.updated',
+            'mapping_field',
+            (string) $fieldId,
+            'Mapping Field aktualisiert.',
+            ['mapping_set_id' => $id],
+        );
+
+        return new Response('', 302, ['Location' => '/admin/mappings/' . $id . '/fields']);
+    }, 'admin.mappings.fields.update', 'web');
+
+    $routes->post('/admin/mappings/{id}/fields/{fieldId}/delete', static function (Request $request) use ($mappings, $audit): Response {
+        $id = (int) $request->route('id');
+        $fieldId = (int) $request->route('fieldId');
+        $set = $mappings()->find($id);
+        $mappings()->deleteField($fieldId);
+        $audit()->log(
+            isset($set['workspace_id']) ? (int) $set['workspace_id'] : null,
+            'mapping_field.deleted',
+            'mapping_field',
+            (string) $fieldId,
+            'Mapping Field gelöscht.',
+            ['mapping_set_id' => $id],
+        );
+
+        return new Response('', 302, ['Location' => '/admin/mappings/' . $id . '/fields']);
+    }, 'admin.mappings.fields.delete', 'web');
+
+    $routes->get('/admin/mappings/{id}/fields/{fieldId}/value-rules', static function (Request $request) use ($admin, $mappings): Response {
+        $id = (int) $request->route('id');
+        $fieldId = (int) $request->route('fieldId');
+
+        return $admin('admin/mappings/value-rules', [
+            'title' => 'Value Rules',
+            'active' => 'mappings',
+            'mapping' => $mappings()->find($id),
+            'field' => $mappings()->findField($fieldId),
+            'rules' => $mappings()->valueRulesForField($fieldId),
+        ]);
+    }, 'admin.mappings.value_rules', 'web');
+
+    $routes->post('/admin/mappings/{id}/fields/{fieldId}/value-rules', static function (Request $request) use ($mappings, $audit): Response {
+        $id = (int) $request->route('id');
+        $fieldId = (int) $request->route('fieldId');
+        $set = $mappings()->find($id);
+        $ruleId = $mappings()->addValueRule(
+            $fieldId,
+            (string) $request->post('source_value', ''),
+            (string) $request->post('target_value', ''),
+            trim((string) $request->post('notes', '')) ?: null,
+        );
+        $audit()->log(
+            isset($set['workspace_id']) ? (int) $set['workspace_id'] : null,
+            'mapping_value_rule.created',
+            'mapping_value_rule',
+            (string) $ruleId,
+            'Value Rule erstellt.',
+            ['mapping_set_id' => $id, 'mapping_field_id' => $fieldId],
+        );
+
+        return new Response('', 302, ['Location' => '/admin/mappings/' . $id . '/fields/' . $fieldId . '/value-rules']);
+    }, 'admin.mappings.value_rules.store', 'web');
+
+    $routes->post('/admin/mappings/{id}/fields/{fieldId}/value-rules/{ruleId}/delete', static function (Request $request) use ($mappings, $audit): Response {
+        $id = (int) $request->route('id');
+        $fieldId = (int) $request->route('fieldId');
+        $ruleId = (int) $request->route('ruleId');
+        $set = $mappings()->find($id);
+        $mappings()->deleteValueRule($ruleId);
+        $audit()->log(
+            isset($set['workspace_id']) ? (int) $set['workspace_id'] : null,
+            'mapping_value_rule.deleted',
+            'mapping_value_rule',
+            (string) $ruleId,
+            'Value Rule gelöscht.',
+            ['mapping_set_id' => $id, 'mapping_field_id' => $fieldId],
+        );
+
+        return new Response('', 302, ['Location' => '/admin/mappings/' . $id . '/fields/' . $fieldId . '/value-rules']);
+    }, 'admin.mappings.value_rules.delete', 'web');
+
+    $routes->post('/admin/mappings/{id}/validate', static function (Request $request) use ($admin, $mappings, $audit, $validator): Response {
+        $id = (int) $request->route('id');
+        $set = $mappings()->find($id);
+        $result = $validator()->validate($id);
+        $audit()->log(
+            isset($set['workspace_id']) ? (int) $set['workspace_id'] : null,
+            'mapping.validation_run',
+            'mapping_set',
+            (string) $id,
+            'Mapping-Validierung ausgeführt.',
+            ['valid' => $result->isValid()],
+        );
+
+        return $admin('admin/mappings/show', mappingViewData($mappings, $id, [
+            'title' => 'Mapping',
+            'active' => 'mappings',
+            'alert' => null,
+            'validation' => $result,
+        ]));
+    }, 'admin.mappings.validate', 'web');
 
     $routes->get('/admin/jobs', static fn (): Response => $admin('admin/jobs', [
         'title' => 'Jobs',
@@ -351,3 +707,117 @@ return static function (RouteCollection $routes, Application $app): void {
         'app' => $app->config()->string('APP_NAME', 'Luna V3'),
     ]), 'web.health', 'web');
 };
+
+if (! function_exists('safeList')) {
+    function safeList(Closure $repositoryFactory): array
+    {
+        try {
+            return $repositoryFactory()->all();
+        } catch (Throwable) {
+            return [];
+        }
+    }
+}
+
+if (! function_exists('mappingSetValues')) {
+    function mappingSetValues(Request $request): array
+    {
+        return [
+            'workspace_id' => $request->post('workspace_id'),
+            'name' => (string) $request->post('name', ''),
+            'description' => (string) $request->post('description', ''),
+            'source_connection_id' => $request->post('source_connection_id'),
+            'source_table' => (string) $request->post('source_table', ''),
+            'target_connection_id' => $request->post('target_connection_id'),
+            'target_table' => (string) $request->post('target_table', ''),
+            'status' => (string) $request->post('status', 'draft'),
+        ];
+    }
+}
+
+if (! function_exists('mappingSetErrors')) {
+    function mappingSetErrors(array $values): array
+    {
+        $errors = [];
+
+        if (trim((string) $values['name']) === '') {
+            $errors[] = 'Name ist erforderlich.';
+        }
+
+        if (! in_array((string) $values['status'], ['draft', 'active', 'archived'], true)) {
+            $errors[] = 'Status ist ungültig.';
+        }
+
+        return $errors;
+    }
+}
+
+if (! function_exists('mappingFieldValues')) {
+    function mappingFieldValues(Request $request): array
+    {
+        return [
+            'source_column' => (string) $request->post('source_column', ''),
+            'source_json_path' => (string) $request->post('source_json_path', ''),
+            'target_column' => (string) $request->post('target_column', ''),
+            'transform_type' => (string) $request->post('transform_type', 'direct'),
+            'default_value' => (string) $request->post('default_value', ''),
+            'is_required' => $request->post('is_required') !== null ? '1' : '',
+            'notes' => (string) $request->post('notes', ''),
+            'sort_order' => (int) $request->post('sort_order', 0),
+        ];
+    }
+}
+
+if (! function_exists('mappingViewData')) {
+    function mappingViewData(Closure $mappings, int $id, array $extra = []): array
+    {
+        try {
+            $mapping = $mappings()->find($id);
+
+            return $extra + [
+                'mapping' => $mapping,
+                'fields' => $mapping === null ? [] : $mappings()->fieldsForSet($id),
+                'error' => null,
+            ];
+        } catch (Throwable) {
+            return $extra + [
+                'mapping' => null,
+                'fields' => [],
+                'error' => 'Mapping konnte nicht geladen werden.',
+            ];
+        }
+    }
+}
+
+if (! function_exists('mappingFieldsData')) {
+    function mappingFieldsData(Closure $mappings, Closure $connections, Closure $pdoFactory, int $id, array $extra = []): array
+    {
+        $data = mappingViewData($mappings, $id, $extra);
+        $data['sourceColumns'] = [];
+        $data['targetColumns'] = [];
+        $data['columnWarning'] = null;
+
+        if ($data['mapping'] === null) {
+            return $data;
+        }
+
+        try {
+            $source = $connections()->find((int) $data['mapping']['source_connection_id']);
+            $target = $connections()->find((int) $data['mapping']['target_connection_id']);
+
+            if ($source !== null && ! empty($data['mapping']['source_table'])) {
+                $sourceConfig = ExternalDatabaseConfig::fromProfile($source, $connections()->secretsFor((int) $source['id']));
+                $data['sourceColumns'] = (new SchemaInspector($pdoFactory()->create($sourceConfig)))->columns((string) $data['mapping']['source_table']);
+            }
+
+            if ($target !== null && ! empty($data['mapping']['target_table'])) {
+                $targetConfig = ExternalDatabaseConfig::fromProfile($target, $connections()->secretsFor((int) $target['id']));
+                $data['targetColumns'] = (new SchemaInspector($pdoFactory()->create($targetConfig)))->columns((string) $data['mapping']['target_table']);
+            }
+        } catch (Throwable) {
+            $data['columnWarning'] = 'Spalten konnten nicht gelesen werden. Textfelder bleiben nutzbar.';
+        }
+
+        return $data;
+    }
+}

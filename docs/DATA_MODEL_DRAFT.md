@@ -75,6 +75,14 @@ Kommentare sind Luna-Metadaten. Sie werden nicht in externe Datenbanken geschrie
 
 `luna_mapping_value_rules` bildet die Grundlage für Value Mapping einzelner Quell- und Zielwerte.
 
+Für 0.8.0 nutzt der Mapping Designer diese Tabellen direkt:
+
+- `luna_mapping_sets` speichert Workspace, Source-/Target-Connection, Source-/Target-Table und Status.
+- `luna_mapping_fields` speichert Source Column, optionalen JSON Path, Target Column, Transform Type, Default Value, Required-Hinweis, Notizen und Sortierung.
+- `luna_mapping_value_rules` speichert fachliche Übersetzungsregeln für `enum_map`.
+- Connection-Secrets werden nicht in Mapping-Tabellen gespeichert.
+- Änderungen werden über `luna_audit_log` nachvollziehbar gemacht.
+
 ## Audit Log
 
 `luna_audit_log` speichert sicherheits- und fachrelevante Ereignisse.
