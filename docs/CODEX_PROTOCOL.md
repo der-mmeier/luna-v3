@@ -235,3 +235,40 @@ Die Admin UI ist als statische serverseitige Oberfläche vorbereitet. `ViewRende
 ### Offene Punkte
 
 - Datenbank, Login, Rechtesystem, echte Workspace- und Connection-Erstellung, Mapping-Speicherung, Job-Ausführung und Report-Erzeugung bleiben Folge-Meilensteine.
+
+---
+
+## 2026-05-17 — Meilenstein 0.6.0 Luna-Systemdatenbank
+
+### Ziel
+
+Persistenz für Workbench-Metadaten schaffen.
+
+### Aufgabe
+
+Initiales Schema für die Luna-Systemdatenbank, Migration-Grundlage, PDO-Kapselung, CLI-Wartungsbefehle und Secret-Verschlüsselung auf Basis von `APP_KEY` implementieren. Keine echte UI-Verwaltung, keine externen Datenbankverbindungen und keine Fachmodule umsetzen.
+
+### Geänderte Dateien
+
+- database/migrations/2026_05_17_000001_create_luna_system_tables.sql
+- src/Database/DatabaseConfig.php
+- src/Database/PdoConnectionFactory.php
+- src/Database/SystemDatabase.php
+- src/Database/MigrationRunner.php
+- src/Security/EncryptionService.php
+- bin/luna
+- .env.example
+- src/Core/Application.php
+- src/Config/Config.php
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+- docs/DATA_MODEL_DRAFT.md
+- docs/SECURITY_MODEL.md
+
+### Ergebnis
+
+Die Systemdatenbank-Grundlage umfasst Workspaces, Connection-Profile, verschlüsselte Connection-Secrets, Schema-Snapshots, Tabellen- und Spaltennotizen, Mapping-Sets, Mapping-Felder, Value Rules und Audit Log. `SystemDatabase`, `MigrationRunner` und `EncryptionService` sind als Application-Services registriert. `bin/luna` stellt `db:test` und `migrate` bereit.
+
+### Offene Punkte
+
+- Echte Connection-Verwaltung, Schema Explorer, Mapping Designer, Jobs, Reports, Login, externe Datenbankverbindungen und UI-Speicherung bleiben Folge-Meilensteine.

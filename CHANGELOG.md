@@ -10,6 +10,10 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- Luna-Systemdatenbank-Grundlage mit initialer SQL-Migration für Workspaces, Connection-Profile, Secrets, Schema-Metadaten, Notes, Mapping-Entwürfe, Value Rules und Audit Log
+- PDO-basierte Kapselung der Luna-Systemdatenbank mit `DatabaseConfig`, `PdoConnectionFactory`, `SystemDatabase` und `MigrationRunner`
+- `EncryptionService` für versionierte Secret-Verschlüsselung mit AES-256-GCM auf Basis von `APP_KEY`
+- CLI-Script `bin/luna` mit `db:test` und `migrate`
 - Admin-UI-Grundlage mit Bootstrap-Layout, Navigation und statischen Workbench-Seiten
 - `ViewRenderer` für serverseitige Templates aus `resources/views`
 - Admin-Routen für Dashboard, Workspaces, Connections, Schema Explorer, Mappings, Jobs und Reports

@@ -11,6 +11,7 @@ Luna V3 verarbeitet Zugangsdaten zu externen Systemen und muss diese strikt von 
 - `.env.example` enthält ausschließlich Beispielwerte.
 - Externe Verbindungen werden nicht in `.env` gepflegt.
 - `APP_KEY` aus `.env` dient als Schlüsselbasis für die Verschlüsselung gespeicherter Secrets.
+- `APP_KEY` darf nicht rotiert werden, solange verschlüsselte Secrets existieren, außer diese Secrets werden kontrolliert re-encrypted.
 
 Typische Luna-Core-Werte:
 
@@ -25,6 +26,7 @@ Typische Luna-Core-Werte:
 
 - Externe Verbindungen werden über die UI angelegt.
 - Zugangsdaten externer Verbindungen werden verschlüsselt in der Luna-Systemdatenbank gespeichert.
+- Externe Credentials liegen nicht im Klartext in der Luna-Systemdatenbank.
 - Secrets werden nur zur Laufzeit entschlüsselt, wenn eine Verbindung hergestellt werden muss.
 - Quellverbindungen sollen standardmäßig read-only sein.
 - Schreibzugriffe müssen bewusst als Ziel- oder Transferverbindung konfiguriert werden.

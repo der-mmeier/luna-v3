@@ -69,4 +69,9 @@ final class Config
 
         return $default;
     }
+
+    public function appKey(): string
+    {
+        return $this->string('APP_KEY');
+    }
 }

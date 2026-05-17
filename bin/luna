@@ -1,0 +1,66 @@
+<?php
+
+declare(strict_types=1);
+
+use Luna\Bootstrap;
+use Luna\Database\MigrationRunner;
+use Luna\Database\SystemDatabase;
+
+require dirname(__DIR__) . '/vendor/autoload.php';
+
+$app = Bootstrap::init(dirname(__DIR__));
+$command = $argv[1] ?? null;
+
+if ($command === null) {
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test>\n");
+    exit(1);
+}
+
+try {
+    if ($command === 'db:test') {
+        /** @var SystemDatabase $database */
+        $database = $app->services()->get('database.system');
+
+        if (! $database->isConfigured()) {
+            fwrite(STDERR, "Luna system database is not configured. Check LUNA_DB_* values in .env.\n");
+            exit(1);
+        }
+
+        $database->testConnection();
+        echo "Luna system database connection successful.\n";
+        exit(0);
+    }
+
+    if ($command === 'migrate') {
+        /** @var SystemDatabase $database */
+        $database = $app->services()->get('database.system');
+
+        if (! $database->isConfigured()) {
+            fwrite(STDERR, "Luna system database is not configured. Check LUNA_DB_* values in .env.\n");
+            exit(1);
+        }
+
+        /** @var MigrationRunner $runner */
+        $runner = $app->services()->get('database.migrations');
+        $migrations = $runner->migrate();
+
+        if ($migrations === []) {
+            echo "No pending migrations.\n";
+            exit(0);
+        }
+
+        echo "Executed migrations:\n";
+
+        foreach ($migrations as $migration) {
+            echo "- {$migration}\n";
+        }
+
+        exit(0);
+    }
+
+    fwrite(STDERR, sprintf("Unknown command: %s\n", $command));
+    exit(1);
+} catch (Throwable $exception) {
+    fwrite(STDERR, $exception->getMessage() . "\n");
+    exit(1);
+}
