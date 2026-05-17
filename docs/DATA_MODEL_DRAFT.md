@@ -105,8 +105,16 @@ Audit-Kontext darf keine Secrets enthalten.
 
 ## Noch nicht enthalten
 
-- Job-Tabellen
-- Report-Tabellen
 - Endpoint-Tabellen
 - Benutzer/Login/Rechte
 - echte externe Datenbankverbindungen
+
+## Jobs, Runs und Reports
+
+`luna_jobs` speichert manuelle Mapping-Transfer-Jobs mit Dry-Run-Standard, Transfermodus, Row Limit und optionalen Report-Empfängern.
+
+`luna_job_runs` speichert einzelne Ausführungen mit Status, Dry-Run-Kennung, Zählern, Summary und Fehlermeldung.
+
+`luna_job_run_logs` speichert nachvollziehbare Logs pro Lauf. Context JSON darf keine Secrets enthalten.
+
+`luna_reports` speichert erzeugte Job-Run-Reports und den Mailstatus. Reports enthalten keine Credentials.

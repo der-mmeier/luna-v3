@@ -10,6 +10,9 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- Jobs, Dry Runs, kontrollierte Mapping-Transfers, Job-Run-Logs und Reports
+- CLI-Befehle für `job:run`, `mapping:dry-run` und abgesicherte `mapping:run --force`
+- Report-Erzeugung und gekapselter Mailversand ohne neue Dependency
 - Mapping Designer für workspace-bezogene Mapping Sets, Feldzuordnungen, Transformationsarten, Value Rules und Validierung
 - Audit-Log-Einträge für Mapping-Set-, Mapping-Field-, Value-Rule- und Validierungsänderungen
 - `MappingRepository`, `AuditLogRepository` und Mapping-Validierungsservices
@@ -39,6 +42,11 @@ Format basiert lose auf Keep a Changelog.
 - `docs/DATA_MODEL_DRAFT.md` mit Entwurf für die Luna-Systemdatenbank ergänzt
 - Roadmap auf Workbench-Meilensteine von 0.1.0 bis 1.0.0 neu ausgerichtet
 - Projektziel- und Architekturdokumentation an die Workbench-Ausrichtung angepasst
+
+### Changed
+
+- CLI-Ausgabe fuer `mapping:dry-run`, `mapping:run --force` und `job:run` zeigt jetzt finalen Run-Status, Zaehler und sichere Fehlermeldungen statt nur die angelegte Run-ID.
+- Echte Mapping-Transfers mit `read_only` Target Connection werden eindeutig als fehlgeschlagen blockiert und mit `written_count = 0` protokolliert.
 
 ---
 

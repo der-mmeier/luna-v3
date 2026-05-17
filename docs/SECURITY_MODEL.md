@@ -62,6 +62,15 @@ Typische Luna-Core-Werte:
 - Externe Datenbanken werden für Mapping-Validierung nur lesend über Schema-Metadaten abgefragt.
 - Mapping-Validierung darf keine Zieltabellen beschreiben oder verändern.
 
+## Transfers und Reports
+
+- Dry Run ist der Standardmodus für Transfers.
+- Echte Transfers schreiben ausschließlich in die Target-/Transfer-Connection des Mapping Sets.
+- Target Connections mit `read_only = 1` blockieren echte Schreiboperationen eindeutig vor dem `TargetWriter`; der Run wird als `failed` mit `written_count = 0` und sicherer Fehlermeldung protokolliert.
+- Für 0.9.0 sind nur kontrollierte INSERT-Transfers vorgesehen.
+- Fehler aus Job Runs werden auditierbar gespeichert.
+- Reports enthalten keine DB-Passwörter, API-Keys, `APP_KEY` oder vollständige DSNs mit Zugangsdaten.
+
 ## Audit Log
 
 Das Audit Log dokumentiert sicherheitsrelevante Ereignisse, ohne sensible Werte preiszugeben:

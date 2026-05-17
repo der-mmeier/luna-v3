@@ -1,0 +1,82 @@
+CREATE TABLE IF NOT EXISTS luna_jobs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    workspace_id BIGINT UNSIGNED NULL,
+    mapping_set_id BIGINT UNSIGNED NULL,
+    name VARCHAR(190) NOT NULL,
+    type VARCHAR(80) NOT NULL DEFAULT 'mapping_transfer',
+    status VARCHAR(50) NOT NULL DEFAULT 'draft',
+    run_mode VARCHAR(50) NOT NULL DEFAULT 'manual',
+    transfer_mode VARCHAR(50) NOT NULL DEFAULT 'insert',
+    dry_run_default TINYINT(1) NOT NULL DEFAULT 1,
+    batch_size INT UNSIGNED NOT NULL DEFAULT 100,
+    row_limit INT UNSIGNED NULL,
+    report_enabled TINYINT(1) NOT NULL DEFAULT 0,
+    report_recipients TEXT NULL,
+    notes TEXT NULL,
+    last_run_at DATETIME NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    INDEX idx_luna_jobs_workspace_id (workspace_id),
+    INDEX idx_luna_jobs_mapping_set_id (mapping_set_id),
+    INDEX idx_luna_jobs_status (status),
+    CONSTRAINT fk_luna_jobs_workspace FOREIGN KEY (workspace_id) REFERENCES luna_workspaces(id) ON DELETE SET NULL,
+    CONSTRAINT fk_luna_jobs_mapping_set FOREIGN KEY (mapping_set_id) REFERENCES luna_mapping_sets(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS luna_job_runs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    job_id BIGINT UNSIGNED NULL,
+    workspace_id BIGINT UNSIGNED NULL,
+    mapping_set_id BIGINT UNSIGNED NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    dry_run TINYINT(1) NOT NULL DEFAULT 1,
+    started_at DATETIME NULL,
+    finished_at DATETIME NULL,
+    source_count INT UNSIGNED NOT NULL DEFAULT 0,
+    transformed_count INT UNSIGNED NOT NULL DEFAULT 0,
+    written_count INT UNSIGNED NOT NULL DEFAULT 0,
+    skipped_count INT UNSIGNED NOT NULL DEFAULT 0,
+    error_count INT UNSIGNED NOT NULL DEFAULT 0,
+    summary_json LONGTEXT NULL,
+    error_message TEXT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    INDEX idx_luna_job_runs_job_id (job_id),
+    INDEX idx_luna_job_runs_mapping_set_id (mapping_set_id),
+    INDEX idx_luna_job_runs_status (status),
+    INDEX idx_luna_job_runs_started_at (started_at),
+    CONSTRAINT fk_luna_job_runs_job FOREIGN KEY (job_id) REFERENCES luna_jobs(id) ON DELETE SET NULL,
+    CONSTRAINT fk_luna_job_runs_workspace FOREIGN KEY (workspace_id) REFERENCES luna_workspaces(id) ON DELETE SET NULL,
+    CONSTRAINT fk_luna_job_runs_mapping_set FOREIGN KEY (mapping_set_id) REFERENCES luna_mapping_sets(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS luna_job_run_logs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    job_run_id BIGINT UNSIGNED NOT NULL,
+    level VARCHAR(30) NOT NULL DEFAULT 'info',
+    message TEXT NOT NULL,
+    context_json LONGTEXT NULL,
+    created_at DATETIME NOT NULL,
+    INDEX idx_luna_job_run_logs_job_run_id (job_run_id),
+    INDEX idx_luna_job_run_logs_level (level),
+    CONSTRAINT fk_luna_job_run_logs_run FOREIGN KEY (job_run_id) REFERENCES luna_job_runs(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS luna_reports (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    job_run_id BIGINT UNSIGNED NULL,
+    workspace_id BIGINT UNSIGNED NULL,
+    type VARCHAR(80) NOT NULL DEFAULT 'job_run',
+    subject VARCHAR(255) NOT NULL,
+    body LONGTEXT NOT NULL,
+    recipients TEXT NULL,
+    sent_at DATETIME NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'created',
+    error_message TEXT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    INDEX idx_luna_reports_job_run_id (job_run_id),
+    INDEX idx_luna_reports_status (status),
+    CONSTRAINT fk_luna_reports_job_run FOREIGN KEY (job_run_id) REFERENCES luna_job_runs(id) ON DELETE SET NULL,
+    CONSTRAINT fk_luna_reports_workspace FOREIGN KEY (workspace_id) REFERENCES luna_workspaces(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

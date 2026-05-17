@@ -360,3 +360,85 @@ Mapping Sets sind workspace-bezogen speicherbar. Mapping Fields und Value Rules 
 ### Offene Punkte
 
 - Keine Transferausführung, keine Jobs, keine Reports, kein Login/Auth-System, keine API-Endpunkte zur Mapping-Ausführung und keine automatische KI-Mappinglogik.
+
+---
+
+## 2026-05-18 — Meilenstein 0.9.0 Jobs, Transfers und Reports
+
+### Ziel
+
+Mappings ausführbar machen und Ergebnisse nachvollziehbar berichten.
+
+### Aufgabe
+
+Job- und Report-Tabellen, Job Runner, Dry Run, kontrollierte INSERT-Transfers, Job-Run-Logs, Report-Erzeugung, Mailversand-Kapselung, CLI-Befehle und Admin-UI für Jobs/Runs/Reports implementieren.
+
+### Geänderte Dateien
+
+- database/migrations/2026_05_17_000002_create_luna_jobs_and_reports_tables.sql
+- src/Repository/JobRepository.php
+- src/Repository/JobRunRepository.php
+- src/Repository/ReportRepository.php
+- src/Transfer/*
+- src/Jobs/*
+- src/Reports/*
+- resources/views/admin/jobs/*
+- resources/views/admin/reports/*
+- bin/luna
+- routes/web.php
+- src/Core/Application.php
+- resources/views/admin/mappings/show.php
+- .env.example
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+- docs/DATA_MODEL_DRAFT.md
+- docs/SECURITY_MODEL.md
+
+### Ergebnis
+
+Jobs können angelegt und als Dry Run oder echter Transfer gestartet werden. Dry Runs schreiben nicht in Zielsysteme und speichern Preview-Daten begrenzt in der Run-Summary. Echte Transfers sind auf INSERT in die Target Connection beschränkt und werden blockiert, wenn die Target Connection read-only ist. Job Runs, Logs, Audit-Events und Reports werden persistiert.
+
+### Offene Punkte
+
+- Kein Queue-System, kein Cron-UI, kein Login/Auth, kein Webhook-System, kein Endpoint Builder, kein Upsert in 0.9.0 und keine automatische Zieltabellenerstellung.
+
+---
+
+## 2026-05-18 - Fix 0.9.0 Mapping-Transfer-Status und CLI-Ausgabe
+
+### Ziel
+
+Echte Mapping-Transfers duerfen nicht wie ein Erfolg wirken, wenn sie nur einen JobRun anlegen oder durch ein `read_only` Target blockiert werden.
+
+### Aufgabe
+
+Lokalen 0.9.0-Stand pruefen und die Ausgabe von `mapping:dry-run`, `mapping:run --force` und `job:run` so erweitern, dass finaler Status, Dry-Run-Flag, Zaehler und sichere Fehlermeldungen sichtbar sind. `mapping:run` ohne `--force` muss mit Exit Code 2 ablehnen. Read-only Targets muessen echte Transfers mit `failed`, `written_count = 0`, Log und Audit-Event blockieren.
+
+### Geaenderte Dateien
+
+- bin/luna
+- src/Jobs/JobRunner.php
+- src/Transfer/MappingExecutor.php
+- src/Transfer/MappingExecutionResult.php
+- src/Repository/JobRunRepository.php
+- resources/views/admin/jobs/run.php
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+- docs/SECURITY_MODEL.md
+
+### Ergebnis
+
+Die CLI zeigt nach Mapping- und Job-Ausfuehrungen den gespeicherten Run-Status mit Source-, Transform-, Written-, Skipped- und Error-Zaehlern. Failed Runs geben eine sichere Message aus. Bei `read_only = 1` auf der Target Connection wird vor dem `TargetWriter` blockiert, der Run als `failed` gespeichert, `written_count` bleibt `0`, und `mapping.transfer.failed` wird auditiert.
+
+### Tests
+
+- `composer dump-autoload`
+- `php -l bin/luna`
+- `php -l` fuer geaenderte PHP-Dateien
+- `php -l` fuer geaenderte Template-Dateien
+- `php bin/luna db:test`
+- CLI-Smoke-Tests fuer Dry Run, fehlendes `--force` und echten Transfer je nach lokaler Target-Konfiguration
+
+### Offene Punkte
+
+- Echte produktive Transfers bleiben nur gegen bewusst konfigurierte Target-/Transferdatenbanken zulaessig.
