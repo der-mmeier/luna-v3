@@ -5,7 +5,12 @@ declare(strict_types=1);
 namespace Luna\Core;
 
 use Luna\Config\Config;
+use Luna\Database\DatabaseConfig;
+use Luna\Database\MigrationRunner;
+use Luna\Database\PdoConnectionFactory;
+use Luna\Database\SystemDatabase;
 use Luna\Http\Response;
+use Luna\Security\EncryptionService;
 use Luna\View\ViewRenderer;
 
 final class Application
@@ -63,9 +68,21 @@ final class Application
         $this->services->set(ServiceRegistry::class, $this->services);
         $this->services->set(Kernel::class, $this->kernel);
         $this->services->set(ViewRenderer::class, new ViewRenderer($this->paths->viewsPath()));
+        $this->services->set(EncryptionService::class, new EncryptionService($this->config));
+
+        $databaseConfig = new DatabaseConfig($this->config);
+        $systemDatabase = new SystemDatabase($databaseConfig, new PdoConnectionFactory());
+        $migrationRunner = new MigrationRunner($systemDatabase, $this->paths->basePath('database/migrations'));
+
+        $this->services->set(DatabaseConfig::class, $databaseConfig);
+        $this->services->set(SystemDatabase::class, $systemDatabase);
+        $this->services->set(MigrationRunner::class, $migrationRunner);
         $this->services->set('paths', $this->paths);
         $this->services->set('config', $this->config);
         $this->services->set('kernel', $this->kernel);
         $this->services->set('view', $this->services->get(ViewRenderer::class));
+        $this->services->set('security.encryption', $this->services->get(EncryptionService::class));
+        $this->services->set('database.system', $systemDatabase);
+        $this->services->set('database.migrations', $migrationRunner);
     }
 }

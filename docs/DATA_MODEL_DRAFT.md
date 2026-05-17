@@ -1,209 +1,100 @@
 # Data Model Draft — Luna V3
 
-Dieses Dokument skizziert das geplante Datenmodell der Luna-Systemdatenbank. Es ist ein Entwurf und beschreibt Entitäten und Beziehungen, keine fertigen Migrationen.
+Dieses Dokument beschreibt den Tabellenentwurf der Luna-Systemdatenbank für Meilenstein 0.6.0. Es ist weiterhin ein technischer Entwurf, aber mit der initialen Migration abgeglichen.
+
+## Migrationen
+
+`luna_migrations` protokolliert ausgeführte SQL-Migrationen.
+
+Wichtige Felder:
+
+- `migration`
+- `batch`
+- `executed_at`
 
 ## Workspaces
 
-Workspaces repräsentieren Integrationsprojekte.
+`luna_workspaces` speichert Projekte bzw. Arbeitsbereiche.
 
-Mögliche Felder:
+Wichtige Felder:
 
-- `id`
-- `name`
 - `slug`
+- `name`
 - `description`
 - `status`
 - `created_at`
 - `updated_at`
 
-Beziehungen:
+## Connection-Profile
 
-- ein Workspace hat viele Connections
-- ein Workspace hat viele Mapping-Definitionen
-- ein Workspace hat viele Jobs, Reports und Endpoints
+`luna_connection_profiles` speichert Metadaten externer Verbindungen, aber keine Secrets im Klartext.
 
-## Connections
+Wichtige Felder:
 
-Connections beschreiben externe Datenquellen, Transferziele oder Systemverbindungen.
-
-Mögliche Felder:
-
-- `id`
 - `workspace_id`
 - `name`
 - `type`
-- `role`
+- `driver`
 - `host`
 - `port`
 - `database_name`
 - `username`
-- `encrypted_secret`
-- `is_read_only`
-- `status`
-- `created_at`
-- `updated_at`
+- `read_only`
+- `is_active`
+- `config_json`
+- `notes`
 
-Hinweise:
+`luna_connection_secrets` speichert Secret-Werte getrennt und verschlüsselt.
 
-- `encrypted_secret` enthält verschlüsselte Zugangsdaten oder Token.
-- Quellverbindungen sind standardmäßig read-only.
-- Secrets werden nicht im Klartext gespeichert.
+Wichtige Felder:
 
-## Schema-Metadaten
+- `connection_profile_id`
+- `secret_key`
+- `secret_value_encrypted`
+- `encryption_version`
 
-Schema-Metadaten speichern analysierte Tabellen und Spalten externer Verbindungen.
+## Schema-Metadaten und Notizen
 
-Mögliche Tabellen:
+`luna_schema_snapshots` speichert analysierte Schema-Snapshots als JSON inklusive Checksumme.
 
-- `schema_tables`
-- `schema_columns`
-- `schema_samples`
+`luna_table_notes` speichert Tabellenkommentare.
 
-Mögliche Felder für Tabellen:
+`luna_column_notes` speichert Spaltenkommentare und optionale Beispielwerte.
 
-- `id`
-- `connection_id`
-- `schema_name`
-- `table_name`
-- `table_type`
-- `comment`
-- `last_scanned_at`
+Diese Tabellen referenzieren Connection-Profile und optional Workspaces.
 
-Mögliche Felder für Spalten:
+## Mapping-Entwürfe
 
-- `id`
-- `table_id`
-- `column_name`
-- `data_type`
-- `is_nullable`
-- `default_value`
-- `ordinal_position`
-- `comment`
+`luna_mapping_sets` beschreibt Mapping-Entwürfe zwischen Quelle und Ziel.
 
-## Mappings
+`luna_mapping_fields` beschreibt Feldzuordnungen und einfache Transformationshinweise.
 
-Mappings beschreiben Datenflüsse von Quellen zu Zielen.
-
-Mögliche Tabellen:
-
-- `mappings`
-- `mapping_fields`
-- `mapping_rules`
-
-Mögliche Felder für Mappings:
-
-- `id`
-- `workspace_id`
-- `name`
-- `source_connection_id`
-- `target_connection_id`
-- `source_table_id`
-- `target_table_name`
-- `status`
-- `created_at`
-- `updated_at`
-
-Mapping-Felder verbinden Quellspalten, Transformationen und Zielspalten.
-
-## Value Mappings
-
-Value Mappings übersetzen einzelne Quellwerte in Zielwerte.
-
-Mögliche Tabellen:
-
-- `value_maps`
-- `value_map_entries`
-
-Mögliche Felder:
-
-- `id`
-- `workspace_id`
-- `name`
-- `source_value`
-- `target_value`
-- `description`
-
-## Jobs und Transfers
-
-Jobs führen Mappings aus und schreiben in Transferdatenbanken.
-
-Mögliche Tabellen:
-
-- `jobs`
-- `job_runs`
-- `job_run_logs`
-- `transfer_targets`
-
-Mögliche Felder für Job-Läufe:
-
-- `id`
-- `job_id`
-- `status`
-- `started_at`
-- `finished_at`
-- `rows_read`
-- `rows_written`
-- `error_message`
-
-Fehlermeldungen dürfen keine Secrets enthalten.
-
-## Reports
-
-Reports definieren Auswertungen und E-Mail-Ausgaben.
-
-Mögliche Tabellen:
-
-- `reports`
-- `report_runs`
-- `report_recipients`
-
-Mögliche Felder:
-
-- `id`
-- `workspace_id`
-- `name`
-- `type`
-- `schedule`
-- `last_sent_at`
-- `status`
-
-## Endpoints
-
-Endpoints stellen einfache private API-Zugriffe bereit.
-
-Mögliche Tabellen:
-
-- `endpoints`
-- `endpoint_secrets`
-- `endpoint_access_logs`
-
-Mögliche Felder:
-
-- `id`
-- `workspace_id`
-- `path`
-- `method`
-- `source_type`
-- `source_id`
-- `encrypted_secret`
-- `status`
-
-Private Endpoint-Secrets werden verschlüsselt oder gehasht gespeichert und nie geloggt.
+`luna_mapping_value_rules` bildet die Grundlage für Value Mapping einzelner Quell- und Zielwerte.
 
 ## Audit Log
 
-Audit-Einträge dokumentieren relevante Änderungen und Zugriffe.
+`luna_audit_log` speichert sicherheits- und fachrelevante Ereignisse.
 
-Mögliche Felder:
+Wichtige Felder:
 
-- `id`
 - `workspace_id`
 - `actor_type`
 - `actor_id`
-- `event_type`
+- `action`
 - `entity_type`
 - `entity_id`
-- `metadata_json`
+- `message`
+- `context_json`
+- `ip_address`
+- `user_agent`
 - `created_at`
 
-Audit-Metadaten dürfen keine Secrets enthalten.
+Audit-Kontext darf keine Secrets enthalten.
+
+## Noch nicht enthalten
+
+- Job-Tabellen
+- Report-Tabellen
+- Endpoint-Tabellen
+- Benutzer/Login/Rechte
+- echte externe Datenbankverbindungen
