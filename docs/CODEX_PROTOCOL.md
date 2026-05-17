@@ -162,3 +162,38 @@ Application- und Kernel-Grundstruktur, zentrale Konfiguration aus der Luna-Core-
 ### Offene Punkte
 
 - Routing, Request/Response, Controller, Datenbankverbindung, Admin UI, Mapping, Jobs und API-Endpunkte bleiben Folge-Meilensteine.
+
+---
+
+## 2026-05-17 — Meilenstein 0.4.0 HTTP-Grundlage und Routing
+
+### Ziel
+
+HTTP-Verarbeitung für Admin UI, API-Endpunkte und interne Aktionen vorbereiten.
+
+### Aufgabe
+
+Request/Response-Abstraktion, Routing-Grundlage, Fehlerantworten für unbekannte Routen, getrennte Web- und API-Routen sowie zentrale Response-Ausgabe implementieren. Keine Admin UI, kein Login, keine Datenbank, keine Mapping-Logik, keine Jobs und keine API-Secret-Prüfung umsetzen.
+
+### Geänderte Dateien
+
+- public/index.php
+- src/Core/Application.php
+- src/Core/Kernel.php
+- src/Http/Request.php
+- src/Http/Response.php
+- src/Routing/Route.php
+- src/Routing/RouteCollection.php
+- src/Routing/Router.php
+- routes/web.php
+- routes/api.php
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+`Application::handle()` erzeugt eine `Response`, `Application::run()` sendet sie zentral. Der Kernel erstellt den Request aus Globals, lädt Web- und API-Routen und dispatcht über den Router. Es existieren erste Routen für `/`, `/health` und `/api/version`. Unbekannte Routen liefern 404, Exceptions liefern eine einfache 500-Antwort ohne Debug-Details.
+
+### Offene Punkte
+
+- Admin UI, Login, Datenbank, Migrationen, Controller, Templates, Mapping, Jobs, Endpoint Builder und API-Secret-Prüfung bleiben Folge-Meilensteine.

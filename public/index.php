@@ -8,4 +8,4 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 
 $app = Bootstrap::init(dirname(__DIR__));
 
-echo $app->run();
+$app->run();
