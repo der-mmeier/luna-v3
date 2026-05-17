@@ -54,6 +54,16 @@ final class MappingExecutor
             return $result;
         }
 
+        if (! $dryRun) {
+            $result->addLog('info', 'Target read_only geprueft.', ['target_read_only' => (int) $target['read_only'] === 1]);
+            if ((int) $target['read_only'] === 1) {
+                $result->writtenCount = 0;
+                $result->addLog('error', 'Transfer blocked because target connection is read-only.');
+                $result->addError('Target connection is read-only. Transfer was blocked.');
+                return $result;
+            }
+        }
+
         $sourcePdo = $this->pdoFactory->create(ExternalDatabaseConfig::fromProfile($source, $this->connections->secretsFor((int) $source['id'])));
         $rows = $this->readSourceRows($sourcePdo, (string) $set['source_table'], $limit ?? 25);
         $fields = $this->mappings->fieldsForSet($mappingSetId);
@@ -73,13 +83,6 @@ final class MappingExecutor
         if ($dryRun) {
             $result->writtenCount = 0;
             $result->addLog('info', 'Dry Run beendet, keine Zielschreiboperation ausgefuehrt.');
-            return $result;
-        }
-
-        $result->addLog('info', 'Target read_only geprueft.', ['target_read_only' => (int) $target['read_only'] === 1]);
-        if ((int) $target['read_only'] === 1) {
-            $result->writtenCount = 0;
-            $result->addError('Target connection is read-only. Transfer was blocked.');
             return $result;
         }
 
