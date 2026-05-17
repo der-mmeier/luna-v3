@@ -56,7 +56,33 @@ final class Route
 
     public function matches(Request $request): bool
     {
-        return $request->isMethod($this->method) && $request->path() === $this->path;
+        return $request->isMethod($this->method) && $this->parameters($request) !== null;
+    }
+
+    /**
+     * @return array<string, string>|null
+     */
+    public function parameters(Request $request): ?array
+    {
+        $pattern = preg_replace('#\{([a-zA-Z_][a-zA-Z0-9_]*)}#', '(?P<$1>[^/]+)', $this->path);
+
+        if ($pattern === null) {
+            return null;
+        }
+
+        if (preg_match('#^' . $pattern . '$#', $request->path(), $matches) !== 1) {
+            return null;
+        }
+
+        $params = [];
+
+        foreach ($matches as $key => $value) {
+            if (is_string($key)) {
+                $params[$key] = urldecode($value);
+            }
+        }
+
+        return $params;
     }
 
     private static function normalizePath(string $path): string

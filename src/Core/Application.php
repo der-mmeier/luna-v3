@@ -5,11 +5,16 @@ declare(strict_types=1);
 namespace Luna\Core;
 
 use Luna\Config\Config;
+use Luna\Connections\ConnectionTester;
+use Luna\Connections\ExternalPdoConnectionFactory;
 use Luna\Database\DatabaseConfig;
 use Luna\Database\MigrationRunner;
 use Luna\Database\PdoConnectionFactory;
 use Luna\Database\SystemDatabase;
 use Luna\Http\Response;
+use Luna\Repository\ConnectionProfileRepository;
+use Luna\Repository\SchemaMetadataRepository;
+use Luna\Repository\WorkspaceRepository;
 use Luna\Security\EncryptionService;
 use Luna\View\ViewRenderer;
 
@@ -77,6 +82,17 @@ final class Application
         $this->services->set(DatabaseConfig::class, $databaseConfig);
         $this->services->set(SystemDatabase::class, $systemDatabase);
         $this->services->set(MigrationRunner::class, $migrationRunner);
+
+        $externalPdoFactory = new ExternalPdoConnectionFactory();
+        $this->services->set(ExternalPdoConnectionFactory::class, $externalPdoFactory);
+        $this->services->set(ConnectionTester::class, new ConnectionTester($externalPdoFactory));
+        $this->services->set(WorkspaceRepository::class, new WorkspaceRepository($systemDatabase));
+        $this->services->set(ConnectionProfileRepository::class, new ConnectionProfileRepository(
+            $systemDatabase,
+            $this->services->get(EncryptionService::class),
+        ));
+        $this->services->set(SchemaMetadataRepository::class, new SchemaMetadataRepository($systemDatabase));
+
         $this->services->set('paths', $this->paths);
         $this->services->set('config', $this->config);
         $this->services->set('kernel', $this->kernel);
@@ -84,5 +100,10 @@ final class Application
         $this->services->set('security.encryption', $this->services->get(EncryptionService::class));
         $this->services->set('database.system', $systemDatabase);
         $this->services->set('database.migrations', $migrationRunner);
+        $this->services->set('connections.pdo_factory', $externalPdoFactory);
+        $this->services->set('connections.tester', $this->services->get(ConnectionTester::class));
+        $this->services->set('repository.workspaces', $this->services->get(WorkspaceRepository::class));
+        $this->services->set('repository.connections', $this->services->get(ConnectionProfileRepository::class));
+        $this->services->set('repository.schema_metadata', $this->services->get(SchemaMetadataRepository::class));
     }
 }

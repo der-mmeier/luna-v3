@@ -272,3 +272,50 @@ Die Systemdatenbank-Grundlage umfasst Workspaces, Connection-Profile, verschlüs
 ### Offene Punkte
 
 - Echte Connection-Verwaltung, Schema Explorer, Mapping Designer, Jobs, Reports, Login, externe Datenbankverbindungen und UI-Speicherung bleiben Folge-Meilensteine.
+
+---
+
+## 2026-05-17 — Meilenstein 0.7.0 Connection Manager und Schema Explorer
+
+### Ziel
+
+Externe Datenquellen über die Luna Admin-UI verwalten und analysieren.
+
+### Aufgabe
+
+Connection Manager, verschlüsselte Speicherung externer Secrets, Verbindungstest für MySQL/MariaDB, Schemaanalyse über `information_schema`, Beispieldatenanzeige und Luna-Kommentare für Tabellen und Spalten implementieren. Keine Mapping-, Transfer-, Job-, Report- oder externe API-Logik umsetzen.
+
+### Geänderte Dateien
+
+- routes/web.php
+- src/Core/Application.php
+- src/Http/Request.php
+- src/Routing/Route.php
+- src/Routing/Router.php
+- src/Repository/WorkspaceRepository.php
+- src/Repository/ConnectionProfileRepository.php
+- src/Repository/SchemaMetadataRepository.php
+- src/Connections/ExternalDatabaseConfig.php
+- src/Connections/ExternalPdoConnectionFactory.php
+- src/Connections/ConnectionTester.php
+- src/Schema/SchemaInspector.php
+- src/Schema/TableSchema.php
+- src/Schema/ColumnSchema.php
+- src/Schema/SampleDataReader.php
+- resources/views/admin/connections/index.php
+- resources/views/admin/connections/create.php
+- resources/views/admin/connections/show.php
+- resources/views/admin/schema/index.php
+- resources/views/admin/schema/table.php
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+- docs/SECURITY_MODEL.md
+- docs/DATA_MODEL_DRAFT.md
+
+### Ergebnis
+
+Connections können über die Admin UI angelegt, verschlüsselt gespeichert und angezeigt werden, ohne Secrets offenzulegen. Dynamische Routenparameter sind im bestehenden Router verfügbar. Schema Explorer kann aktive Connections listen, Tabellen und Spalten aus `information_schema` lesen, begrenzte Beispieldaten anzeigen und Luna-eigene Tabellen-/Spaltenkommentare speichern.
+
+### Offene Punkte
+
+- Kein Login/Auth, kein Mapping Designer, keine Transfers, keine Jobs, keine Reports und keine API-Endpunkte für externe Daten.

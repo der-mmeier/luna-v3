@@ -53,6 +53,8 @@ Wichtige Felder:
 - `secret_value_encrypted`
 - `encryption_version`
 
+Die 0.7.0-Repositories nutzen `luna_connection_profiles` für nicht-sensitive Verbindungsmetadaten und `luna_connection_secrets` für verschlüsselte Secret-Werte. Ein leeres Secret-Feld in der UI darf bestehende Secrets nicht überschreiben.
+
 ## Schema-Metadaten und Notizen
 
 `luna_schema_snapshots` speichert analysierte Schema-Snapshots als JSON inklusive Checksumme.
@@ -62,6 +64,8 @@ Wichtige Felder:
 `luna_column_notes` speichert Spaltenkommentare und optionale Beispielwerte.
 
 Diese Tabellen referenzieren Connection-Profile und optional Workspaces.
+
+Kommentare sind Luna-Metadaten. Sie werden nicht in externe Datenbanken geschrieben.
 
 ## Mapping-Entwürfe
 

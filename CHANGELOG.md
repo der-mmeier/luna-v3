@@ -10,6 +10,10 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- Connection Manager und Schema Explorer für externe MySQL/MariaDB-Datenquellen
+- verschlüsselte Speicherung externer Connection-Secrets in `luna_connection_secrets`
+- Repository-Grundlage für Workspaces, Connection-Profile und Schema-Metadaten
+- Verbindungstest, Tabellen-/Spaltenanalyse, Beispieldaten und Luna-Kommentare für Tabellen und Spalten
 - Luna-Systemdatenbank-Grundlage mit initialer SQL-Migration für Workspaces, Connection-Profile, Secrets, Schema-Metadaten, Notes, Mapping-Entwürfe, Value Rules und Audit Log
 - PDO-basierte Kapselung der Luna-Systemdatenbank mit `DatabaseConfig`, `PdoConnectionFactory`, `SystemDatabase` und `MigrationRunner`
 - `EncryptionService` für versionierte Secret-Verschlüsselung mit AES-256-GCM auf Basis von `APP_KEY`
