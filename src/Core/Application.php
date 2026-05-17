@@ -6,6 +6,7 @@ namespace Luna\Core;
 
 use Luna\Config\Config;
 use Luna\Http\Response;
+use Luna\View\ViewRenderer;
 
 final class Application
 {
@@ -61,8 +62,10 @@ final class Application
         $this->services->set(Config::class, $this->config);
         $this->services->set(ServiceRegistry::class, $this->services);
         $this->services->set(Kernel::class, $this->kernel);
+        $this->services->set(ViewRenderer::class, new ViewRenderer($this->paths->viewsPath()));
         $this->services->set('paths', $this->paths);
         $this->services->set('config', $this->config);
         $this->services->set('kernel', $this->kernel);
+        $this->services->set('view', $this->services->get(ViewRenderer::class));
     }
 }

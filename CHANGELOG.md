@@ -10,6 +10,10 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- Admin-UI-Grundlage mit Bootstrap-Layout, Navigation und statischen Workbench-Seiten
+- `ViewRenderer` für serverseitige Templates aus `resources/views`
+- Admin-Routen für Dashboard, Workspaces, Connections, Schema Explorer, Mappings, Jobs und Reports
+- kleine ergänzende Styles für die Admin UI unter `public/assets/css/admin.css`
 - HTTP-Grundlage mit `Request`, `Response`, `Route`, `RouteCollection` und `Router`
 - getrennte Routenregistrierung für Web- und API-Routen über `routes/web.php` und `routes/api.php`
 - zentrale Response-Ausgabe über `Application::run()`

@@ -33,6 +33,21 @@ final class Paths
         return $this->join($this->basePath('storage'), $path);
     }
 
+    public function resourcesPath(string $path = ''): string
+    {
+        return $this->join($this->basePath('resources'), $path);
+    }
+
+    public function viewsPath(string $path = ''): string
+    {
+        return $this->join($this->resourcesPath('views'), $path);
+    }
+
+    public function publicAssetPath(string $path = ''): string
+    {
+        return $this->join($this->publicPath('assets'), $path);
+    }
+
     private function join(string $basePath, string $path): string
     {
         if ($path === '') {
