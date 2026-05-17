@@ -10,6 +10,10 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- Application Core für Luna V3 mit `Application`, `Kernel`, `Paths`, `ServiceRegistry` und zentraler `Config`
+- Bootstrap erstellt jetzt die Anwendungslaufzeit aus Pfaden und Luna-Core-Konfiguration
+- Public Front Controller delegiert an `$app->run()`
+- `.env.example` um `APP_KEY`, Luna-Systemdatenbank-, Mail- und `CRON_SECRET`-Platzhalter erweitert
 - Luna V3 als Integrations- und Mapping-Workbench neu definiert
 - `docs/PRODUCT_SPEC.md` mit Produktdefinition, Nicht-Zielen und Kernfunktionen ergänzt
 - `docs/SECURITY_MODEL.md` mit Secret-, `.env`-, API- und Logging-Regeln ergänzt

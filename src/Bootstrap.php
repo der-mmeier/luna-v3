@@ -5,16 +5,23 @@ declare(strict_types=1);
 namespace Luna;
 
 use Dotenv\Dotenv;
+use Luna\Config\Config;
+use Luna\Core\Application;
+use Luna\Core\Paths;
 
 final class Bootstrap
 {
-    public static function init(string $rootPath): void
+    public static function init(string $rootPath): Application
     {
-        if (! is_file($rootPath . '/.env')) {
-            return;
+        $paths = new Paths($rootPath);
+
+        if (is_file($paths->basePath('.env'))) {
+            $dotenv = Dotenv::createImmutable($paths->basePath());
+            $dotenv->load();
         }
 
-        $dotenv = Dotenv::createImmutable($rootPath);
-        $dotenv->load();
+        $config = new Config();
+
+        return new Application($paths, $config);
     }
 }

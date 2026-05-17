@@ -129,3 +129,36 @@ Luna V3 ist als webbasierte PHP-8.2+-Workbench für Integrationsprojekte definie
 ### Offene Punkte
 
 - Workbench-Architektur in den kommenden Meilensteinen technisch ausarbeiten.
+
+---
+
+## 2026-05-17 — Meilenstein 0.3.0 Application Core
+
+### Ziel
+
+Eine zentrale Laufzeit für Luna V3 schaffen, ohne Routing, Datenbank, Mapping, Jobs oder UI-Logik zu implementieren.
+
+### Aufgabe
+
+Application- und Kernel-Grundstruktur, zentrale Konfiguration aus der Luna-Core-Umgebung, grundlegende Service-Registrierung und zentrale Pfadverwaltung implementieren. Bootstrap, Anwendungslaufzeit und spätere Fachmodule klar trennen.
+
+### Geänderte Dateien
+
+- public/index.php
+- src/Bootstrap.php
+- src/Core/Application.php
+- src/Core/Kernel.php
+- src/Core/Paths.php
+- src/Core/ServiceRegistry.php
+- src/Config/Config.php
+- .env.example
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+`public/index.php` lädt nur den Autoloader, erstellt die Application über `Luna\Bootstrap` und gibt `$app->run()` aus. Bootstrap lädt optional `.env`, erstellt `Paths`, `Config` und `Application`. Der Application Core hält Pfade, Konfiguration, ServiceRegistry und Kernel. Der Kernel erzeugt für 0.3.0 nur eine kontrollierte Startausgabe mit App-Name, Environment und Debug-Status.
+
+### Offene Punkte
+
+- Routing, Request/Response, Controller, Datenbankverbindung, Admin UI, Mapping, Jobs und API-Endpunkte bleiben Folge-Meilensteine.
