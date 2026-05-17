@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Luna\Core;
 
 use Luna\Config\Config;
+use Luna\Http\Response;
 
 final class Application
 {
@@ -44,9 +45,14 @@ final class Application
         return $this->kernel;
     }
 
-    public function run(): string
+    public function handle(): Response
     {
         return $this->kernel->handle();
+    }
+
+    public function run(): void
+    {
+        $this->handle()->send();
     }
 
     private function registerCoreServices(): void

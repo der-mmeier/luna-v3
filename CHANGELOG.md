@@ -10,6 +10,10 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- HTTP-Grundlage mit `Request`, `Response`, `Route`, `RouteCollection` und `Router`
+- getrennte Routenregistrierung für Web- und API-Routen über `routes/web.php` und `routes/api.php`
+- zentrale Response-Ausgabe über `Application::run()`
+- einfache 404- und 500-Antworten für Routing-Grundlage
 - Application Core für Luna V3 mit `Application`, `Kernel`, `Paths`, `ServiceRegistry` und zentraler `Config`
 - Bootstrap erstellt jetzt die Anwendungslaufzeit aus Pfaden und Luna-Core-Konfiguration
 - Public Front Controller delegiert an `$app->run()`

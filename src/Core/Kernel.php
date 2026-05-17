@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Luna\Core;
 
+use Luna\Http\Request;
+use Luna\Http\Response;
+use Luna\Routing\RouteCollection;
+use Luna\Routing\Router;
+
 final class Kernel
 {
     public function __construct(
@@ -11,18 +16,27 @@ final class Kernel
     ) {
     }
 
-    public function handle(): string
+    public function handle(): Response
     {
-        $config = $this->app->config();
-        $appName = $config->string('APP_NAME', 'Luna V3');
-        $environment = $config->string('APP_ENV', 'local');
-        $debug = $config->bool('APP_DEBUG', false) ? 'enabled' : 'disabled';
+        $request = Request::fromGlobals();
+        $routes = new RouteCollection();
 
-        return sprintf(
-            "%s\nEnvironment: %s\nDebug: %s\n",
-            $appName,
-            $environment,
-            $debug,
-        );
+        $this->loadRoutes($routes, $this->app->paths()->basePath('routes/web.php'));
+        $this->loadRoutes($routes, $this->app->paths()->basePath('routes/api.php'));
+
+        return (new Router($routes))->dispatch($request);
+    }
+
+    private function loadRoutes(RouteCollection $routes, string $file): void
+    {
+        if (! is_file($file)) {
+            return;
+        }
+
+        $loader = require $file;
+
+        if (is_callable($loader)) {
+            $loader($routes, $this->app);
+        }
     }
 }
