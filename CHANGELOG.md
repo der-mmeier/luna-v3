@@ -10,6 +10,9 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- Mapping Designer für workspace-bezogene Mapping Sets, Feldzuordnungen, Transformationsarten, Value Rules und Validierung
+- Audit-Log-Einträge für Mapping-Set-, Mapping-Field-, Value-Rule- und Validierungsänderungen
+- `MappingRepository`, `AuditLogRepository` und Mapping-Validierungsservices
 - Connection Manager und Schema Explorer für externe MySQL/MariaDB-Datenquellen
 - verschlüsselte Speicherung externer Connection-Secrets in `luna_connection_secrets`
 - Repository-Grundlage für Workspaces, Connection-Profile und Schema-Metadaten

@@ -12,7 +12,10 @@ use Luna\Database\MigrationRunner;
 use Luna\Database\PdoConnectionFactory;
 use Luna\Database\SystemDatabase;
 use Luna\Http\Response;
+use Luna\Mapping\MappingValidator;
+use Luna\Repository\AuditLogRepository;
 use Luna\Repository\ConnectionProfileRepository;
+use Luna\Repository\MappingRepository;
 use Luna\Repository\SchemaMetadataRepository;
 use Luna\Repository\WorkspaceRepository;
 use Luna\Security\EncryptionService;
@@ -91,7 +94,14 @@ final class Application
             $systemDatabase,
             $this->services->get(EncryptionService::class),
         ));
+        $this->services->set(MappingRepository::class, new MappingRepository($systemDatabase));
+        $this->services->set(AuditLogRepository::class, new AuditLogRepository($systemDatabase));
         $this->services->set(SchemaMetadataRepository::class, new SchemaMetadataRepository($systemDatabase));
+        $this->services->set(MappingValidator::class, new MappingValidator(
+            $this->services->get(MappingRepository::class),
+            $this->services->get(ConnectionProfileRepository::class),
+            $externalPdoFactory,
+        ));
 
         $this->services->set('paths', $this->paths);
         $this->services->set('config', $this->config);
@@ -105,5 +115,8 @@ final class Application
         $this->services->set('repository.workspaces', $this->services->get(WorkspaceRepository::class));
         $this->services->set('repository.connections', $this->services->get(ConnectionProfileRepository::class));
         $this->services->set('repository.schema_metadata', $this->services->get(SchemaMetadataRepository::class));
+        $this->services->set('repository.mappings', $this->services->get(MappingRepository::class));
+        $this->services->set('repository.audit_log', $this->services->get(AuditLogRepository::class));
+        $this->services->set('mapping.validator', $this->services->get(MappingValidator::class));
     }
 }
