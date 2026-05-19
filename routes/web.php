@@ -304,9 +304,16 @@ return static function (RouteCollection $routes, Application $app): void {
         return ExternalDatabaseConfig::fromProfile($profile, $connections()->secretsFor((int) $profile['id']));
     };
 
+    $dashboardData = static fn (): array => [
+        'workspaceCount' => count($safeAll($workspaces)),
+        'connectionCount' => count($safeAll($connections)),
+        'mappingCount' => count($safeAll($mappings)),
+        'jobCount' => count($safeAll($jobs)),
+    ];
+
     $routes->get('/', static fn (): Response => Response::html($view->render(
         'admin/dashboard',
-        [
+        $dashboardData() + [
             'appName' => $app->config()->string('APP_NAME', 'Luna V3'),
             'title' => 'Dashboard',
             'active' => 'dashboard',
@@ -314,7 +321,7 @@ return static function (RouteCollection $routes, Application $app): void {
         'layouts/admin',
     )), 'web.home', 'web');
 
-    $routes->get('/admin', static fn (): Response => $admin('admin/dashboard', [
+    $routes->get('/admin', static fn (): Response => $admin('admin/dashboard', $dashboardData() + [
         'title' => 'Dashboard',
         'active' => 'dashboard',
     ]), 'admin.dashboard', 'web');

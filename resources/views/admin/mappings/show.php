@@ -101,7 +101,7 @@ use Luna\Mapping\MappingValidationResult;
                 </select>
             </div>
         </div>
-        <div class="card-footer bg-white">
+        <div class="card-footer">
             <button class="btn btn-outline-primary" type="submit">Mapping Set aktualisieren</button>
         </div>
     </form>

@@ -91,7 +91,7 @@ $values = $values ?? [];
             <textarea class="form-control" id="notes" name="notes" rows="3"><?= htmlspecialchars((string) ($values['notes'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
         </div>
     </div>
-    <div class="card-footer bg-white d-flex gap-2">
+    <div class="card-footer d-flex gap-2">
         <button class="btn btn-primary" type="submit">Speichern</button>
         <a class="btn btn-outline-secondary" href="/admin/connections">Abbrechen</a>
     </div>

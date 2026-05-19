@@ -48,7 +48,7 @@
                 <input class="form-control" name="notes">
             </div>
         </div>
-        <div class="card-footer bg-white">
+        <div class="card-footer">
             <button class="btn btn-primary" type="submit">Value Rule hinzufügen</button>
         </div>
     </form>

@@ -97,7 +97,7 @@ $values = $values ?? [];
             <div class="form-text mapping-table-status" data-role="target-table-status"></div>
         </div>
     </div>
-    <div class="card-footer bg-white d-flex gap-2">
+    <div class="card-footer d-flex gap-2">
         <button class="btn btn-primary" type="submit">Speichern</button>
         <a class="btn btn-outline-secondary" href="/admin/mappings">Abbrechen</a>
     </div>

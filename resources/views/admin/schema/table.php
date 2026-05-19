@@ -34,7 +34,7 @@ $short = static function (mixed $value): string {
             <label class="form-label" for="table-note">Luna-Tabellenkommentar</label>
             <textarea class="form-control" id="table-note" name="note" rows="2"><?= htmlspecialchars((string) ($tableNote['note'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
         </div>
-        <div class="card-footer bg-white">
+        <div class="card-footer">
             <button class="btn btn-primary" type="submit">Tabellenkommentar speichern</button>
         </div>
     </form>
@@ -82,7 +82,7 @@ $short = static function (mixed $value): string {
 </div>
 
 <div class="card admin-card">
-    <div class="card-header bg-white">Beispieldaten</div>
+    <div class="card-header">Beispieldaten</div>
     <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
             <tbody>

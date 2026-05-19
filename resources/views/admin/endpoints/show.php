@@ -47,7 +47,7 @@
     </form>
 
     <div class="card admin-card">
-        <div class="card-header bg-white">curl Beispiele</div>
+        <div class="card-header">curl Beispiele</div>
         <pre class="p-3 mb-0"><?php if ((string) $endpoint['visibility'] === 'public'): ?>curl -X <?= htmlspecialchars((string) $endpoint['method'], ENT_QUOTES, 'UTF-8') ?> "<?= htmlspecialchars('/api/e/' . (string) $endpoint['endpoint_key'], ENT_QUOTES, 'UTF-8') ?>"
 <?php else: ?>curl -X <?= htmlspecialchars((string) $endpoint['method'], ENT_QUOTES, 'UTF-8') ?> -H "X-Luna-Endpoint-Secret: <endpoint-secret>" "<?= htmlspecialchars('/api/e/' . (string) $endpoint['endpoint_key'], ENT_QUOTES, 'UTF-8') ?>"
 <?php endif; ?></pre>

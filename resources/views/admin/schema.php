@@ -8,7 +8,7 @@
 </div>
 
 <div class="card admin-card">
-    <div class="card-header bg-white">
+    <div class="card-header">
         Beispieltabelle: <strong>customers</strong>
     </div>
     <div class="table-responsive">

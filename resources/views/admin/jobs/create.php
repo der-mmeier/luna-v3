@@ -22,5 +22,5 @@ $values = $values ?? [];
     <div class="col-md-9"><label class="form-label">Report Recipients</label><input class="form-control" name="report_recipients" placeholder="mail@example.test;team@example.test"></div>
     <div class="col-12"><label class="form-label">Notes</label><textarea class="form-control" name="notes" rows="2"></textarea></div>
 </div>
-<div class="card-footer bg-white"><button class="btn btn-primary" type="submit">Speichern</button></div>
+<div class="card-footer"><button class="btn btn-primary" type="submit">Speichern</button></div>
 </form>

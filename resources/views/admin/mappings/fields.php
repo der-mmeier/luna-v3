@@ -89,7 +89,7 @@ foreach ($fields ?? [] as $field) {
                 <textarea class="form-control" name="notes" rows="2"></textarea>
             </div>
         </div>
-        <div class="card-footer bg-white">
+        <div class="card-footer">
             <button class="btn btn-primary" type="submit">Feldzuordnung speichern</button>
         </div>
     </form>

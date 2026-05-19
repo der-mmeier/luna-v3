@@ -82,8 +82,7 @@ body {
 }
 
 .card-header,
-.card-footer,
-.bg-white {
+.card-footer {
     background: var(--luna-surface-strong) !important;
     border-color: var(--luna-border) !important;
     color: var(--luna-text);

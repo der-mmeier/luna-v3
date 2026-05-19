@@ -43,13 +43,13 @@
 
     <?php if (! empty($summary['preview_rows'])): ?>
         <div class="card admin-card mb-4">
-            <div class="card-header bg-white">Dry Run Preview</div>
+            <div class="card-header">Dry Run Preview</div>
             <pre class="p-3 mb-0"><?= htmlspecialchars(json_encode($summary['preview_rows'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?></pre>
         </div>
     <?php endif; ?>
 
     <div class="card admin-card mb-4">
-        <div class="card-header bg-white">Summary</div>
+        <div class="card-header">Summary</div>
         <pre class="p-3 mb-0"><?= htmlspecialchars(json_encode($summary, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?></pre>
     </div>
 
