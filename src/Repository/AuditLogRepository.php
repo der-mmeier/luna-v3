@@ -39,6 +39,16 @@ final class AuditLogRepository
         ]);
     }
 
+    public function recent(int $limit = 100): array
+    {
+        $limit = max(1, min($limit, 500));
+        $statement = $this->database->pdo()->query(
+            sprintf('SELECT * FROM luna_audit_log ORDER BY created_at DESC, id DESC LIMIT %d', $limit),
+        );
+
+        return $statement->fetchAll();
+    }
+
     private function maskSecrets(array $context): array
     {
         foreach ($context as $key => $value) {

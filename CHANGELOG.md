@@ -10,6 +10,12 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- Endpoint Builder für einfache public/private API-Endpunkte mit Admin UI
+- verschlüsselte Endpoint-Secrets in `luna_endpoint_secrets`
+- Endpoint Runtime unter `/api/e/{endpoint_key}` für `static`, `version`, `mapping_dry_run`, `job_status` und `latest_report`
+- Audit-Ansicht unter `/admin/audit`
+- Betriebs-, Deployment-, API- und Security-Dokumentation für 1.0.0
+- zentrale App-Version `1.0.0`
 - Jobs, Dry Runs, kontrollierte Mapping-Transfers, Job-Run-Logs und Reports
 - CLI-Befehle für `job:run`, `mapping:dry-run` und abgesicherte `mapping:run --force`
 - Report-Erzeugung und gekapselter Mailversand ohne neue Dependency

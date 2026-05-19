@@ -14,6 +14,7 @@ use Luna\Mapping\TransformType;
 use Luna\Reports\ReportMailer;
 use Luna\Repository\AuditLogRepository;
 use Luna\Repository\ConnectionProfileRepository;
+use Luna\Repository\EndpointRepository;
 use Luna\Repository\JobRepository;
 use Luna\Repository\JobRunRepository;
 use Luna\Repository\MappingRepository;
@@ -160,6 +161,71 @@ if (! function_exists('jobValues')) {
     }
 }
 
+if (! function_exists('endpointValues')) {
+    function endpointValues(Request $request): array
+    {
+        $staticResponse = trim((string) $request->post('static_response', ''));
+        $config = [];
+        if ($staticResponse !== '') {
+            $decoded = json_decode($staticResponse, true);
+            if (is_array($decoded)) {
+                $config['static_response'] = $decoded;
+            }
+        }
+
+        return [
+            'workspace_id' => $request->post('workspace_id'),
+            'name' => (string) $request->post('name', ''),
+            'endpoint_key' => EndpointRepository::normalizeEndpointKey((string) $request->post('endpoint_key', '')),
+            'description' => (string) $request->post('description', ''),
+            'method' => (string) $request->post('method', 'GET'),
+            'visibility' => (string) $request->post('visibility', 'private'),
+            'status' => (string) $request->post('status', 'draft'),
+            'response_type' => 'json',
+            'source_type' => (string) $request->post('source_type', 'static'),
+            'mapping_set_id' => $request->post('mapping_set_id'),
+            'job_id' => $request->post('job_id'),
+            'config_json' => $config === [] ? '' : (json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: ''),
+            'rate_limit_per_minute' => $request->post('rate_limit_per_minute'),
+            'notes' => (string) $request->post('notes', ''),
+            'static_response' => $staticResponse,
+        ];
+    }
+}
+
+if (! function_exists('endpointErrors')) {
+    function endpointErrors(array $values, bool $requireSecret, string $staticResponse): array
+    {
+        $errors = [];
+        if (trim((string) $values['name']) === '') {
+            $errors[] = 'Name ist erforderlich.';
+        }
+        if (trim((string) $values['endpoint_key']) === '') {
+            $errors[] = 'Endpoint Key ist erforderlich.';
+        }
+        if (! in_array((string) $values['method'], ['GET', 'POST'], true)) {
+            $errors[] = 'Method ist ungueltig.';
+        }
+        if (! in_array((string) $values['visibility'], ['public', 'private'], true)) {
+            $errors[] = 'Visibility ist ungueltig.';
+        }
+        if (! in_array((string) $values['status'], ['draft', 'active', 'disabled'], true)) {
+            $errors[] = 'Status ist ungueltig.';
+        }
+        if (! in_array((string) $values['source_type'], ['static', 'version', 'mapping_dry_run', 'job_status', 'latest_report'], true)) {
+            $errors[] = 'Source Type ist ungueltig.';
+        }
+        if ($requireSecret && (string) $values['visibility'] === 'private') {
+            $errors[] = 'Private Endpoints sollten ein Secret erhalten.';
+        }
+        if ($staticResponse !== '' && json_decode($staticResponse, true) === null && json_last_error() !== JSON_ERROR_NONE) {
+            $errors[] = 'Static Response JSON ist ungueltig.';
+        }
+
+        return $errors;
+    }
+}
+
 return static function (RouteCollection $routes, Application $app): void {
     $view = $app->services()->get('view');
 
@@ -181,6 +247,7 @@ return static function (RouteCollection $routes, Application $app): void {
     $jobs = static fn (): JobRepository => $app->services()->get('repository.jobs');
     $runs = static fn (): JobRunRepository => $app->services()->get('repository.job_runs');
     $reports = static fn (): ReportRepository => $app->services()->get('repository.reports');
+    $endpoints = static fn (): EndpointRepository => $app->services()->get('repository.endpoints');
     $jobRunner = static fn (): JobRunner => $app->services()->get('jobs.runner');
     $reportMailer = static fn (): ReportMailer => $app->services()->get('reports.mailer');
     $validator = static fn (): MappingValidator => $app->services()->get('mapping.validator');
@@ -805,6 +872,134 @@ return static function (RouteCollection $routes, Application $app): void {
         $result = $reportMailer()->send($id);
         return $admin('admin/reports/show', ['title' => 'Report', 'active' => 'reports', 'report' => $reports()->find($id), 'result' => $result]);
     }, 'admin.reports.send', 'web');
+
+    $routes->get('/admin/endpoints', static fn (): Response => $admin('admin/endpoints/index', [
+        'title' => 'Endpoints',
+        'active' => 'endpoints',
+        'endpoints' => safeList($endpoints),
+    ]), 'admin.endpoints', 'web');
+
+    $routes->get('/admin/endpoints/create', static fn (): Response => $admin('admin/endpoints/create', [
+        'title' => 'Endpoint anlegen',
+        'active' => 'endpoints',
+        'workspaces' => safeList($workspaces),
+        'mappings' => safeList($mappings),
+        'jobs' => safeList($jobs),
+        'values' => ['method' => 'GET', 'visibility' => 'private', 'status' => 'draft', 'source_type' => 'static', 'response_type' => 'json'],
+        'errors' => [],
+    ]), 'admin.endpoints.create', 'web');
+
+    $routes->post('/admin/endpoints', static function (Request $request) use ($admin, $endpoints, $audit, $workspaces, $mappings, $jobs): Response {
+        $values = endpointValues($request);
+        $secret = (string) $request->post('secret', '');
+        $errors = endpointErrors($values, $secret === '', (string) $values['static_response']);
+
+        if ($errors !== []) {
+            return $admin('admin/endpoints/create', [
+                'title' => 'Endpoint anlegen',
+                'active' => 'endpoints',
+                'workspaces' => safeList($workspaces),
+                'mappings' => safeList($mappings),
+                'jobs' => safeList($jobs),
+                'values' => $values,
+                'errors' => $errors,
+            ]);
+        }
+
+        $id = $endpoints()->create($values, ['secret' => $secret]);
+        $audit()->log(empty($values['workspace_id']) ? null : (int) $values['workspace_id'], 'endpoint.created', 'endpoint', (string) $id, 'Endpoint erstellt.', [
+            'endpoint_key' => $values['endpoint_key'],
+            'visibility' => $values['visibility'],
+        ]);
+
+        return new Response('', 302, ['Location' => '/admin/endpoints/' . $id]);
+    }, 'admin.endpoints.store', 'web');
+
+    $routes->get('/admin/endpoints/{id}', static function (Request $request) use ($admin, $endpoints, $workspaces, $mappings, $jobs): Response {
+        $id = (int) $request->route('id');
+        $endpoint = $endpoints()->find($id);
+        $config = $endpoint === null ? [] : (json_decode((string) ($endpoint['config_json'] ?? '{}'), true) ?: []);
+
+        return $admin('admin/endpoints/show', [
+            'title' => 'Endpoint',
+            'active' => 'endpoints',
+            'endpoint' => $endpoint,
+            'workspaces' => safeList($workspaces),
+            'mappings' => safeList($mappings),
+            'jobs' => safeList($jobs),
+            'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
+            'hasSecret' => $endpoint !== null && $endpoints()->hasSecret((int) $endpoint['id']),
+            'alert' => null,
+        ]);
+    }, 'admin.endpoints.show', 'web');
+
+    $routes->post('/admin/endpoints/{id}', static function (Request $request) use ($admin, $endpoints, $audit, $workspaces, $mappings, $jobs): Response {
+        $id = (int) $request->route('id');
+        $existing = $endpoints()->find($id);
+        if ($existing === null) {
+            return Response::notFound();
+        }
+
+        $values = endpointValues($request);
+        $secret = (string) $request->post('secret', '');
+        $errors = endpointErrors($values, false, (string) $values['static_response']);
+        if ($errors !== []) {
+            return $admin('admin/endpoints/show', [
+                'title' => 'Endpoint',
+                'active' => 'endpoints',
+                'endpoint' => $values + ['id' => $id],
+                'workspaces' => safeList($workspaces),
+                'mappings' => safeList($mappings),
+                'jobs' => safeList($jobs),
+                'staticResponse' => (string) $values['static_response'],
+                'hasSecret' => $endpoints()->hasSecret($id),
+                'alert' => ['type' => 'danger', 'message' => implode(' ', $errors)],
+            ]);
+        }
+
+        $endpoints()->update($id, $values, ['secret' => $secret]);
+        $audit()->log(empty($values['workspace_id']) ? null : (int) $values['workspace_id'], 'endpoint.updated', 'endpoint', (string) $id, 'Endpoint aktualisiert.', [
+            'endpoint_key' => $values['endpoint_key'],
+            'visibility' => $values['visibility'],
+        ]);
+
+        return new Response('', 302, ['Location' => '/admin/endpoints/' . $id]);
+    }, 'admin.endpoints.update', 'web');
+
+    $routes->post('/admin/endpoints/{id}/delete', static function (Request $request) use ($endpoints, $audit): Response {
+        $id = (int) $request->route('id');
+        $endpoint = $endpoints()->find($id);
+        $endpoints()->delete($id);
+        $audit()->log(isset($endpoint['workspace_id']) ? (int) $endpoint['workspace_id'] : null, 'endpoint.deleted', 'endpoint', (string) $id, 'Endpoint geloescht.');
+
+        return new Response('', 302, ['Location' => '/admin/endpoints']);
+    }, 'admin.endpoints.delete', 'web');
+
+    $routes->post('/admin/endpoints/{id}/test', static function (Request $request) use ($admin, $endpoints, $app): Response {
+        $id = (int) $request->route('id');
+        $endpoint = $endpoints()->find($id);
+        if ($endpoint === null) {
+            return Response::notFound();
+        }
+
+        $result = ['notice' => 'Private Endpoints benoetigen ein Secret. Secrets werden hier nicht angezeigt.'];
+        if ((string) $endpoint['visibility'] === 'public') {
+            $result = json_decode($app->services()->get('api.endpoint_response_builder')->build($endpoint)->body(), true) ?: [];
+        }
+
+        return $admin('admin/endpoints/test', [
+            'title' => 'Endpoint testen',
+            'active' => 'endpoints',
+            'endpoint' => $endpoint,
+            'result' => $result,
+        ]);
+    }, 'admin.endpoints.test', 'web');
+
+    $routes->get('/admin/audit', static fn (): Response => $admin('admin/audit/index', [
+        'title' => 'Audit',
+        'active' => 'audit',
+        'entries' => $audit()->recent(100),
+    ]), 'admin.audit', 'web');
 
     $routes->get('/health', static fn (): Response => Response::json([
         'status' => 'ok',

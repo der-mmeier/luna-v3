@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Luna\Core;
 
 use Luna\Config\Config;
+use Luna\Api\EndpointAccessGuard;
+use Luna\Api\EndpointResponseBuilder;
+use Luna\Api\EndpointRuntime;
 use Luna\Connections\ConnectionTester;
 use Luna\Connections\ExternalPdoConnectionFactory;
 use Luna\Database\DatabaseConfig;
@@ -18,6 +21,7 @@ use Luna\Reports\ReportEngine;
 use Luna\Reports\ReportMailer;
 use Luna\Repository\AuditLogRepository;
 use Luna\Repository\ConnectionProfileRepository;
+use Luna\Repository\EndpointRepository;
 use Luna\Repository\JobRepository;
 use Luna\Repository\JobRunRepository;
 use Luna\Repository\MappingRepository;
@@ -108,6 +112,10 @@ final class Application
         $this->services->set(JobRepository::class, new JobRepository($systemDatabase));
         $this->services->set(JobRunRepository::class, new JobRunRepository($systemDatabase));
         $this->services->set(ReportRepository::class, new ReportRepository($systemDatabase));
+        $this->services->set(EndpointRepository::class, new EndpointRepository(
+            $systemDatabase,
+            $this->services->get(EncryptionService::class),
+        ));
         $this->services->set(SchemaMetadataRepository::class, new SchemaMetadataRepository($systemDatabase));
         $this->services->set(MappingValidator::class, new MappingValidator(
             $this->services->get(MappingRepository::class),
@@ -141,6 +149,25 @@ final class Application
             $this->services->get(ReportEngine::class),
             $this->services->get(AuditLogRepository::class),
         ));
+        $this->services->set(EndpointAccessGuard::class, new EndpointAccessGuard(
+            $this->services->get(EndpointRepository::class),
+            $this->services->get(AuditLogRepository::class),
+            $this->config,
+        ));
+        $this->services->set(EndpointResponseBuilder::class, new EndpointResponseBuilder(
+            $this->config,
+            $this->services->get(JobRepository::class),
+            $this->services->get(JobRunRepository::class),
+            $this->services->get(ReportRepository::class),
+            $this->services->get(JobRunner::class),
+        ));
+        $this->services->set(EndpointRuntime::class, new EndpointRuntime(
+            $this->services->get(EndpointRepository::class),
+            $this->services->get(EndpointAccessGuard::class),
+            $this->services->get(EndpointResponseBuilder::class),
+            $this->services->get(AuditLogRepository::class),
+            $this->config,
+        ));
 
         $this->services->set('paths', $this->paths);
         $this->services->set('config', $this->config);
@@ -159,10 +186,15 @@ final class Application
         $this->services->set('repository.jobs', $this->services->get(JobRepository::class));
         $this->services->set('repository.job_runs', $this->services->get(JobRunRepository::class));
         $this->services->set('repository.reports', $this->services->get(ReportRepository::class));
+        $this->services->set('repository.endpoints', $this->services->get(EndpointRepository::class));
         $this->services->set('mapping.validator', $this->services->get(MappingValidator::class));
         $this->services->set('mapping.executor', $this->services->get(MappingExecutor::class));
+        $this->services->set('transfer.mapping_executor', $this->services->get(MappingExecutor::class));
         $this->services->set('jobs.runner', $this->services->get(JobRunner::class));
         $this->services->set('reports.engine', $this->services->get(ReportEngine::class));
         $this->services->set('reports.mailer', $this->services->get(ReportMailer::class));
+        $this->services->set('api.endpoint_guard', $this->services->get(EndpointAccessGuard::class));
+        $this->services->set('api.endpoint_response_builder', $this->services->get(EndpointResponseBuilder::class));
+        $this->services->set('api.endpoint_runtime', $this->services->get(EndpointRuntime::class));
     }
 }

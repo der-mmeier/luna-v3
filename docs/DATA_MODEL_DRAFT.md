@@ -103,11 +103,39 @@ Wichtige Felder:
 
 Audit-Kontext darf keine Secrets enthalten.
 
+## Endpoints
+
+`luna_endpoints` speichert einfache API-Endpunkte für Integrationsprojekte.
+
+Wichtige Felder:
+
+- `workspace_id`
+- `name`
+- `endpoint_key`
+- `method`
+- `visibility`
+- `status`
+- `response_type`
+- `source_type`
+- `mapping_set_id`
+- `job_id`
+- `config_json`
+- `rate_limit_per_minute`
+
+`luna_endpoint_secrets` speichert Endpoint-Secrets getrennt von Connection-Secrets und nur verschlüsselt.
+
+Wichtige Felder:
+
+- `endpoint_id`
+- `secret_key`
+- `secret_value_encrypted`
+- `encryption_version`
+
 ## Noch nicht enthalten
 
-- Endpoint-Tabellen
 - Benutzer/Login/Rechte
-- echte externe Datenbankverbindungen
+- Queue-System
+- komplexer Cron-Manager
 
 ## Jobs, Runs und Reports
 
