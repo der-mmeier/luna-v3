@@ -3,6 +3,8 @@
 }
 
 [data-theme="dark"] {
+    color-scheme: dark;
+
     --luna-bg: #05070a;
     --luna-surface: rgba(16, 20, 27, 0.74);
     --luna-surface-strong: rgba(24, 29, 38, 0.92);
@@ -10,13 +12,16 @@
     --luna-text: #eef2f7;
     --luna-muted: #aab4c2;
     --luna-accent: #67b7ff;
+    --luna-accent-text: #061018;
     --luna-danger: #ff6b7a;
+
     --bs-body-bg: var(--luna-bg);
     --bs-body-color: var(--luna-text);
 }
 
 [data-theme="light"] {
     color-scheme: light;
+
     --luna-bg: #f6f7f9;
     --luna-surface: #ffffff;
     --luna-surface-strong: #f9fafb;
@@ -24,7 +29,9 @@
     --luna-text: #17202a;
     --luna-muted: #5b6573;
     --luna-accent: #0d6efd;
+    --luna-accent-text: #ffffff;
     --luna-danger: #dc3545;
+
     --bs-body-bg: var(--luna-bg);
     --bs-body-color: var(--luna-text);
 }
@@ -32,8 +39,8 @@
 body {
     min-height: 100vh;
     background:
-        radial-gradient(circle at 20% 0%, rgba(103, 183, 255, 0.14), transparent 34rem),
-        linear-gradient(180deg, var(--luna-bg), var(--luna-bg));
+            radial-gradient(circle at 20% 0%, rgba(103, 183, 255, 0.14), transparent 34rem),
+            linear-gradient(180deg, var(--luna-bg), var(--luna-bg));
     color: var(--luna-text);
 }
 
@@ -45,6 +52,7 @@ body {
     max-width: 1320px;
 }
 
+/* Navigation */
 .luna-navbar {
     background: rgba(5, 7, 10, 0.9);
     border-color: var(--luna-border) !important;
@@ -52,19 +60,96 @@ body {
 }
 
 [data-theme="light"] .luna-navbar {
-    background: #17202a;
+    background: #ffffff;
 }
 
+.luna-navbar .navbar-brand,
+.luna-navbar .nav-link,
+.luna-navbar .navbar-text {
+    color: var(--luna-text);
+}
+
+.luna-navbar .nav-link {
+    opacity: 0.78;
+}
+
+.luna-navbar .nav-link.active,
+.luna-navbar .nav-link:focus {
+    color: var(--luna-text);
+    opacity: 1;
+}
+
+.luna-navbar .nav-link:hover {
+    color: var(--luna-text);
+    opacity: 1;
+}
+
+/* Theme Switch */
 .luna-theme-switch {
     margin-left: auto;
 }
 
-.luna-theme-switch .btn.active {
-    background: var(--luna-accent);
-    border-color: var(--luna-accent);
-    color: #061018;
+.luna-theme-switch .btn,
+.luna-theme-switch .btn-outline-light,
+.luna-theme-switch .btn-outline-secondary,
+.luna-theme-switch .luna-theme-btn {
+    background: transparent;
+    border: 1px solid var(--luna-border);
+    color: var(--luna-muted);
+    box-shadow: none;
 }
 
+.luna-theme-switch .btn:hover,
+.luna-theme-switch .btn:focus,
+.luna-theme-switch .btn-outline-light:hover,
+.luna-theme-switch .btn-outline-light:focus,
+.luna-theme-switch .btn-outline-secondary:hover,
+.luna-theme-switch .btn-outline-secondary:focus,
+.luna-theme-switch .luna-theme-btn:hover,
+.luna-theme-switch .luna-theme-btn:focus {
+    background: transparent;
+    border-color: var(--luna-border);
+    color: var(--luna-text);
+    box-shadow: none;
+}
+
+.luna-theme-switch .btn.active,
+.luna-theme-switch .btn[aria-pressed="true"],
+.luna-theme-switch .btn-outline-light.active,
+.luna-theme-switch .btn-outline-light[aria-pressed="true"],
+.luna-theme-switch .btn-outline-secondary.active,
+.luna-theme-switch .btn-outline-secondary[aria-pressed="true"],
+.luna-theme-switch .luna-theme-btn.active,
+.luna-theme-switch .luna-theme-btn[aria-pressed="true"] {
+    background: var(--luna-accent);
+    border-color: var(--luna-accent);
+    color: var(--luna-accent-text);
+    box-shadow: none;
+}
+
+.luna-theme-switch .btn.active:hover,
+.luna-theme-switch .btn.active:focus,
+.luna-theme-switch .btn[aria-pressed="true"]:hover,
+.luna-theme-switch .btn[aria-pressed="true"]:focus,
+.luna-theme-switch .btn-outline-light.active:hover,
+.luna-theme-switch .btn-outline-light.active:focus,
+.luna-theme-switch .btn-outline-light[aria-pressed="true"]:hover,
+.luna-theme-switch .btn-outline-light[aria-pressed="true"]:focus,
+.luna-theme-switch .btn-outline-secondary.active:hover,
+.luna-theme-switch .btn-outline-secondary.active:focus,
+.luna-theme-switch .btn-outline-secondary[aria-pressed="true"]:hover,
+.luna-theme-switch .btn-outline-secondary[aria-pressed="true"]:focus,
+.luna-theme-switch .luna-theme-btn.active:hover,
+.luna-theme-switch .luna-theme-btn.active:focus,
+.luna-theme-switch .luna-theme-btn[aria-pressed="true"]:hover,
+.luna-theme-switch .luna-theme-btn[aria-pressed="true"]:focus {
+    background: var(--luna-accent);
+    border-color: var(--luna-accent);
+    color: var(--luna-accent-text);
+    box-shadow: none;
+}
+
+/* Cards */
 .admin-card,
 .card {
     background: var(--luna-surface);
@@ -88,16 +173,37 @@ body {
     color: var(--luna-text);
 }
 
+.card-title,
+.card-text {
+    color: var(--luna-text);
+}
+
+/* Typography */
 .text-body-secondary,
 .table thead th {
     color: var(--luna-muted) !important;
 }
 
+.text-muted {
+    color: var(--luna-muted) !important;
+}
+
+a {
+    color: var(--luna-accent);
+}
+
+a:hover,
+a:focus {
+    color: var(--luna-accent);
+}
+
+/* Tables */
 .table {
     --bs-table-bg: transparent;
     --bs-table-color: var(--luna-text);
     --bs-table-border-color: var(--luna-border);
     --bs-table-hover-bg: rgba(255, 255, 255, 0.04);
+
     color: var(--luna-text);
 }
 
@@ -111,6 +217,12 @@ body {
     text-transform: uppercase;
 }
 
+.table td,
+.table th {
+    border-color: var(--luna-border);
+}
+
+/* Forms */
 .form-control,
 .form-select {
     background-color: var(--luna-surface-strong);
@@ -130,20 +242,75 @@ body {
     color: var(--luna-muted);
 }
 
+.form-control:disabled,
+.form-select:disabled,
+.form-control[readonly] {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--luna-muted);
+    opacity: 1;
+}
+
+[data-theme="light"] .form-control:disabled,
+[data-theme="light"] .form-select:disabled,
+[data-theme="light"] .form-control[readonly] {
+    background-color: #eef1f4;
+}
+
 .form-label {
     color: var(--luna-text);
 }
 
+.form-text {
+    color: var(--luna-muted);
+}
+
+/* Buttons */
 .btn-outline-secondary {
     border-color: var(--luna-border);
     color: var(--luna-text);
+    background: transparent;
 }
 
+.btn-outline-secondary:hover,
+.btn-outline-secondary:focus {
+    border-color: var(--luna-border);
+    color: var(--luna-text);
+    background: var(--luna-surface-strong);
+    box-shadow: none;
+}
+
+.btn-primary {
+    background: var(--luna-accent);
+    border-color: var(--luna-accent);
+    color: var(--luna-accent-text);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+    background: var(--luna-accent);
+    border-color: var(--luna-accent);
+    color: var(--luna-accent-text);
+    box-shadow: none;
+}
+
+.btn-danger,
+.btn-outline-danger:hover,
+.btn-outline-danger:focus {
+    background: var(--luna-danger);
+    border-color: var(--luna-danger);
+}
+
+/* Code */
 code,
 pre {
     color: #d8ecff;
     background: rgba(0, 0, 0, 0.18);
     border-radius: 6px;
+}
+
+pre {
+    padding: 1rem;
+    border: 1px solid var(--luna-border);
 }
 
 [data-theme="light"] code,
@@ -152,21 +319,75 @@ pre {
     background: #f3f5f7;
 }
 
+/* Badges */
 .badge.text-bg-light {
     background: var(--luna-surface-strong) !important;
     color: var(--luna-text) !important;
     border: 1px solid var(--luna-border);
 }
 
+/* Alerts */
+.alert {
+    border-color: var(--luna-border);
+}
+
+[data-theme="dark"] .alert-info {
+    background: rgba(103, 183, 255, 0.12);
+    color: var(--luna-text);
+}
+
+[data-theme="dark"] .alert-warning {
+    background: rgba(255, 193, 7, 0.13);
+    color: var(--luna-text);
+}
+
+[data-theme="dark"] .alert-danger {
+    background: rgba(255, 107, 122, 0.13);
+    color: var(--luna-text);
+}
+
+[data-theme="dark"] .alert-success {
+    background: rgba(25, 135, 84, 0.16);
+    color: var(--luna-text);
+}
+
+/* Mapping */
 .mapping-table-status {
     min-height: 1.25rem;
     color: var(--luna-muted);
 }
 
+/* Utilities */
+.border,
+.border-top,
+.border-end,
+.border-bottom,
+.border-start {
+    border-color: var(--luna-border) !important;
+}
+
+.bg-white {
+    background-color: var(--luna-surface-strong) !important;
+}
+
+[data-theme="light"] .bg-white {
+    background-color: #ffffff !important;
+}
+
+/* Mobile */
 @media (max-width: 991.98px) {
     .luna-theme-switch {
         align-items: flex-start !important;
         margin-top: 0.75rem;
         margin-left: 0;
+    }
+
+    .admin-shell {
+        max-width: 100%;
+    }
+
+    .card,
+    .admin-card {
+        border-radius: 8px;
     }
 }
