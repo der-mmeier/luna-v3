@@ -226,6 +226,46 @@ if (! function_exists('endpointErrors')) {
     }
 }
 
+if (! function_exists('workspaceValues')) {
+    function workspaceValues(Request $request): array
+    {
+        $name = trim((string) $request->post('name', ''));
+        $slug = WorkspaceRepository::normalizeSlug((string) $request->post('slug', ''));
+
+        return [
+            'name' => $name,
+            'slug' => $slug !== '' ? $slug : WorkspaceRepository::normalizeSlug($name),
+            'description' => trim((string) $request->post('description', '')),
+            'status' => (string) $request->post('status', 'active'),
+        ];
+    }
+}
+
+if (! function_exists('workspaceErrors')) {
+    function workspaceErrors(array $values, WorkspaceRepository $workspaces, ?int $ignoreId = null): array
+    {
+        $errors = [];
+
+        if ((string) $values['name'] === '') {
+            $errors[] = 'Name ist erforderlich.';
+        }
+
+        if ((string) $values['slug'] === '') {
+            $errors[] = 'Slug konnte nicht erzeugt werden.';
+        }
+
+        if (! in_array((string) $values['status'], ['active', 'archived', 'disabled'], true)) {
+            $errors[] = 'Status ist ungueltig.';
+        }
+
+        if ((string) $values['slug'] !== '' && $workspaces->slugExists((string) $values['slug'], $ignoreId)) {
+            $errors[] = 'Slug ist bereits vergeben.';
+        }
+
+        return $errors;
+    }
+}
+
 return static function (RouteCollection $routes, Application $app): void {
     $view = $app->services()->get('view');
 
@@ -281,11 +321,7 @@ return static function (RouteCollection $routes, Application $app): void {
 
     $routes->get('/admin/workspaces', static function () use ($admin, $workspaces): Response {
         try {
-            $items = array_map(static fn (array $workspace): array => [
-                'name' => $workspace['name'],
-                'status' => $workspace['status'],
-                'updated' => $workspace['updated_at'],
-            ], $workspaces()->all());
+            $items = $workspaces()->all();
             $error = null;
         } catch (Throwable) {
             $items = [];
@@ -299,6 +335,82 @@ return static function (RouteCollection $routes, Application $app): void {
             'error' => $error,
         ]);
     }, 'admin.workspaces', 'web');
+
+    $routes->get('/admin/workspaces/create', static fn (): Response => $admin('admin/workspaces/create', [
+        'title' => 'Workspace anlegen',
+        'active' => 'workspaces',
+        'values' => ['status' => 'active'],
+        'errors' => [],
+    ]), 'admin.workspaces.create', 'web');
+
+    $routes->post('/admin/workspaces', static function (Request $request) use ($admin, $workspaces, $audit): Response {
+        $values = workspaceValues($request);
+        $errors = workspaceErrors($values, $workspaces());
+
+        if ($errors !== []) {
+            return $admin('admin/workspaces/create', [
+                'title' => 'Workspace anlegen',
+                'active' => 'workspaces',
+                'values' => $values,
+                'errors' => $errors,
+            ]);
+        }
+
+        $id = $workspaces()->create((string) $values['slug'], (string) $values['name'], trim((string) $values['description']) ?: null);
+        if ((string) $values['status'] !== 'active') {
+            $workspaces()->update($id, (string) $values['slug'], (string) $values['name'], trim((string) $values['description']) ?: null, (string) $values['status']);
+        }
+        $audit()->log($id, 'workspace.created', 'workspace', (string) $id, 'Workspace erstellt.', [
+            'slug' => $values['slug'],
+            'name' => $values['name'],
+            'status' => $values['status'],
+        ]);
+
+        return new Response('', 302, ['Location' => '/admin/workspaces/' . $id]);
+    }, 'admin.workspaces.store', 'web');
+
+    $routes->get('/admin/workspaces/{id}', static function (Request $request) use ($admin, $workspaces): Response {
+        $workspace = $workspaces()->find((int) $request->route('id'));
+
+        return $admin('admin/workspaces/show', [
+            'title' => $workspace['name'] ?? 'Workspace',
+            'active' => 'workspaces',
+            'workspace' => $workspace,
+            'values' => $workspace ?? ['status' => 'active'],
+            'errors' => [],
+        ]);
+    }, 'admin.workspaces.show', 'web');
+
+    $routes->post('/admin/workspaces/{id}', static function (Request $request) use ($admin, $workspaces, $audit): Response {
+        $id = (int) $request->route('id');
+        $workspace = $workspaces()->find($id);
+
+        if ($workspace === null) {
+            return Response::notFound();
+        }
+
+        $values = workspaceValues($request);
+        $errors = workspaceErrors($values, $workspaces(), $id);
+
+        if ($errors !== []) {
+            return $admin('admin/workspaces/show', [
+                'title' => 'Workspace bearbeiten',
+                'active' => 'workspaces',
+                'workspace' => $workspace,
+                'values' => $values + ['id' => $id],
+                'errors' => $errors,
+            ]);
+        }
+
+        $workspaces()->update($id, (string) $values['slug'], (string) $values['name'], trim((string) $values['description']) ?: null, (string) $values['status']);
+        $audit()->log($id, 'workspace.updated', 'workspace', (string) $id, 'Workspace aktualisiert.', [
+            'slug' => $values['slug'],
+            'name' => $values['name'],
+            'status' => $values['status'],
+        ]);
+
+        return new Response('', 302, ['Location' => '/admin/workspaces/' . $id]);
+    }, 'admin.workspaces.update', 'web');
 
     $routes->get('/admin/connections', static function () use ($admin, $connections): Response {
         try {
@@ -473,6 +585,31 @@ return static function (RouteCollection $routes, Application $app): void {
             'error' => null,
         ]);
     }, 'admin.schema.connection', 'web');
+
+    $routes->get('/admin/schema/{connectionId}/tables.json', static function (Request $request) use ($connections, $configFor, $pdoFactory): Response {
+        try {
+            $profile = $connections()->find((int) $request->route('connectionId'));
+
+            if ($profile === null) {
+                throw new RuntimeException('Connection nicht gefunden.');
+            }
+
+            $tables = (new SchemaInspector($pdoFactory()->create($configFor($profile))))->tables();
+
+            return Response::json([
+                'success' => true,
+                'tables' => array_map(static fn (array $table): array => [
+                    'name' => (string) $table['table_name'],
+                    'label' => (string) $table['table_name'],
+                ], $tables),
+            ]);
+        } catch (Throwable) {
+            return Response::json([
+                'success' => false,
+                'message' => 'Tabellen konnten nicht geladen werden.',
+            ], 500);
+        }
+    }, 'admin.schema.tables_json', 'web');
 
     $routes->get('/admin/schema/{connectionId}/table', static function (Request $request) use ($admin, $connections, $configFor, $pdoFactory, $metadata): Response {
         $tableName = (string) $request->query('table', '');

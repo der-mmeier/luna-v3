@@ -8,6 +8,7 @@
 $active = $active ?? 'dashboard';
 $appName = $appName ?? 'Luna V3';
 $title = $title ?? 'Dashboard';
+$theme = isset($_COOKIE['luna_theme']) && $_COOKIE['luna_theme'] === 'light' ? 'light' : 'dark';
 
 $navItems = [
     'dashboard' => ['/admin', 'Dashboard'],
@@ -22,7 +23,7 @@ $navItems = [
 ];
 ?>
 <!doctype html>
-<html lang="de">
+<html lang="de" data-theme="<?= htmlspecialchars($theme, ENT_QUOTES, 'UTF-8') ?>" data-bs-theme="<?= htmlspecialchars($theme, ENT_QUOTES, 'UTF-8') ?>">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -31,7 +32,7 @@ $navItems = [
     <link href="/assets/css/admin.css" rel="stylesheet">
 </head>
 <body>
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary">
+<nav class="navbar navbar-expand-lg luna-navbar border-bottom">
     <div class="container-fluid">
         <a class="navbar-brand fw-semibold" href="/admin"><?= htmlspecialchars($appName, ENT_QUOTES, 'UTF-8') ?></a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNavigation" aria-controls="adminNavigation" aria-expanded="false" aria-label="Navigation umschalten">
@@ -47,7 +48,13 @@ $navItems = [
                     </li>
                 <?php endforeach; ?>
             </ul>
-            <span class="navbar-text small">Workbench-Grundlage</span>
+            <div class="luna-theme-switch d-flex align-items-center gap-2">
+                <span class="navbar-text small">Theme</span>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Theme umschalten">
+                    <button class="btn btn-outline-light" type="button" data-theme-choice="dark">Dark</button>
+                    <button class="btn btn-outline-light" type="button" data-theme-choice="light">Light</button>
+                </div>
+            </div>
         </div>
     </div>
 </nav>
@@ -59,5 +66,7 @@ $navItems = [
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/assets/js/theme.js"></script>
+<script src="/assets/js/mapping-tables.js"></script>
 </body>
 </html>

@@ -51,6 +51,12 @@ Typische Luna-Core-Werte:
 - Ungültige oder fehlende Secrets führen zu einer generischen Fehlerantwort.
 - Endpoint-Zugriffe werden auditierbar protokolliert, ohne Secrets zu speichern.
 
+## UI-Präferenzen
+
+- `luna_theme` ist ein lokaler UI-Präferenzcookie für `dark` oder `light`.
+- Der Cookie wird nicht für Tracking, Authentifizierung oder Rechteprüfung genutzt.
+- Dynamische Tabellenlisten für Mapping-Formulare liefern nur Tabellenmetadaten und keine Secrets.
+
 ## Logging und Reports
 
 - Secrets dürfen nie geloggt werden.
