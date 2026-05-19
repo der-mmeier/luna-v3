@@ -64,7 +64,11 @@ final class Route
      */
     public function parameters(Request $request): ?array
     {
-        $pattern = preg_replace('#\{([a-zA-Z_][a-zA-Z0-9_]*)}#', '(?P<$1>[^/]+)', $this->path);
+        $pattern = preg_replace_callback(
+            '#\{([a-zA-Z_][a-zA-Z0-9_]*)}#',
+            static fn (array $matches): string => $matches[1] === 'endpointKey' ? '(?P<endpointKey>.+)' : '(?P<' . $matches[1] . '>[^/]+)',
+            $this->path,
+        );
 
         if ($pattern === null) {
             return null;

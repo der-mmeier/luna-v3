@@ -442,3 +442,48 @@ Die CLI zeigt nach Mapping- und Job-Ausfuehrungen den gespeicherten Run-Status m
 ### Offene Punkte
 
 - Echte produktive Transfers bleiben nur gegen bewusst konfigurierte Target-/Transferdatenbanken zulaessig.
+
+---
+
+## 2026-05-19 - Meilenstein 1.0.0 Endpoint Builder und stabile Workbench
+
+### Ziel
+
+Eine stabile erste Workbench-Version fuer Integrationsprojekte von Datenquelle bis Transfer/Report und einfache API-Endpunkte bereitstellen.
+
+### Aufgabe
+
+Endpoint-Tabellen, Endpoint Repository, private Endpoint-Secrets, API Runtime, Admin UI, Audit-Ansicht, Version 1.0.0 und Betriebsdokumentation umsetzen. Bestehende 0.7/0.8/0.9-Flows nicht brechen.
+
+### Geaenderte Dateien
+
+- database/migrations/2026_05_17_000003_create_luna_endpoint_tables.sql
+- src/Repository/EndpointRepository.php
+- src/Api/EndpointAccessGuard.php
+- src/Api/EndpointResponseBuilder.php
+- src/Api/EndpointRuntime.php
+- src/Core/AppVersion.php
+- src/Core/Application.php
+- src/Routing/Route.php
+- routes/api.php
+- routes/web.php
+- resources/views/admin/endpoints/*
+- resources/views/admin/audit/index.php
+- resources/views/layouts/admin.php
+- docs/OPERATIONS.md
+- docs/DEPLOYMENT.md
+- docs/API_ENDPOINTS.md
+- docs/SECURITY_CHECKLIST.md
+- ROADMAP.md
+- CHANGELOG.md
+- docs/SECURITY_MODEL.md
+- docs/DATA_MODEL_DRAFT.md
+- .env.example
+
+### Ergebnis
+
+Vorbereitet. Endpoint-Secrets werden getrennt von Connection-Secrets verschluesselt gespeichert. Private Runtime-Zugriffe pruefen `X-Luna-Endpoint-Secret`, Query-Secrets nur ausserhalb von production. `/api/version` und `version`-Endpoints geben `1.0.0` aus.
+
+### Offene Punkte
+
+- Lokale Smoke Tests und reale Transfer-Sicherheitshaerte haengen von vorhandener Testdatenbank und Testdaten ab.

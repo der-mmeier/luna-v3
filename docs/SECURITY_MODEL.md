@@ -45,6 +45,9 @@ Typische Luna-Core-Werte:
 
 - Private API-Endpunkte brauchen ein Secret.
 - API-Secrets werden nicht im Klartext gespeichert.
+- Endpoint-Secrets werden getrennt von Connection-Secrets in `luna_endpoint_secrets` gespeichert.
+- Endpoint-Secrets werden mit `EncryptionService` auf Basis von `APP_KEY` verschlüsselt.
+- Private Endpoints akzeptieren `X-Luna-Endpoint-Secret`; Query-Secret ist nur außerhalb von production für lokale Tests erlaubt.
 - Ungültige oder fehlende Secrets führen zu einer generischen Fehlerantwort.
 - Endpoint-Zugriffe werden auditierbar protokolliert, ohne Secrets zu speichern.
 

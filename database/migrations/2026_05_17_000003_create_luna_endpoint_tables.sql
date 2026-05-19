@@ -1,0 +1,43 @@
+CREATE TABLE IF NOT EXISTS luna_endpoints (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    workspace_id BIGINT UNSIGNED NULL,
+    name VARCHAR(190) NOT NULL,
+    endpoint_key VARCHAR(190) NOT NULL UNIQUE,
+    description TEXT NULL,
+    method VARCHAR(20) NOT NULL DEFAULT 'GET',
+    visibility VARCHAR(30) NOT NULL DEFAULT 'private',
+    status VARCHAR(50) NOT NULL DEFAULT 'draft',
+    response_type VARCHAR(50) NOT NULL DEFAULT 'json',
+    source_type VARCHAR(80) NOT NULL DEFAULT 'static',
+    mapping_set_id BIGINT UNSIGNED NULL,
+    job_id BIGINT UNSIGNED NULL,
+    config_json LONGTEXT NULL,
+    rate_limit_per_minute INT UNSIGNED NULL,
+    notes TEXT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    INDEX idx_luna_endpoints_workspace_id (workspace_id),
+    INDEX idx_luna_endpoints_endpoint_key (endpoint_key),
+    INDEX idx_luna_endpoints_status (status),
+    INDEX idx_luna_endpoints_visibility (visibility),
+    INDEX idx_luna_endpoints_method (method),
+    INDEX idx_luna_endpoints_source_type (source_type),
+    INDEX idx_luna_endpoints_mapping_set_id (mapping_set_id),
+    INDEX idx_luna_endpoints_job_id (job_id),
+    CONSTRAINT fk_luna_endpoints_workspace FOREIGN KEY (workspace_id) REFERENCES luna_workspaces(id) ON DELETE SET NULL,
+    CONSTRAINT fk_luna_endpoints_mapping_set FOREIGN KEY (mapping_set_id) REFERENCES luna_mapping_sets(id) ON DELETE SET NULL,
+    CONSTRAINT fk_luna_endpoints_job FOREIGN KEY (job_id) REFERENCES luna_jobs(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS luna_endpoint_secrets (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    endpoint_id BIGINT UNSIGNED NOT NULL,
+    secret_key VARCHAR(120) NOT NULL,
+    secret_value_encrypted LONGTEXT NOT NULL,
+    encryption_version VARCHAR(50) NOT NULL DEFAULT 'v1',
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    UNIQUE KEY uq_luna_endpoint_secrets_endpoint_key (endpoint_id, secret_key),
+    INDEX idx_luna_endpoint_secrets_endpoint_id (endpoint_id),
+    CONSTRAINT fk_luna_endpoint_secrets_endpoint FOREIGN KEY (endpoint_id) REFERENCES luna_endpoints(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

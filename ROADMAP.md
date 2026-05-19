@@ -225,6 +225,9 @@ Akzeptanzkriterien:
 Ziel:
 Eine stabile erste Workbench-Version für Integrationsprojekte bereitstellen.
 
+Status:
+Umgesetzt im Branch `feature/1.0.0-endpoint-builder-stable-workbench`.
+
 Umfang:
 
 - Endpoint Builder für einfache API-Endpunkte

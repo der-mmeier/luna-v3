@@ -41,6 +41,33 @@ final class ReportRepository
         return $this->database->pdo()->query('SELECT * FROM luna_reports ORDER BY created_at DESC, id DESC')->fetchAll();
     }
 
+    public function latestForJob(int $jobId): ?array
+    {
+        $statement = $this->database->pdo()->prepare(
+            'SELECT r.*
+             FROM luna_reports r
+             INNER JOIN luna_job_runs jr ON jr.id = r.job_run_id
+             WHERE jr.job_id = :job_id
+             ORDER BY r.created_at DESC, r.id DESC
+             LIMIT 1',
+        );
+        $statement->execute(['job_id' => $jobId]);
+        $report = $statement->fetch();
+
+        return $report === false ? null : $report;
+    }
+
+    public function latestForWorkspace(int $workspaceId): ?array
+    {
+        $statement = $this->database->pdo()->prepare(
+            'SELECT * FROM luna_reports WHERE workspace_id = :workspace_id ORDER BY created_at DESC, id DESC LIMIT 1',
+        );
+        $statement->execute(['workspace_id' => $workspaceId]);
+        $report = $statement->fetch();
+
+        return $report === false ? null : $report;
+    }
+
     public function markSent(int $id): void
     {
         $statement = $this->database->pdo()->prepare("UPDATE luna_reports SET status = 'sent', sent_at = NOW(), updated_at = NOW() WHERE id = :id");

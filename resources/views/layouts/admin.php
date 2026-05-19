@@ -17,6 +17,8 @@ $navItems = [
     'mappings' => ['/admin/mappings', 'Mappings'],
     'jobs' => ['/admin/jobs', 'Jobs'],
     'reports' => ['/admin/reports', 'Reports'],
+    'endpoints' => ['/admin/endpoints', 'Endpoints'],
+    'audit' => ['/admin/audit', 'Audit'],
 ];
 ?>
 <!doctype html>
