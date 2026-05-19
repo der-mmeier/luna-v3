@@ -66,19 +66,27 @@ use Luna\Mapping\MappingValidationResult;
     <form class="card admin-card mb-4" method="post" action="/admin/mappings/<?= (int) $mapping['id'] ?>">
         <div class="card-body row g-3">
             <input type="hidden" name="workspace_id" value="<?= htmlspecialchars((string) ($mapping['workspace_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
-            <input type="hidden" name="source_connection_id" value="<?= htmlspecialchars((string) ($mapping['source_connection_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
-            <input type="hidden" name="target_connection_id" value="<?= htmlspecialchars((string) ($mapping['target_connection_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+            <input type="hidden" name="source_connection_id" data-role="source-connection" value="<?= htmlspecialchars((string) ($mapping['source_connection_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+            <input type="hidden" name="target_connection_id" data-role="target-connection" value="<?= htmlspecialchars((string) ($mapping['target_connection_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
             <div class="col-md-4">
                 <label class="form-label">Name</label>
                 <input class="form-control" name="name" value="<?= htmlspecialchars((string) $mapping['name'], ENT_QUOTES, 'UTF-8') ?>">
             </div>
             <div class="col-md-4">
                 <label class="form-label">Source Table</label>
-                <input class="form-control" name="source_table" value="<?= htmlspecialchars((string) ($mapping['source_table'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                <input class="form-control mb-2" type="search" data-role="source-table-filter" placeholder="Tabellen filtern">
+                <select class="form-select" name="source_table" data-role="source-table" data-current="<?= htmlspecialchars((string) ($mapping['source_table'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                    <option value="<?= htmlspecialchars((string) ($mapping['source_table'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" selected><?= htmlspecialchars((string) ($mapping['source_table'] ?? 'Bitte wählen'), ENT_QUOTES, 'UTF-8') ?></option>
+                </select>
+                <div class="form-text mapping-table-status" data-role="source-table-status"></div>
             </div>
             <div class="col-md-4">
                 <label class="form-label">Target Table</label>
-                <input class="form-control" name="target_table" value="<?= htmlspecialchars((string) ($mapping['target_table'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                <input class="form-control mb-2" type="search" data-role="target-table-filter" placeholder="Tabellen filtern">
+                <select class="form-select" name="target_table" data-role="target-table" data-current="<?= htmlspecialchars((string) ($mapping['target_table'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                    <option value="<?= htmlspecialchars((string) ($mapping['target_table'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" selected><?= htmlspecialchars((string) ($mapping['target_table'] ?? 'Bitte wählen'), ENT_QUOTES, 'UTF-8') ?></option>
+                </select>
+                <div class="form-text mapping-table-status" data-role="target-table-status"></div>
             </div>
             <div class="col-md-8">
                 <label class="form-label">Beschreibung</label>

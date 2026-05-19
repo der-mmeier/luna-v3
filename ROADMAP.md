@@ -248,3 +248,25 @@ Akzeptanzkriterien:
 - DocumentRoot zeigt auf `/public`
 - Secrets werden nie committed, nie im Klartext gespeichert und nie geloggt
 - GitHub-Stand ist sauber versioniert
+
+---
+
+## 1.1.0 — Workbench UX, Workspaces und Mapping-Auswahl
+
+Ziel:
+Die tägliche Benutzung der Luna V3 Workbench sauberer, schneller und weniger fehleranfällig machen.
+
+Umfang:
+
+- Dark Theme als Standard mit Light/Dark-Switch
+- lokaler UI-Präferenzcookie `luna_theme`
+- schwarze Glasoptik und stabile mobile Admin UI
+- Workspace-Erstellung und -Bearbeitung
+- dynamische Source-/Target-Tabellenauswahl beim Mapping
+
+Akzeptanzkriterien:
+
+- Workspaces sind über die Admin UI verwaltbar
+- Mapping-Tabellen werden aus der gewählten Connection geladen
+- Tabellenlisten-JSON enthält keine Secrets
+- bestehende 1.0.0-Flows bleiben rückwärtskompatibel

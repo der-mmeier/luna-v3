@@ -39,3 +39,10 @@ Vor jedem echten Transfer muss ein Dry Run ausgefuehrt und geprueft werden. Echt
 - Reports in `/admin/reports` pruefen.
 - Audit-Eintraege in `/admin/audit` pruefen.
 - Logs, Reports und Audit-Kontext duerfen keine Secrets enthalten.
+
+## Workbench UX
+
+- Das Admin-Theme ist standardmaessig dunkel.
+- Der Theme-Switch speichert nur die lokale UI-Praeferenz `luna_theme=dark|light`.
+- Workspaces koennen unter `/admin/workspaces` angelegt und bearbeitet werden.
+- Mapping-Formulare laden Tabellenlisten dynamisch aus der gewaehlten Connection; die JSON-Route gibt keine Secrets aus.

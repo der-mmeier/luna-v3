@@ -10,6 +10,9 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- Workbench UX 1.1.0 mit dunklem Standard-Theme, Light/Dark-Switch und lokalem `luna_theme`-Cookie
+- Workspace-Erstellung und -Bearbeitung über die Admin UI inklusive Slug-Validierung und Audit Events
+- dynamische Source-/Target-Tabellenauswahl beim Mapping-Anlegen und -Bearbeiten über `/admin/schema/{connectionId}/tables.json`
 - Endpoint Builder für einfache public/private API-Endpunkte mit Admin UI
 - verschlüsselte Endpoint-Secrets in `luna_endpoint_secrets`
 - Endpoint Runtime unter `/api/e/{endpoint_key}` für `static`, `version`, `mapping_dry_run`, `job_status` und `latest_report`

@@ -487,3 +487,42 @@ Vorbereitet. Endpoint-Secrets werden getrennt von Connection-Secrets verschluess
 ### Offene Punkte
 
 - Lokale Smoke Tests und reale Transfer-Sicherheitshaerte haengen von vorhandener Testdatenbank und Testdaten ab.
+
+---
+
+## 2026-05-20 - Meilenstein 1.1.0 Workbench UX, Workspaces und Mapping-Auswahl
+
+### Ziel
+
+Die Luna V3 Workbench in der täglichen Benutzung sauberer, schneller und weniger fehleranfällig machen.
+
+### Aufgabe
+
+Dark/Light Theme-Switch mit Cookie, schwarze Glasoptik, Workspace-Create/Edit und dynamische Mapping-Tabellenauswahl aus vorhandenen Connections umsetzen. Keine neuen Dependencies und keine Änderungen an Transfers, Endpoint Runtime oder Secrets.
+
+### Geänderte Dateien
+
+- src/Core/AppVersion.php
+- src/Repository/WorkspaceRepository.php
+- routes/web.php
+- resources/views/layouts/admin.php
+- resources/views/admin/workspaces.php
+- resources/views/admin/workspaces/*
+- resources/views/admin/mappings/create.php
+- resources/views/admin/mappings/show.php
+- public/assets/css/admin.css
+- public/assets/js/theme.js
+- public/assets/js/mapping-tables.js
+- CHANGELOG.md
+- ROADMAP.md
+- docs/OPERATIONS.md
+- docs/SECURITY_MODEL.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+Vorbereitet. Das Admin UI nutzt standardmäßig `dark`, der Theme-Switch setzt `luna_theme=dark|light`, Workspaces sind über die UI anlegbar und bearbeitbar, und Mapping-Formulare laden Tabellen per `/admin/schema/{connectionId}/tables.json`.
+
+### Offene Punkte
+
+- Browserbasierte Sichtprüfung des Theme-Switches und der dynamischen Selects bleibt bei fehlenden externen Testconnections manuell nachzuholen.
