@@ -1,0 +1,11 @@
+parameters:
+    level: 3
+
+    paths:
+        - src
+        - public
+
+    excludePaths:
+        analyse:
+            - vendor
+            - storage (?)

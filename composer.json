@@ -18,5 +18,19 @@
     "preferred-install": "dist"
   },
   "minimum-stability": "stable",
-  "prefer-stable": true
+  "prefer-stable": true,
+  "require-dev": {
+    "phpstan/phpstan": "^2.1",
+    "phpunit/phpunit": "11.5.50"
+  },
+  "scripts": {
+    "analyse": "phpstan analyse --memory-limit=512M",
+    "test": "phpunit --configuration phpunit.xml",
+    "check": [
+      "composer dump-autoload",
+      "@analyse",
+      "@test",
+      "composer audit"
+    ]
+  }
 }

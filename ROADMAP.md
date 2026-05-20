@@ -270,3 +270,563 @@ Akzeptanzkriterien:
 - Mapping-Tabellen werden aus der gewählten Connection geladen
 - Tabellenlisten-JSON enthält keine Secrets
 - bestehende 1.0.0-Flows bleiben rückwärtskompatibel
+
+---
+
+# Luna V3 Roadmap — 1.1.1 bis 1.7.0
+
+Stand: 20.05.2026  
+Zielkorridor: Vorbereitung und Umsetzung des ersten realen Integrationsprojekts **AsfInStockRings** bis 29.05.2026.
+
+Luna V3 wird in dieser Phase nicht als öffentliche Plattform verstanden, sondern als interne Integrations-Workbench. Öffentlich erreichbar sollen nur freigegebene oder exportierte Runtime-Endpunkte sein.
+
+---
+
+# Qualitäts-Gate ab 1.1.1
+
+Ab Version 1.1.1 wird ein verbindliches Qualitäts-Gate eingeführt.
+
+Nach jeder Codex-Aufgabe müssen die verfügbaren Checks ausgeführt werden. Ein Task gilt erst dann als abgeschlossen, wenn die Checks erfolgreich durchgelaufen sind oder ein verbleibender Fehler ausdrücklich dokumentiert wurde.
+
+Pflichtreihenfolge nach jeder Codeänderung:
+
+```bash
+composer dump-autoload
+```
+
+Danach:
+
+```bash
+composer analyse
+```
+
+Falls `composer analyse` noch nicht vorhanden ist, aber PHPStan installiert ist:
+
+```bash
+vendor/bin/phpstan analyse
+```
+
+Danach:
+
+```bash
+composer test
+```
+
+Falls `composer test` noch nicht vorhanden ist, aber PHPUnit installiert ist:
+
+```bash
+vendor/bin/phpunit
+```
+
+Sobald ein gemeinsames Script existiert, soll bevorzugt dieses ausgeführt werden:
+
+```bash
+composer check
+```
+
+`composer check` soll mindestens ausführen:
+
+```bash
+composer dump-autoload
+composer analyse
+composer test
+```
+
+Wenn neue PHP-Dateien entstehen, müssen diese zusätzlich mit `php -l` geprüft werden, solange noch kein vollständiges automatisches Syntax-Gate existiert.
+
+Tests gehören zur Aufgabe. Wer produktiven Code ändert oder neue Fachlogik ergänzt, muss passende Tests mitliefern oder begründen, warum für diese Änderung kein sinnvoller Test möglich ist.
+
+---
+
+## 1.1.1 — Stabilisierung und Code Quality Foundation
+
+### Ziel
+
+Den aktuellen Stand nach 1.1.0 sauber stabilisieren, bevor echte Integrationslogik für externe Datenquellen und öffentliche Endpunkte ergänzt wird.
+
+Zusätzlich wird in 1.1.1 die verbindliche Grundlage für statische Analyse und automatisierte Tests geschaffen. Ab dieser Version gilt: Nach jeder Codex-Aufgabe müssen die vorhandenen Qualitätschecks ausgeführt werden.
+
+### Umfang
+
+- Bestehende 1.1.0-Flows prüfen
+- Admin-Routing prüfen
+- `.env.example` aktualisieren
+- Migrationsstatus prüfen
+- Connection Manager auf Secret-Sicherheit prüfen
+- Keine Klartext-Passwörter in Logs, JSON-Ausgaben oder UI
+- PHPStan als statische Analyse vorbereiten
+- PHPUnit als Testbasis vorbereiten
+- Composer-Scripts für Qualitätschecks vorbereiten:
+  - `composer analyse`
+  - `composer test`
+  - `composer check`
+- Basistests für:
+  - Workspaces
+  - Connections
+  - Schema Explorer
+  - Mapping-Tabellenauswahl
+  - Secret-/Config-Sicherheit
+  - einfache Template- oder Mapping-Hilfslogik, sobald vorhanden
+
+### Akzeptanzkriterien
+
+- `main` ist stabil
+- Branch: `feature/1.1.1-stabilize-before-integration`
+- Luna startet sauber mit DocumentRoot `/public`
+- Bestehende Admin-Oberfläche bleibt nutzbar
+- Keine Secrets erscheinen in Tabellenlisten, Dumps oder Fehlermeldungen
+- Bestehende 1.0.0- und 1.1.0-Flows bleiben rückwärtskompatibel
+- PHPStan kann installiert und über Composer ausgeführt werden
+- PHPUnit kann installiert und über Composer ausgeführt werden
+- `composer analyse` ist dokumentiert oder vorbereitet
+- `composer test` ist dokumentiert oder vorbereitet
+- `composer check` ist als gemeinsames Qualitäts-Gate vorgesehen
+- Wenn PHPStan installiert ist, muss PHPStan nach jeder Codex-Aufgabe laufen
+- Wenn PHPUnit installiert ist, müssen die PHPUnit-Tests nach jeder Codex-Aufgabe laufen
+- Neue produktive Logik erhält passende Tests oder eine dokumentierte Begründung, warum kein sinnvoller Test möglich ist
+- Codex darf eine Aufgabe nicht als abgeschlossen melden, ohne die ausgeführten Checks und deren Ergebnis zu nennen
+
+### Branch
+
+```text
+feature/1.1.1-stabilize-before-integration
+```
+
+
+---
+
+## 1.2.0 — Multi-Connection Integration Foundation
+
+### Ziel
+
+Luna muss mehrere externe Datenquellen pro Workspace sauber verwalten, testen und im Schema Explorer anzeigen können.
+
+Für AsfInStockRings werden mindestens zwei Connections benötigt:
+
+- PIMCore-Datenbank
+- Preis-/Key-Value-Datenbank
+
+### Umfang
+
+- Connection-Typ `mysql` / `mariadb` stabilisieren
+- Mehrere Connections pro Workspace erlauben
+- Connection-Test über UI
+- Connection-Test über CLI
+- Sichere Secret-Speicherung
+- Schema Explorer pro Connection
+- Tabellenlisten pro Connection
+- Beispielzeilen/Sampling pro Tabelle
+- Source-Connections standardmäßig read-only behandeln
+- Fehlerausgaben ohne sensible Zugangsdaten
+
+### Akzeptanzkriterien
+
+- PIMCore-DB kann als Connection angelegt werden
+- Preis-DB kann als zweite Connection angelegt werden
+- Beide Connections können unabhängig getestet werden
+- Schema Explorer zeigt Tabellen und Spalten pro Connection
+- Beispielzeilen können gelesen werden
+- Secrets werden verschlüsselt gespeichert
+- UI gibt niemals Passwort oder vollständige sensible DSN-Daten aus
+- `composer check` läuft nach Abschluss des Meilensteins grün, sobald PHPStan/PHPUnit installiert sind
+
+### Branch
+
+```text
+feature/1.2.0-multi-connection-integration-foundation
+```
+
+---
+
+## 1.3.0 — Lookup Mapping und Value Resolver
+
+### Ziel
+
+Luna muss Werte nicht nur 1:1 aus einer Datenquelle übernehmen, sondern Werte über eine zweite Datenquelle auflösen können.
+
+Beispiel für AsfInStockRings:
+
+```text
+PIMCore Produkt:
+name = "E001 Carbon Partnerringe"
+price_group = 2
+
+Preis-DB:
+price_group_2 = 499.00
+price_group_2_pseudo = 599.00
+```
+
+Daraus soll Luna eine API-fähige Struktur erzeugen:
+
+```json
+{
+  "name": "E001 Carbon Partnerringe",
+  "price_group": 2,
+  "price": 499.00,
+  "pseudo_price": 599.00
+}
+```
+
+### Umfang
+
+- Mapping-Feldtyp: `source_column`
+- Mapping-Feldtyp: `static_value`
+- Mapping-Feldtyp: `lookup_value`
+- Lookup-Regeln:
+  - Lookup-Connection wählen
+  - Lookup-Tabelle wählen
+  - Key-Spalte wählen
+  - Value-Spalte wählen
+  - Key-Template definieren
+- Template-Unterstützung für Lookup-Keys:
+  - `price_group_{{price_group}}`
+  - `price_group_{{price_group}}_pseudo`
+- Preview/Dry-Run für Mapping
+- Fehleranzeige bei fehlenden Lookup-Keys
+- Optionale Fallback-Werte vorbereiten
+
+### Akzeptanzkriterien
+
+- Ein Mapping kann Werte aus einer Source-Tabelle lesen
+- Ein Mapping kann pro Zeile einen Lookup gegen eine zweite Connection ausführen
+- `price_group_x` und `price_group_x_pseudo` können aufgelöst werden
+- Dry-Run zeigt mindestens 10 Beispielzeilen als JSON-Vorschau
+- Fehlende Preisgruppen werden sichtbar gemeldet
+- Fehler werden nicht still verschluckt
+- Keine Secrets werden in Mapping-Preview oder Fehlerausgaben angezeigt
+- Neue Resolver- und Mapping-Logik ist durch PHPUnit-Tests abgedeckt
+- `composer check` läuft nach Abschluss des Meilensteins grün
+
+### Branch
+
+```text
+feature/1.3.0-lookup-mapping-value-resolver
+```
+
+---
+
+## 1.4.0 — JSON Endpoint Builder v2
+
+### Ziel
+
+Aus einem Mapping soll ein API-Endpunkt entstehen können.
+
+Für den ersten realen Anwendungsfall ist der Ziel-Endpunkt:
+
+```text
+/pim/api/isr_prices.php
+```
+
+Alternativ Luna-intern:
+
+```text
+/public/api/endpoints/isr_prices
+```
+
+### Umfang
+
+- Endpoint an Workspace binden
+- Endpoint an Mapping binden
+- HTTP-Methode definieren, initial nur `GET`
+- JSON-Ausgabe standardisieren
+- Standardfelder:
+  - `success`
+  - `generated_at`
+  - `count`
+  - `items`
+- Endpoint Secret optional oder verpflichtend konfigurierbar machen
+- Fehlerformat standardisieren
+- Cache optional vorbereiten
+- Preview im Admin
+- Public Runtime klar vom Admin trennen
+
+### Beispiel-Zielausgabe
+
+```json
+{
+  "success": true,
+  "generated_at": "2026-05-20T14:30:00+02:00",
+  "count": 2,
+  "items": [
+    {
+      "model": "E001",
+      "name": "Carbon Partnerringe E001",
+      "price_group": 2,
+      "price": 499.00,
+      "pseudo_price": 599.00
+    },
+    {
+      "model": "E002",
+      "name": "Titanium Partnerringe E002",
+      "price_group": 3,
+      "price": 699.00,
+      "pseudo_price": 799.00
+    }
+  ]
+}
+```
+
+### Akzeptanzkriterien
+
+- Endpoint kann über UI angelegt werden
+- Endpoint kann ein Mapping ausführen
+- Endpoint liefert valides JSON
+- Endpoint kann mit Secret geschützt werden
+- Admin und Runtime sind klar getrennt
+- Fehler enthalten keine Secrets, SQL-Zugangsdaten oder Stacktraces
+- Endpoint-Preview ist in der Admin UI möglich
+- Endpoint-Runner, JSON-Response und Fehlerformat sind durch PHPUnit-Tests abgedeckt
+- `composer check` läuft nach Abschluss des Meilensteins grün
+
+### Branch
+
+```text
+feature/1.4.0-json-endpoint-builder-v2
+```
+
+---
+
+## 1.5.0 — Endpoint Export Runtime
+
+### Ziel
+
+Luna soll einen Endpoint exportieren können, ohne dass die komplette Workbench öffentlich erreichbar sein muss.
+
+Strategisches Ziel:
+
+```text
+AsfInStockRings → exportierter Runtime-Endpunkt
+```
+
+Nicht:
+
+```text
+AsfInStockRings → öffentliche Luna-Workbench
+```
+
+### Umfang
+
+- Export eines Endpoint-Profils
+- Export als PHP-Runtime-Datei oder Runtime-Konfiguration
+- Runtime nutzt dieselben Connection- und Mapping-Regeln
+- Keine Admin UI im Export notwendig
+- Export enthält keine Klartext-Secrets
+- Export kann auf `toolbox.asf.gmbh/pim/api/` deployed werden
+- Optionale `.env` für Runtime
+- Optionaler Runtime-Bootstrap
+- Runtime-Struktur vorbereiten
+
+### Mögliche Zielstruktur
+
+```text
+toolbox.asf.gmbh/
+└── pim/
+    ├── api/
+    │   └── isr_prices.php
+    ├── runtime/
+    │   ├── bootstrap.php
+    │   ├── EndpointRunner.php
+    │   ├── ConnectionFactory.php
+    │   └── MappingExecutor.php
+    └── .env
+```
+
+### Akzeptanzkriterien
+
+- Luna kann einen Endpoint exportieren
+- Exportierter Endpoint läuft ohne Admin-Oberfläche
+- Exportierter Endpoint kann auf der Toolbox-Subdomain deployed werden
+- Secrets liegen nur in `.env` oder sicher konfiguriert vor
+- AsfInStockRings muss nur HTTP-JSON konsumieren
+- Exportierte Runtime ist unabhängig von der Admin-Oberfläche nutzbar
+- Export-/Runtime-Code ist durch geeignete PHPUnit-Tests abgesichert
+- `composer check` läuft nach Abschluss des Meilensteins grün
+
+### Branch
+
+```text
+feature/1.5.0-endpoint-export-runtime
+```
+
+---
+
+## 1.6.0 — AsfInStockRings Integration Project
+
+### Ziel
+
+Der erste echte Luna-Integrationsfall wird als konkretes Projekt umgesetzt.
+
+### Workspace
+
+```text
+AsfInStockRings
+```
+
+### Connections
+
+```text
+pimcore
+price_settings
+```
+
+### Mapping
+
+```text
+ISR Ring Prices
+```
+
+### Endpoint
+
+```text
+isr_prices
+```
+
+### Ziel-URL
+
+```text
+https://toolbox.asf.gmbh/pim/api/isr_prices.php
+```
+
+### Umfang
+
+- PIMCore-Beispieldatensatz analysieren
+- Ring-Identifikationsspalte bestimmen
+- Filter für relevante Ringe definieren
+- Felder bestimmen:
+  - Modell
+  - Name
+  - Preisgruppe
+  - Material, falls benötigt
+  - Bildkennung, falls benötigt
+  - Aktiv/Inaktiv, falls vorhanden
+- Preisgruppe gegen Preis-DB auflösen
+- JSON-Struktur finalisieren
+- WordPress-Plugin-kompatible Ausgabe definieren
+- Dry-Run mit echten Beispieldaten
+- Export oder Runtime-Bereitstellung des Endpoints
+
+### Akzeptanzkriterien
+
+- Endpoint liefert nur relevante InStock-Ringe
+- `name`, `price_group`, `price` und `pseudo_price` sind enthalten
+- Preisgruppen-Lookup funktioniert
+- Fehlende Preise werden sauber gemeldet
+- JSON kann direkt von AsfInStockRings konsumiert werden
+- Endpoint läuft auf der Toolbox-Subdomain
+- Zugang ist abgesichert
+- Keine Secrets erscheinen in Response, Logs oder Fehlermeldungen
+- ISR-Mapping und Preisgruppen-Lookup sind durch PHPUnit-Tests oder dokumentierte Dry-Run-Prüfungen abgesichert
+- `composer check` läuft nach Abschluss des Meilensteins grün
+
+### Branch
+
+```text
+feature/1.6.0-asf-in-stock-rings-project
+```
+
+---
+
+## 1.7.0 — Hardening, Logging und Betrieb
+
+### Ziel
+
+Der Endpoint und die Luna Runtime sollen betriebssicher werden.
+
+Diese Version ist wünschenswert, aber nicht zwingend kritisch für den ersten Abgabetermin am 29.05.2026.
+
+### Umfang
+
+- Request Logging ohne Secrets
+- Endpoint Audit Log
+- Fehlerstatistik
+- Anzeige der letzten erfolgreichen Ausführung
+- Cache-TTL pro Endpoint
+- Manuelles Cache-Leeren
+- JSON-Healthcheck
+- Optional API-Key-Rotation
+- Betriebsdokumentation
+- Deployment-Dokumentation
+- Recovery-Dokumentation
+- Debug-Modus klar von Produktivmodus trennen
+
+### Akzeptanzkriterien
+
+- Fehler sind nachvollziehbar
+- Endpoint kann geprüft werden
+- Cache kann aktiviert und deaktiviert werden
+- Luna zeigt letzten Laufstatus
+- Keine sensiblen Daten in Logs
+- Keine sensiblen Daten in Responses
+- Doku reicht aus, um den Endpoint erneut zu deployen
+- Produktivbetrieb ist ohne Admin-Zugriff auf die Workbench möglich
+- Relevante Betriebs- und Sicherheitslogik ist durch PHPUnit-Tests abgesichert
+- `composer check` läuft nach Abschluss des Meilensteins grün
+
+### Branch
+
+```text
+feature/1.7.0-endpoint-hardening-operations
+```
+
+---
+
+# MVP bis 29.05.2026
+
+Der MVP ist nicht, dass Luna vollständig perfekt ist.
+
+Der MVP ist:
+
+```text
+Luna kann den konkreten ISR-Endpoint kontrolliert erzeugen oder betreiben.
+```
+
+Minimum bis 29.05.2026:
+
+- Zwei DB-Connections
+- Tabellen und Samples ansehen
+- Mapping definieren
+- Lookup Preisgruppe → Preis/Pseudopreis
+- JSON Preview
+- Endpoint bereitstellen oder exportieren
+- WordPress-Plugin kann den Endpoint abrufen
+- Qualitäts-Gate läuft grün: `composer dump-autoload`, PHPStan, PHPUnit bzw. `composer check`
+
+Nicht zwingend bis 29.05.2026:
+
+- Perfekter No-Code-Designer
+- Komplexe Transformationssprache
+- Scheduler
+- Schöne Report Engine
+- Vollständige Multi-Tenant-Logik
+- Generische Endpoint-Bibliothek für alle Eventualitäten
+
+---
+
+# Zeitliche Priorisierung
+
+| Datum      | Ziel |
+|------------|---|
+| 20.05.2026 | Roadmap festziehen, 1.1.1 starten |
+| 20.05.2026 | 1.1.1 abschließen, 1.2.0 beginnen |
+| 20.05.2026 | 1.2.0 fertigstellen, echte PIM-/Preis-Connections testen |
+| 21.05.2026 | 1.3.0 Lookup Mapping bauen |
+| 21.05.2026 | 1.3.0 Dry-Run/Preview stabilisieren |
+| 21.05.2026 | 1.4.0 Endpoint Builder v2 |
+| 22.05.2026 | 1.5.0 Export Runtime |
+| 22.05.2026 | 1.6.0 AsfInStockRings Projekt konkret umsetzen |
+| 22.05.2026 | Test, Debug, Fehlerfälle, Doku |
+| 23.05.2026 | Übergabe/Deployment-Puffer |
+
+---
+
+# Strategische Leitlinie
+
+Luna V3 ist eine interne Integrations-Workbench.
+
+Öffentlich erreichbar sind nur:
+
+- freigegebene Runtime-Endpunkte
+- exportierte API-Endpunkte
+- bewusst abgesicherte JSON-Schnittstellen
+
+Die komplette Workbench soll nicht unnötig öffentlich bereitgestellt werden.
