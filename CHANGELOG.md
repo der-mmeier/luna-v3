@@ -13,6 +13,7 @@ Format basiert lose auf Keep a Changelog.
 - Workbench UX 1.1.0 mit dunklem Standard-Theme, Light/Dark-Switch und lokalem `luna_theme`-Cookie
 - Workspace-Erstellung und -Bearbeitung über die Admin UI inklusive Slug-Validierung und Audit Events
 - dynamische Source-/Target-Tabellenauswahl beim Mapping-Anlegen und -Bearbeiten über `/admin/api/connection-tables?connection_id=ID`; die bisherige JSON-Route `/admin/schema/{connectionId}/tables.json` bleibt als Kompatibilitätsroute erhalten und lädt für Dropdowns nur Tabellennamen
+- Externe PDO-Verbindungen lösen Hostnamen intern bevorzugt auf IPv4-A-Records auf, ohne den gespeicherten Connection-Host zu verändern.
 - Endpoint Builder für einfache public/private API-Endpunkte mit Admin UI
 - verschlüsselte Endpoint-Secrets in `luna_endpoint_secrets`
 - Endpoint Runtime unter `/api/e/{endpoint_key}` für `static`, `version`, `mapping_dry_run`, `job_status` und `latest_report`

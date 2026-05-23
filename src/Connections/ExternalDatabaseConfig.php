@@ -34,7 +34,7 @@ final class ExternalDatabaseConfig
         );
     }
 
-    public function dsn(): string
+    public function dsn(?string $connectHost = null): string
     {
         if (! in_array($this->driver, ['mysql', 'mariadb'], true)) {
             throw new RuntimeException('Unsupported external database driver.');
@@ -42,11 +42,16 @@ final class ExternalDatabaseConfig
 
         return sprintf(
             'mysql:host=%s;port=%d;dbname=%s;charset=%s',
-            $this->host,
+            $connectHost ?? $this->host,
             $this->port ?? 3306,
             $this->databaseName,
             $this->charset,
         );
+    }
+
+    public function host(): string
+    {
+        return $this->host;
     }
 
     public function username(): string

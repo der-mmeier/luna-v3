@@ -523,6 +523,16 @@ Dark/Light Theme-Switch mit Cookie, schwarze Glasoptik, Workspace-Create/Edit un
 
 Vorbereitet. Das Admin UI nutzt standardmäßig `dark`, der Theme-Switch setzt `luna_theme=dark|light`, Workspaces sind über die UI anlegbar und bearbeitbar, und Mapping-Formulare laden Tabellen per `/admin/api/connection-tables?connection_id=ID`. Die bisherige Route `/admin/schema/{connectionId}/tables.json` bleibt als Kompatibilitätsroute erhalten. Beide JSON-Routen nutzen eine leichte Tabellenlisten-Logik, die für Dropdowns nur Tabellennamen lädt.
 
+## 2026-05-24 - Hotfix 1.1.2 IPv4 Host Resolution fuer externe PDO-Verbindungen
+
+### Aufgabe
+
+IPv6-Fallback-Timeouts bei externen MySQL-Hosts vermeiden, ohne gespeicherte Connection-Hosts zu verändern oder Secrets offenzulegen.
+
+### Ergebnis
+
+`Luna\Network\HostResolver` gibt IP-Adressen unverändert zurück und löst Hostnamen für TCP-Verbindungen bevorzugt auf IPv4-A-Records auf. `ExternalPdoConnectionFactory` verwendet den aufgelösten Host nur intern für den PDO-DSN; `ExternalDatabaseConfig::host()` bleibt der gespeicherte Originalhost.
+
 ### Offene Punkte
 
 - Browserbasierte Sichtprüfung des Theme-Switches und der dynamischen Selects bleibt bei fehlenden externen Testconnections manuell nachzuholen.

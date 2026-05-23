@@ -156,7 +156,7 @@ if (! function_exists('connectionTablesJsonResponse')) {
                 ], 404);
             }
 
-            $tables = (new TableNameReader($pdoFactory()->create($configFor($profile))))->tableNames();
+            $tables = (new TableNameReader($pdoFactory()->create($configFor($profile), false)))->tableNames();
 
             return Response::json([
                 'success' => true,
