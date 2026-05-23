@@ -521,7 +521,7 @@ Dark/Light Theme-Switch mit Cookie, schwarze Glasoptik, Workspace-Create/Edit un
 
 ### Ergebnis
 
-Vorbereitet. Das Admin UI nutzt standardmäßig `dark`, der Theme-Switch setzt `luna_theme=dark|light`, Workspaces sind über die UI anlegbar und bearbeitbar, und Mapping-Formulare laden Tabellen per `/admin/schema/{connectionId}/tables.json`.
+Vorbereitet. Das Admin UI nutzt standardmäßig `dark`, der Theme-Switch setzt `luna_theme=dark|light`, Workspaces sind über die UI anlegbar und bearbeitbar, und Mapping-Formulare laden Tabellen per `/admin/api/connection-tables?connection_id=ID`. Die bisherige Route `/admin/schema/{connectionId}/tables.json` bleibt als Kompatibilitätsroute erhalten. Beide JSON-Routen nutzen eine leichte Tabellenlisten-Logik, die für Dropdowns nur Tabellennamen lädt.
 
 ### Offene Punkte
 

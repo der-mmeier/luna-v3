@@ -24,6 +24,7 @@ use Luna\Repository\WorkspaceRepository;
 use Luna\Routing\RouteCollection;
 use Luna\Schema\SampleDataReader;
 use Luna\Schema\SchemaInspector;
+use Luna\Schema\TableNameReader;
 use Luna\View\ViewRenderer;
 
 if (! function_exists('safeList')) {
@@ -137,6 +138,39 @@ if (! function_exists('mappingFieldsData')) {
         }
 
         return $data;
+    }
+}
+
+if (! function_exists('connectionTablesJsonResponse')) {
+    function connectionTablesJsonResponse(Closure $connections, Closure $pdoFactory, Closure $configFor, int $connectionId): Response
+    {
+        try {
+            $profile = $connections()->find($connectionId);
+
+            if ($profile === null) {
+                return Response::json([
+                    'success' => false,
+                    'connection_id' => $connectionId,
+                    'tables' => [],
+                    'message' => 'Connection nicht gefunden.',
+                ], 404);
+            }
+
+            $tables = (new TableNameReader($pdoFactory()->create($configFor($profile))))->tableNames();
+
+            return Response::json([
+                'success' => true,
+                'connection_id' => $connectionId,
+                'tables' => $tables,
+            ]);
+        } catch (Throwable) {
+            return Response::json([
+                'success' => false,
+                'connection_id' => $connectionId,
+                'tables' => [],
+                'message' => 'Tabellen konnten nicht geladen werden.',
+            ], 500);
+        }
     }
 }
 
@@ -292,23 +326,15 @@ return static function (RouteCollection $routes, Application $app): void {
     $reportMailer = static fn (): ReportMailer => $app->services()->get('reports.mailer');
     $validator = static fn (): MappingValidator => $app->services()->get('mapping.validator');
     $pdoFactory = static fn (): ExternalPdoConnectionFactory => $app->services()->get('connections.pdo_factory');
-    $safeAll = static function (Closure $repositoryFactory): array {
-        try {
-            return $repositoryFactory()->all();
-        } catch (Throwable) {
-            return [];
-        }
-    };
-
     $configFor = static function (array $profile) use ($connections): ExternalDatabaseConfig {
         return ExternalDatabaseConfig::fromProfile($profile, $connections()->secretsFor((int) $profile['id']));
     };
 
     $dashboardData = static fn (): array => [
-        'workspaceCount' => count($safeAll($workspaces)),
-        'connectionCount' => count($safeAll($connections)),
-        'mappingCount' => count($safeAll($mappings)),
-        'jobCount' => count($safeAll($jobs)),
+        'workspaceCount' => count(safeList($workspaces)),
+        'connectionCount' => count(safeList($connections)),
+        'mappingCount' => count(safeList($mappings)),
+        'jobCount' => count(safeList($jobs)),
     ];
 
     $routes->get('/', static fn (): Response => Response::html($view->render(
@@ -481,7 +507,7 @@ return static function (RouteCollection $routes, Application $app): void {
             return $admin('admin/connections/create', [
                 'title' => 'Connection anlegen',
                 'active' => 'connections',
-                'workspaces' => $safeAll($workspaces),
+                'workspaces' => safeList($workspaces),
                 'values' => $values,
                 'errors' => $errors,
                 'error' => null,
@@ -496,7 +522,7 @@ return static function (RouteCollection $routes, Application $app): void {
             return $admin('admin/connections/create', [
                 'title' => 'Connection anlegen',
                 'active' => 'connections',
-                'workspaces' => $safeAll($workspaces),
+                'workspaces' => safeList($workspaces),
                 'values' => $values,
                 'errors' => ['Connection konnte nicht gespeichert werden. APP_KEY und Systemdatenbank prüfen.'],
                 'error' => null,
@@ -566,57 +592,20 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.schema', 'web');
 
-    $routes->get('/admin/schema/{connectionId}', static function (Request $request) use ($admin, $connections, $configFor, $pdoFactory): Response {
-        try {
-            $profile = $connections()->find((int) $request->route('connectionId'));
+    $connectionTablesJson = static fn (int $connectionId): Response => connectionTablesJsonResponse(
+        $connections,
+        $pdoFactory,
+        $configFor,
+        $connectionId,
+    );
 
-            if ($profile === null) {
-                throw new RuntimeException('Connection nicht gefunden.');
-            }
-
-            $tables = (new SchemaInspector($pdoFactory()->create($configFor($profile))))->tables();
-            $alert = null;
-        } catch (Throwable) {
-            $profile = $profile ?? null;
-            $tables = [];
-            $alert = ['type' => 'danger', 'message' => 'Schema konnte nicht gelesen werden. Verbindung und Berechtigungen prüfen.'];
-        }
-
-        return $admin('admin/schema/index', [
-            'title' => 'Schema Explorer',
-            'active' => 'schema',
-            'connections' => [],
-            'connection' => $profile,
-            'tables' => $tables,
-            'alert' => $alert,
-            'error' => null,
-        ]);
-    }, 'admin.schema.connection', 'web');
-
-    $routes->get('/admin/schema/{connectionId}/tables.json', static function (Request $request) use ($connections, $configFor, $pdoFactory): Response {
-        try {
-            $profile = $connections()->find((int) $request->route('connectionId'));
-
-            if ($profile === null) {
-                throw new RuntimeException('Connection nicht gefunden.');
-            }
-
-            $tables = (new SchemaInspector($pdoFactory()->create($configFor($profile))))->tables();
-
-            return Response::json([
-                'success' => true,
-                'tables' => array_map(static fn (array $table): array => [
-                    'name' => (string) $table['table_name'],
-                    'label' => (string) $table['table_name'],
-                ], $tables),
-            ]);
-        } catch (Throwable) {
-            return Response::json([
-                'success' => false,
-                'message' => 'Tabellen konnten nicht geladen werden.',
-            ], 500);
-        }
+    $routes->get('/admin/schema/{connectionId}/tables.json', static function (Request $request) use ($connectionTablesJson): Response {
+        return $connectionTablesJson((int) $request->route('connectionId', 0));
     }, 'admin.schema.tables_json', 'web');
+
+    $routes->get('/admin/api/connection-tables', static function (Request $request) use ($connectionTablesJson): Response {
+        return $connectionTablesJson((int) $request->query('connection_id', 0));
+    }, 'admin.api.connection_tables', 'web');
 
     $routes->get('/admin/schema/{connectionId}/table', static function (Request $request) use ($admin, $connections, $configFor, $pdoFactory, $metadata): Response {
         $tableName = (string) $request->query('table', '');
@@ -682,6 +671,33 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/schema/' . $connectionId . '/table?table=' . rawurlencode($tableName)]);
     }, 'admin.schema.column_note', 'web');
 
+    $routes->get('/admin/schema/{connectionId}', static function (Request $request) use ($admin, $connections, $configFor, $pdoFactory): Response {
+        try {
+            $profile = $connections()->find((int) $request->route('connectionId'));
+
+            if ($profile === null) {
+                throw new RuntimeException('Connection nicht gefunden.');
+            }
+
+            $tables = (new SchemaInspector($pdoFactory()->create($configFor($profile))))->tables();
+            $alert = null;
+        } catch (Throwable) {
+            $profile = $profile ?? null;
+            $tables = [];
+            $alert = ['type' => 'danger', 'message' => 'Schema konnte nicht gelesen werden. Verbindung und Berechtigungen prüfen.'];
+        }
+
+        return $admin('admin/schema/index', [
+            'title' => 'Schema Explorer',
+            'active' => 'schema',
+            'connections' => [],
+            'connection' => $profile,
+            'tables' => $tables,
+            'alert' => $alert,
+            'error' => null,
+        ]);
+    }, 'admin.schema.connection', 'web');
+
     $routes->get('/admin/mappings', static function () use ($admin, $mappings): Response {
         try {
             $items = $mappings()->all();
@@ -702,8 +718,8 @@ return static function (RouteCollection $routes, Application $app): void {
     $routes->get('/admin/mappings/create', static fn (): Response => $admin('admin/mappings/create', [
         'title' => 'Mapping anlegen',
         'active' => 'mappings',
-        'workspaces' => $safeAll($workspaces),
-        'connections' => $safeAll($connections),
+        'workspaces' => safeList($workspaces),
+        'connections' => safeList($connections),
         'values' => ['status' => 'draft'],
         'errors' => [],
     ]), 'admin.mappings.create', 'web');
@@ -1150,117 +1166,3 @@ return static function (RouteCollection $routes, Application $app): void {
         'app' => $app->config()->string('APP_NAME', 'Luna V3'),
     ]), 'web.health', 'web');
 };
-
-if (! function_exists('safeList')) {
-    function safeList(Closure $repositoryFactory): array
-    {
-        try {
-            return $repositoryFactory()->all();
-        } catch (Throwable) {
-            return [];
-        }
-    }
-}
-
-if (! function_exists('mappingSetValues')) {
-    function mappingSetValues(Request $request): array
-    {
-        return [
-            'workspace_id' => $request->post('workspace_id'),
-            'name' => (string) $request->post('name', ''),
-            'description' => (string) $request->post('description', ''),
-            'source_connection_id' => $request->post('source_connection_id'),
-            'source_table' => (string) $request->post('source_table', ''),
-            'target_connection_id' => $request->post('target_connection_id'),
-            'target_table' => (string) $request->post('target_table', ''),
-            'status' => (string) $request->post('status', 'draft'),
-        ];
-    }
-}
-
-if (! function_exists('mappingSetErrors')) {
-    function mappingSetErrors(array $values): array
-    {
-        $errors = [];
-
-        if (trim((string) $values['name']) === '') {
-            $errors[] = 'Name ist erforderlich.';
-        }
-
-        if (! in_array((string) $values['status'], ['draft', 'active', 'archived'], true)) {
-            $errors[] = 'Status ist ungültig.';
-        }
-
-        return $errors;
-    }
-}
-
-if (! function_exists('mappingFieldValues')) {
-    function mappingFieldValues(Request $request): array
-    {
-        return [
-            'source_column' => (string) $request->post('source_column', ''),
-            'source_json_path' => (string) $request->post('source_json_path', ''),
-            'target_column' => (string) $request->post('target_column', ''),
-            'transform_type' => (string) $request->post('transform_type', 'direct'),
-            'default_value' => (string) $request->post('default_value', ''),
-            'is_required' => $request->post('is_required') !== null ? '1' : '',
-            'notes' => (string) $request->post('notes', ''),
-            'sort_order' => (int) $request->post('sort_order', 0),
-        ];
-    }
-}
-
-if (! function_exists('mappingViewData')) {
-    function mappingViewData(Closure $mappings, int $id, array $extra = []): array
-    {
-        try {
-            $mapping = $mappings()->find($id);
-
-            return $extra + [
-                'mapping' => $mapping,
-                'fields' => $mapping === null ? [] : $mappings()->fieldsForSet($id),
-                'error' => null,
-            ];
-        } catch (Throwable) {
-            return $extra + [
-                'mapping' => null,
-                'fields' => [],
-                'error' => 'Mapping konnte nicht geladen werden.',
-            ];
-        }
-    }
-}
-
-if (! function_exists('mappingFieldsData')) {
-    function mappingFieldsData(Closure $mappings, Closure $connections, Closure $pdoFactory, int $id, array $extra = []): array
-    {
-        $data = mappingViewData($mappings, $id, $extra);
-        $data['sourceColumns'] = [];
-        $data['targetColumns'] = [];
-        $data['columnWarning'] = null;
-
-        if ($data['mapping'] === null) {
-            return $data;
-        }
-
-        try {
-            $source = $connections()->find((int) $data['mapping']['source_connection_id']);
-            $target = $connections()->find((int) $data['mapping']['target_connection_id']);
-
-            if ($source !== null && ! empty($data['mapping']['source_table'])) {
-                $sourceConfig = ExternalDatabaseConfig::fromProfile($source, $connections()->secretsFor((int) $source['id']));
-                $data['sourceColumns'] = (new SchemaInspector($pdoFactory()->create($sourceConfig)))->columns((string) $data['mapping']['source_table']);
-            }
-
-            if ($target !== null && ! empty($data['mapping']['target_table'])) {
-                $targetConfig = ExternalDatabaseConfig::fromProfile($target, $connections()->secretsFor((int) $target['id']));
-                $data['targetColumns'] = (new SchemaInspector($pdoFactory()->create($targetConfig)))->columns((string) $data['mapping']['target_table']);
-            }
-        } catch (Throwable) {
-            $data['columnWarning'] = 'Spalten konnten nicht gelesen werden. Textfelder bleiben nutzbar.';
-        }
-
-        return $data;
-    }
-}
