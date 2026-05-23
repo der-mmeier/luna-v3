@@ -74,7 +74,7 @@
             table.disabled = true;
             setStatus(status, 'Tabellen werden geladen...');
 
-            fetch('/admin/schema/' + encodeURIComponent(connectionId) + '/tables.json', {
+            fetch('/admin/api/connection-tables?connection_id=' + encodeURIComponent(connectionId), {
                 headers: {'Accept': 'application/json'}
             })
                 .then(function (response) { return response.json(); })
