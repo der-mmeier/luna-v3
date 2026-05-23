@@ -59,7 +59,7 @@ final class SchemaTablesRouteTest extends TestCase
             {
             }
 
-            public function create(mixed $config): PDO
+            public function create(mixed $config, bool $enforceReadOnlySession = true): PDO
             {
                 return $this->pdo;
             }
@@ -73,7 +73,10 @@ final class SchemaTablesRouteTest extends TestCase
         self::assertSame('application/json; charset=UTF-8', $response->headers()['Content-Type'] ?? null);
         self::assertSame(true, $body['success'] ?? null);
         self::assertSame(3, $body['connection_id'] ?? null);
-        self::assertSame([['name' => 'table_a'], ['name' => 'table_b']], $body['tables'] ?? null);
+        self::assertSame([
+            ['name' => 'table_a'],
+            ['name' => 'table_b'],
+        ], $body['tables'] ?? null);
 
         foreach ($body['tables'] as $table) {
             self::assertSame(['name'], array_keys($table));

@@ -24,20 +24,32 @@ final class TableNameReader
             return $this->fetchSqliteTableNames();
         }
 
-        $statement = $this->pdo->query(
-            'SELECT TABLE_NAME AS name
-             FROM information_schema.TABLES
-             WHERE TABLE_SCHEMA = DATABASE()
-             ORDER BY TABLE_NAME',
-        );
+        return $this->fetchMysqlTableNames();
+    }
+
+    /**
+     * @return list<array{name: string}>
+     */
+    private function fetchMysqlTableNames(): array
+    {
+        $statement = $this->pdo->query('SHOW TABLES');
         if ($statement === false) {
             return [];
         }
 
         $tables = [];
-        foreach ($statement->fetchAll() as $row) {
-            $tables[] = ['name' => (string) $row['name']];
+        foreach ($statement->fetchAll(PDO::FETCH_NUM) as $row) {
+            if (! isset($row[0])) {
+                continue;
+            }
+
+            $name = (string) $row[0];
+            if ($name !== '') {
+                $tables[] = ['name' => $name];
+            }
         }
+
+        usort($tables, static fn (array $left, array $right): int => strcmp($left['name'], $right['name']));
 
         return $tables;
     }

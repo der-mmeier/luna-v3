@@ -94,16 +94,16 @@ if (! function_exists('mappingViewData')) {
             $mapping = $mappings()->find($id);
 
             return $extra + [
-                'mapping' => $mapping,
-                'fields' => $mapping === null ? [] : $mappings()->fieldsForSet($id),
-                'error' => null,
-            ];
+                    'mapping' => $mapping,
+                    'fields' => $mapping === null ? [] : $mappings()->fieldsForSet($id),
+                    'error' => null,
+                ];
         } catch (Throwable) {
             return $extra + [
-                'mapping' => null,
-                'fields' => [],
-                'error' => 'Mapping konnte nicht geladen werden.',
-            ];
+                    'mapping' => null,
+                    'fields' => [],
+                    'error' => 'Mapping konnte nicht geladen werden.',
+                ];
         }
     }
 }
@@ -156,7 +156,7 @@ if (! function_exists('connectionTablesJsonResponse')) {
                 ], 404);
             }
 
-            $tables = (new TableNameReader($pdoFactory()->create($configFor($profile))))->tableNames();
+            $tables = (new TableNameReader($pdoFactory()->create($configFor($profile), false)))->tableNames();
 
             return Response::json([
                 'success' => true,
@@ -348,9 +348,9 @@ return static function (RouteCollection $routes, Application $app): void {
     )), 'web.home', 'web');
 
     $routes->get('/admin', static fn (): Response => $admin('admin/dashboard', $dashboardData() + [
-        'title' => 'Dashboard',
-        'active' => 'dashboard',
-    ]), 'admin.dashboard', 'web');
+            'title' => 'Dashboard',
+            'active' => 'dashboard',
+        ]), 'admin.dashboard', 'web');
 
     $routes->get('/admin/workspaces', static function () use ($admin, $workspaces): Response {
         try {

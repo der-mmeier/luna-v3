@@ -430,6 +430,16 @@ Lokalen 0.9.0-Stand pruefen und die Ausgabe von `mapping:dry-run`, `mapping:run 
 
 Die CLI zeigt nach Mapping- und Job-Ausfuehrungen den gespeicherten Run-Status mit Source-, Transform-, Written-, Skipped- und Error-Zaehlern. Failed Runs geben eine sichere Message aus. Bei `read_only = 1` auf der Target Connection wird vor dem `TargetWriter` blockiert, der Run als `failed` gespeichert, `written_count` bleibt `0`, und `mapping.transfer.failed` wird auditiert.
 
+## 2026-05-24 - Hotfix 1.1.2 IPv4 Host Resolution fuer externe PDO-Verbindungen
+
+### Aufgabe
+
+IPv6-Fallback-Timeouts bei externen MySQL-Hosts vermeiden, ohne gespeicherte Connection-Hosts zu verändern oder Secrets offenzulegen.
+
+### Ergebnis
+
+`Luna\Network\HostResolver` gibt IP-Adressen unverändert zurück und löst Hostnamen für TCP-Verbindungen bevorzugt auf IPv4-A-Records auf. `ExternalPdoConnectionFactory` verwendet den aufgelösten Host nur intern für den PDO-DSN; `ExternalDatabaseConfig::host()` bleibt der gespeicherte Originalhost.
+
 ### Tests
 
 - `composer dump-autoload`
