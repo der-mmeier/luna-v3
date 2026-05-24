@@ -38,10 +38,17 @@
         }
 
         tables.forEach(function (table) {
-            if (normalizedFilter && table.label.toLowerCase().indexOf(normalizedFilter) === -1) {
+            var name = table.name || '';
+            var label = table.label || name || '';
+
+            if (!name) {
                 return;
             }
-            select.appendChild(option(table.name, table.label, table.name === currentValue));
+
+            if (normalizedFilter && label.toLowerCase().indexOf(normalizedFilter) === -1) {
+                return;
+            }
+            select.appendChild(option(name, label, name === currentValue));
         });
     }
 

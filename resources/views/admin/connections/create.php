@@ -4,11 +4,21 @@
 /** @var array<string, mixed> $values */
 /** @var array<int, string> $errors */
 /** @var string|null $error */
+/** @var array<int, string> $roles */
+/** @var array<int, string> $drivers */
+/** @var string $formAction */
+/** @var string $heading */
+/** @var string $lead */
 $values = $values ?? [];
+$roles = $roles ?? ['source', 'transfer', 'target'];
+$drivers = $drivers ?? ['mysql', 'mariadb'];
+$formAction = $formAction ?? '/admin/connections';
+$heading = $heading ?? 'Connection anlegen';
+$lead = $lead ?? 'Fuer 1.2.0 werden mehrere MySQL/MariaDB-Verbindungen pro Workspace vorbereitet. Quellverbindungen sind standardmaessig read-only.';
 ?>
 <div class="mb-4">
-    <h1 class="h3 mb-1">Connection anlegen</h1>
-    <p class="text-body-secondary mb-0">Für 0.7.0 werden MySQL/MariaDB-Verbindungen vorbereitet. Quellverbindungen sind standardmäßig read-only.</p>
+    <h1 class="h3 mb-1"><?= htmlspecialchars($heading, ENT_QUOTES, 'UTF-8') ?></h1>
+    <p class="text-body-secondary mb-0"><?= htmlspecialchars($lead, ENT_QUOTES, 'UTF-8') ?></p>
 </div>
 
 <?php if (! empty($error)): ?>
@@ -25,14 +35,14 @@ $values = $values ?? [];
     </div>
 <?php endif; ?>
 
-<form class="card admin-card" method="post" action="/admin/connections">
+<form class="card admin-card" method="post" action="<?= htmlspecialchars($formAction, ENT_QUOTES, 'UTF-8') ?>">
     <div class="card-body row g-3">
         <div class="col-md-6">
             <label class="form-label" for="workspace_id">Workspace optional</label>
             <select class="form-select" id="workspace_id" name="workspace_id">
                 <option value="">Kein Workspace</option>
                 <?php foreach ($workspaces ?? [] as $workspace): ?>
-                    <option value="<?= (int) $workspace['id'] ?>"><?= htmlspecialchars((string) $workspace['name'], ENT_QUOTES, 'UTF-8') ?></option>
+                    <option value="<?= (int) $workspace['id'] ?>" <?= (string) ($values['workspace_id'] ?? '') === (string) $workspace['id'] ? 'selected' : '' ?>><?= htmlspecialchars((string) $workspace['name'], ENT_QUOTES, 'UTF-8') ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
@@ -43,7 +53,7 @@ $values = $values ?? [];
         <div class="col-md-3">
             <label class="form-label" for="type">Typ</label>
             <select class="form-select" id="type" name="type">
-                <?php foreach (['source', 'target', 'transfer'] as $type): ?>
+                <?php foreach ($roles as $type): ?>
                     <option value="<?= $type ?>" <?= ($values['type'] ?? 'source') === $type ? 'selected' : '' ?>><?= $type ?></option>
                 <?php endforeach; ?>
             </select>
@@ -51,7 +61,7 @@ $values = $values ?? [];
         <div class="col-md-3">
             <label class="form-label" for="driver">Driver</label>
             <select class="form-select" id="driver" name="driver">
-                <?php foreach (['mysql', 'mariadb'] as $driver): ?>
+                <?php foreach ($drivers as $driver): ?>
                     <option value="<?= $driver ?>" <?= ($values['driver'] ?? 'mysql') === $driver ? 'selected' : '' ?>><?= $driver ?></option>
                 <?php endforeach; ?>
             </select>
@@ -75,6 +85,7 @@ $values = $values ?? [];
         <div class="col-md-4">
             <label class="form-label" for="password">Passwort</label>
             <input class="form-control" id="password" name="password" type="password" autocomplete="new-password">
+            <div class="form-text">Leer lassen, um das bestehende Passwort unveraendert zu behalten.</div>
         </div>
         <div class="col-md-4">
             <label class="form-label" for="charset">Charset</label>
@@ -82,7 +93,7 @@ $values = $values ?? [];
         </div>
         <div class="col-md-8 d-flex align-items-end">
             <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="read_only" name="read_only" value="1" <?= ($values['read_only'] ?? '1') !== '' ? 'checked' : '' ?>>
+                <input class="form-check-input" type="checkbox" id="read_only" name="read_only" value="1" <?= (int) ($values['read_only'] ?? 1) === 1 ? 'checked' : '' ?>>
                 <label class="form-check-label" for="read_only">Read-only verwenden</label>
             </div>
         </div>
@@ -96,3 +107,5 @@ $values = $values ?? [];
         <a class="btn btn-outline-secondary" href="/admin/connections">Abbrechen</a>
     </div>
 </form>
+
+

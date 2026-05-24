@@ -3,9 +3,12 @@
 declare(strict_types=1);
 
 use Luna\Bootstrap;
+use Luna\Connections\ConnectionTester;
+use Luna\Connections\ExternalDatabaseConfig;
 use Luna\Database\MigrationRunner;
 use Luna\Database\SystemDatabase;
 use Luna\Jobs\JobRunner;
+use Luna\Repository\ConnectionProfileRepository;
 use Luna\Repository\JobRunRepository;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -35,7 +38,7 @@ function exitCodeForRun(array $run): int
 }
 
 if ($command === null) {
-    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|job:run|mapping:dry-run|mapping:run>\n");
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run>\n");
     exit(2);
 }
 
@@ -79,6 +82,34 @@ try {
         }
 
         exit(0);
+    }
+
+    if ($command === 'connection:test') {
+        $connectionId = isset($argv[2]) ? (int) $argv[2] : 0;
+
+        if ($connectionId <= 0) {
+            fwrite(STDERR, "Usage: php bin/luna connection:test <connection-id>\n");
+            exit(2);
+        }
+
+        /** @var ConnectionProfileRepository $connections */
+        $connections = $app->services()->get('repository.connections');
+        $profile = $connections->find($connectionId);
+
+        if ($profile === null) {
+            fwrite(STDERR, "Connection not found.\n");
+            exit(1);
+        }
+
+        /** @var ConnectionTester $tester */
+        $tester = $app->services()->get('connections.tester');
+        $config = ExternalDatabaseConfig::fromProfile($profile, $connections->secretsFor($connectionId));
+        $result = $tester->test($config);
+
+        echo 'Connection: ' . (int) $profile['id'] . ' - ' . (string) $profile['name'] . "\n";
+        echo 'Status: ' . ($result['success'] ? 'success' : 'failed') . "\n";
+        echo 'Message: ' . (string) $result['message'] . "\n";
+        exit($result['success'] ? 0 : 1);
     }
 
     if ($command === 'job:run') {

@@ -14,6 +14,9 @@ Format basiert lose auf Keep a Changelog.
 - Workspace-Erstellung und -Bearbeitung über die Admin UI inklusive Slug-Validierung und Audit Events
 - dynamische Source-/Target-Tabellenauswahl beim Mapping-Anlegen und -Bearbeiten über `/admin/api/connection-tables?connection_id=ID`; die bisherige JSON-Route `/admin/schema/{connectionId}/tables.json` bleibt als Kompatibilitätsroute erhalten und lädt für Dropdowns nur Tabellennamen
 - Externe PDO-Verbindungen lösen Hostnamen intern bevorzugt auf IPv4-A-Records auf, ohne den gespeicherten Connection-Host zu verändern.
+- Multi-Connection-Grundlage für 1.2.0 ergänzt: Connection-Rollen `source`, `transfer`, `target`, validierte MySQL/MariaDB-Driver, Source-read-only-Default und CLI-Verbindungstest `php bin/luna connection:test <connection-id>`.
+- Connections können über `/admin/connections/{id}/edit` bearbeitet werden, ohne bestehende Secrets bei leerem Passwortfeld zu löschen; Workspace-Create redirectet nach Erfolg zurück auf `/admin/workspaces`.
+- Mapping-Tabellenlisten liefern wieder `name` und `label`; das Frontend setzt sichtbare Option-Texte mit Fallback auf den Tabellennamen.
 - Endpoint Builder für einfache public/private API-Endpunkte mit Admin UI
 - verschlüsselte Endpoint-Secrets in `luna_endpoint_secrets`
 - Endpoint Runtime unter `/api/e/{endpoint_key}` für `static`, `version`, `mapping_dry_run`, `job_status` und `latest_report`
