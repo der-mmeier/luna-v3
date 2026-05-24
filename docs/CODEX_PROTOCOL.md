@@ -533,6 +533,22 @@ IPv6-Fallback-Timeouts bei externen MySQL-Hosts vermeiden, ohne gespeicherte Con
 
 `Luna\Network\HostResolver` gibt IP-Adressen unverändert zurück und löst Hostnamen für TCP-Verbindungen bevorzugt auf IPv4-A-Records auf. `ExternalPdoConnectionFactory` verwendet den aufgelösten Host nur intern für den PDO-DSN; `ExternalDatabaseConfig::host()` bleibt der gespeicherte Originalhost.
 
+## 2026-05-24 - Meilenstein 1.2.0 Multi-Connection Integration Foundation
+
+### Aufgabe
+
+Mehrere externe Connections pro Workspace stabilisieren, Connection-Rollen und MySQL/MariaDB-Driver absichern, Source-Connections standardmäßig read-only behandeln und einen sicheren CLI-Verbindungstest bereitstellen.
+
+### Ergebnis
+
+`ConnectionProfileData` zentralisiert Rollen, Driver, Normalisierung und Validierung für Connection-Profile. Mehrere Connections können dieselbe `workspace_id` behalten, ohne Rollen oder Profile zu überschreiben. Source-Connections erhalten ohne explizite Read-only-Angabe den Read-only-Default. `php bin/luna connection:test <connection-id>` testet einzelne Connections mit sicherer Ausgabe ohne Passwort, DSN oder entschlüsselte Secrets. Schema- und Mapping-Tabellenlisten nutzen weiterhin `TableNameReader`; detaillierte Schema-Explorer-Ansichten nutzen weiterhin `SchemaInspector`.
+
+### Ergänzung
+
+Connections sind über `/admin/connections/{id}/edit` bearbeitbar. Das Passwortfeld bleibt leer, wenn das bestehende verschlüsselte Secret unverändert bleiben soll; nur ein neu eingegebenes Passwort wird als Secret-Payload gespeichert. Erfolgreiches Workspace-Anlegen redirectet zurück auf `/admin/workspaces`.
+
+Mapping-Tabellenlisten liefern für Dropdowns `name` und `label`; das JavaScript setzt `option.value` aus `name` und den sichtbaren Text aus `label` mit Fallback auf `name`.
+
 ### Offene Punkte
 
 - Browserbasierte Sichtprüfung des Theme-Switches und der dynamischen Selects bleibt bei fehlenden externen Testconnections manuell nachzuholen.

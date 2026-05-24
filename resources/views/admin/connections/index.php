@@ -44,7 +44,12 @@
                     <td><?= htmlspecialchars((string) $connection['database_name'], ENT_QUOTES, 'UTF-8') ?></td>
                     <td><?= (int) $connection['read_only'] === 1 ? 'Ja' : 'Nein' ?></td>
                     <td><?= (int) $connection['is_active'] === 1 ? 'Ja' : 'Nein' ?></td>
-                    <td><a class="btn btn-sm btn-outline-secondary" href="/admin/connections/<?= (int) $connection['id'] ?>">Details</a></td>
+                    <td>
+                        <div class="d-flex gap-2">
+                            <a class="btn btn-sm btn-outline-secondary" href="/admin/connections/<?= (int) $connection['id'] ?>">Details</a>
+                            <a class="btn btn-sm btn-outline-primary" href="/admin/connections/<?= (int) $connection['id'] ?>/edit">Bearbeiten</a>
+                        </div>
+                    </td>
                 </tr>
             <?php endforeach; ?>
             <?php if (($connections ?? []) === []): ?>

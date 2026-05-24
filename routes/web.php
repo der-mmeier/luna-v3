@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Luna\Connections\ConnectionProfileData;
 use Luna\Connections\ConnectionTester;
 use Luna\Connections\ExternalDatabaseConfig;
 use Luna\Connections\ExternalPdoConnectionFactory;
@@ -141,6 +142,37 @@ if (! function_exists('mappingFieldsData')) {
     }
 }
 
+if (! function_exists('connectionValues')) {
+    function connectionValues(Request $request): array
+    {
+        $values = [
+            'workspace_id' => $request->post('workspace_id'),
+            'name' => (string) $request->post('name', ''),
+            'type' => (string) $request->post('type', 'source'),
+            'driver' => (string) $request->post('driver', 'mysql'),
+            'host' => (string) $request->post('host', ''),
+            'port' => (string) $request->post('port', '3306'),
+            'database_name' => (string) $request->post('database_name', ''),
+            'username' => (string) $request->post('username', ''),
+            'charset' => (string) $request->post('charset', 'utf8mb4'),
+            'notes' => (string) $request->post('notes', ''),
+        ];
+
+        if ($request->post('read_only') !== null) {
+            $values['read_only'] = '1';
+        }
+
+        return ConnectionProfileData::normalize($values);
+    }
+}
+
+if (! function_exists('workspaceCreateSuccessRedirect')) {
+    function workspaceCreateSuccessRedirect(): Response
+    {
+        return new Response('', 302, ['Location' => '/admin/workspaces']);
+    }
+}
+
 if (! function_exists('connectionTablesJsonResponse')) {
     function connectionTablesJsonResponse(Closure $connections, Closure $pdoFactory, Closure $configFor, int $connectionId): Response
     {
@@ -161,7 +193,10 @@ if (! function_exists('connectionTablesJsonResponse')) {
             return Response::json([
                 'success' => true,
                 'connection_id' => $connectionId,
-                'tables' => $tables,
+                'tables' => array_map(static fn (array $table): array => [
+                    'name' => (string) $table['name'],
+                    'label' => (string) $table['name'],
+                ], $tables),
             ]);
         } catch (Throwable) {
             return Response::json([
@@ -399,7 +434,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'status' => $values['status'],
         ]);
 
-        return new Response('', 302, ['Location' => '/admin/workspaces/' . $id]);
+        return workspaceCreateSuccessRedirect();
     }, 'admin.workspaces.store', 'web');
 
     $routes->get('/admin/workspaces/{id}', static function (Request $request) use ($admin, $workspaces): Response {
@@ -477,31 +512,15 @@ return static function (RouteCollection $routes, Application $app): void {
             'workspaces' => $workspaceItems,
             'error' => $error,
             'values' => ['type' => 'source', 'driver' => 'mysql', 'port' => '3306', 'charset' => 'utf8mb4', 'read_only' => '1'],
+            'roles' => ConnectionProfileData::roles(),
+            'drivers' => ConnectionProfileData::drivers(),
             'errors' => [],
         ]);
     }, 'admin.connections.create', 'web');
 
     $routes->post('/admin/connections', static function (Request $request) use ($admin, $connections, $workspaces): Response {
-        $values = [
-            'workspace_id' => $request->post('workspace_id'),
-            'name' => (string) $request->post('name', ''),
-            'type' => (string) $request->post('type', 'source'),
-            'driver' => (string) $request->post('driver', 'mysql'),
-            'host' => (string) $request->post('host', ''),
-            'port' => (string) $request->post('port', '3306'),
-            'database_name' => (string) $request->post('database_name', ''),
-            'username' => (string) $request->post('username', ''),
-            'charset' => (string) $request->post('charset', 'utf8mb4'),
-            'read_only' => $request->post('read_only') !== null ? '1' : '',
-            'notes' => (string) $request->post('notes', ''),
-        ];
-        $errors = [];
-
-        foreach (['name' => 'Name', 'driver' => 'Driver', 'host' => 'Host', 'database_name' => 'Datenbankname', 'username' => 'Benutzername'] as $key => $label) {
-            if (trim((string) $values[$key]) === '') {
-                $errors[] = $label . ' ist erforderlich.';
-            }
-        }
+        $values = connectionValues($request);
+        $errors = ConnectionProfileData::validate($values);
 
         if ($errors !== []) {
             return $admin('admin/connections/create', [
@@ -509,13 +528,15 @@ return static function (RouteCollection $routes, Application $app): void {
                 'active' => 'connections',
                 'workspaces' => safeList($workspaces),
                 'values' => $values,
+                'roles' => ConnectionProfileData::roles(),
+                'drivers' => ConnectionProfileData::drivers(),
                 'errors' => $errors,
                 'error' => null,
             ]);
         }
 
         try {
-            $id = $connections()->create($values, ['password' => (string) $request->post('password', '')]);
+            $id = $connections()->create($values, ConnectionProfileData::secretsFromPassword((string) $request->post('password', '')));
 
             return new Response('', 302, ['Location' => '/admin/connections/' . $id]);
         } catch (Throwable) {
@@ -524,11 +545,77 @@ return static function (RouteCollection $routes, Application $app): void {
                 'active' => 'connections',
                 'workspaces' => safeList($workspaces),
                 'values' => $values,
+                'roles' => ConnectionProfileData::roles(),
+                'drivers' => ConnectionProfileData::drivers(),
                 'errors' => ['Connection konnte nicht gespeichert werden. APP_KEY und Systemdatenbank prüfen.'],
                 'error' => null,
             ]);
         }
     }, 'admin.connections.store', 'web');
+
+    $routes->get('/admin/connections/{id}/edit', static function (Request $request) use ($admin, $connections, $workspaces): Response {
+        $profile = $connections()->find((int) $request->route('id'));
+
+        if ($profile === null) {
+            return Response::notFound();
+        }
+
+        return $admin('admin/connections/edit', [
+            'title' => 'Connection bearbeiten',
+            'active' => 'connections',
+            'connection' => $profile,
+            'workspaces' => safeList($workspaces),
+            'values' => $profile,
+            'roles' => ConnectionProfileData::roles(),
+            'drivers' => ConnectionProfileData::drivers(),
+            'errors' => [],
+            'error' => null,
+        ]);
+    }, 'admin.connections.edit', 'web');
+
+    $routes->post('/admin/connections/{id}/edit', static function (Request $request) use ($admin, $connections, $workspaces): Response {
+        $id = (int) $request->route('id');
+        $profile = $connections()->find($id);
+
+        if ($profile === null) {
+            return Response::notFound();
+        }
+
+        $values = connectionValues($request);
+        $errors = ConnectionProfileData::validate($values);
+
+        if ($errors !== []) {
+            return $admin('admin/connections/edit', [
+                'title' => 'Connection bearbeiten',
+                'active' => 'connections',
+                'connection' => $profile,
+                'workspaces' => safeList($workspaces),
+                'values' => $values + ['id' => $id],
+                'roles' => ConnectionProfileData::roles(),
+                'drivers' => ConnectionProfileData::drivers(),
+                'errors' => $errors,
+                'error' => null,
+            ]);
+        }
+
+        try {
+            $connections()->update($id, $values, ConnectionProfileData::secretsFromPassword((string) $request->post('password', '')));
+        } catch (Throwable) {
+            return $admin('admin/connections/edit', [
+                'title' => 'Connection bearbeiten',
+                'active' => 'connections',
+                'connection' => $profile,
+                'workspaces' => safeList($workspaces),
+                'values' => $values + ['id' => $id],
+                'roles' => ConnectionProfileData::roles(),
+                'drivers' => ConnectionProfileData::drivers(),
+                'errors' => ['Connection konnte nicht gespeichert werden. Konfiguration prüfen.'],
+                'error' => null,
+            ]);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/connections']);
+    }, 'admin.connections.update', 'web');
 
     $routes->get('/admin/connections/{id}', static function (Request $request) use ($admin, $connections): Response {
         try {

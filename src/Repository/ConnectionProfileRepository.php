@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Luna\Repository;
 
+use Luna\Connections\ConnectionProfileData;
 use Luna\Database\SystemDatabase;
 use Luna\Security\EncryptionService;
 use PDO;
@@ -114,19 +115,21 @@ final class ConnectionProfileRepository
 
     private function profilePayload(array $data): array
     {
+        $normalized = ConnectionProfileData::normalize($data);
+
         return [
-            'workspace_id' => empty($data['workspace_id']) ? null : (int) $data['workspace_id'],
-            'name' => trim((string) ($data['name'] ?? '')),
-            'type' => trim((string) ($data['type'] ?? 'source')),
-            'driver' => trim((string) ($data['driver'] ?? 'mysql')),
-            'host' => trim((string) ($data['host'] ?? '')),
-            'port' => empty($data['port']) ? null : (int) $data['port'],
-            'database_name' => trim((string) ($data['database_name'] ?? '')),
-            'username' => trim((string) ($data['username'] ?? '')),
-            'read_only' => ! empty($data['read_only']) ? 1 : 0,
-            'is_active' => ! array_key_exists('is_active', $data) || ! empty($data['is_active']) ? 1 : 0,
-            'config_json' => json_encode(['charset' => trim((string) ($data['charset'] ?? 'utf8mb4'))], JSON_UNESCAPED_SLASHES),
-            'notes' => trim((string) ($data['notes'] ?? '')) ?: null,
+            'workspace_id' => $normalized['workspace_id'],
+            'name' => $normalized['name'],
+            'type' => $normalized['type'],
+            'driver' => $normalized['driver'],
+            'host' => $normalized['host'],
+            'port' => $normalized['port'],
+            'database_name' => $normalized['database_name'],
+            'username' => $normalized['username'],
+            'read_only' => $normalized['read_only'],
+            'is_active' => $normalized['is_active'],
+            'config_json' => json_encode(['charset' => $normalized['charset']], JSON_UNESCAPED_SLASHES),
+            'notes' => $normalized['notes'],
         ];
     }
 

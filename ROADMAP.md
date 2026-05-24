@@ -401,6 +401,9 @@ feature/1.1.1-stabilize-before-integration
 
 Luna muss mehrere externe Datenquellen pro Workspace sauber verwalten, testen und im Schema Explorer anzeigen können.
 
+Status:
+In Umsetzung im Branch `feature/1.2.0-multi-connection-integration-foundation`.
+
 Für AsfInStockRings werden mindestens zwei Connections benötigt:
 
 - PIMCore-Datenbank
