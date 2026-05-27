@@ -732,3 +732,34 @@ Die Feldzuordnungsmaske soll eine Lookup-Regel mit echten Source- und Lookup-Sel
 ### Ergebnis
 
 Die Maske nutzt jetzt einen Source-Filter mit `numerisch > 0`, zeigt maximal 10 passende Primary-Source-Zeilen, laedt Lookup-Tabellen als Select pro Lookup Connection, laedt Lookup Key/Value Columns aus der gewaehlten Lookup-Tabelle und zeigt einen Lookup-Test fuer die aktuellen Beispielzeilen. `target_column` bleibt technisch erhalten, wird in der UI aber nur noch als optionaler Ausgabe-Alias verwendet; leer wird beim Speichern `resolved_value` verwendet.
+
+---
+
+## 2026-05-28 - 1.3.1 Lookup Pattern Match Resolver
+
+### Aufgabe
+
+Lookup-Regeln um Pattern-/Prefix-/Suffix-/Contains-/LIKE-Matches und konfigurierbares Result Handling erweitern. Bestehende exakte Lookups muessen kompatibel bleiben.
+
+### Geaenderte Dateien
+
+- database/migrations/2026_05_28_000005_add_lookup_pattern_fields.sql
+- src/Mapping/LookupMatchMode.php
+- src/Mapping/LookupResultMode.php
+- src/Mapping/LookupResult.php
+- src/Mapping/PdoLookupValueProvider.php
+- src/Mapping/MappingFieldResolver.php
+- src/Mapping/MappingValidator.php
+- src/Repository/MappingRepository.php
+- src/Transfer/MappingExecutionResult.php
+- routes/web.php
+- resources/views/admin/mappings/fields.php
+- tests/Unit/LookupMappingResolverTest.php
+- CHANGELOG.md
+- docs/DATA_MODEL_DRAFT.md
+- docs/SECURITY_MODEL.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+Vorbereitet. Lookup-Regeln speichern additiv `lookup_match_mode`, `lookup_result_mode` und `lookup_result_limit`. `exact`/`first` bleiben Default. Pattern-Matches nutzen validierte Match Modes und gebundene SQL-Werte. Result Handling unterstuetzt `first`, `list`, `count`, `sum`, `min` und `max`. Der Lookup-Test zeigt Pattern, Match Mode, Trefferanzahl, Result Handling und Ergebnis.

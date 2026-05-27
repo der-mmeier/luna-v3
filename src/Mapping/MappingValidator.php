@@ -100,6 +100,18 @@ final class MappingValidator
                 }
             }
 
+            if ($transformType === 'lookup_value') {
+                $matchMode = (string) ($field['lookup_match_mode'] ?? 'exact');
+                if (! LookupMatchMode::isValid($matchMode)) {
+                    $result->addError(sprintf('Lookup Match Mode "%s" ist nicht erlaubt.', $matchMode));
+                }
+
+                $resultMode = (string) ($field['lookup_result_mode'] ?? 'first');
+                if (! LookupResultMode::isValid($resultMode)) {
+                    $result->addError(sprintf('Lookup Result Mode "%s" ist nicht erlaubt.', $resultMode));
+                }
+            }
+
             if ($transformType === 'enum_map' && $this->mappings->valueRulesForField((int) $field['id']) === []) {
                 $result->addError(sprintf('Enum Mapping für Transfer-Feld "%s" braucht mindestens eine Value Rule.', $targetColumn));
             }

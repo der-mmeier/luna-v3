@@ -104,10 +104,10 @@ final class MappingRepository
         $statement = $this->database->pdo()->prepare(
             'INSERT INTO luna_mapping_fields
              (mapping_set_id, source_column, source_json_path, target_column, transform_type, default_value,
-              lookup_connection_id, lookup_table, lookup_key_column, lookup_value_column, lookup_key_template, fallback_value, missing_behavior,
+              lookup_connection_id, lookup_table, lookup_key_column, lookup_value_column, lookup_key_template, lookup_match_mode, lookup_result_mode, lookup_result_limit, fallback_value, missing_behavior,
               is_required, notes, sort_order, created_at, updated_at)
              VALUES (:mapping_set_id, :source_column, :source_json_path, :target_column, :transform_type, :default_value,
-              :lookup_connection_id, :lookup_table, :lookup_key_column, :lookup_value_column, :lookup_key_template, :fallback_value, :missing_behavior,
+              :lookup_connection_id, :lookup_table, :lookup_key_column, :lookup_value_column, :lookup_key_template, :lookup_match_mode, :lookup_result_mode, :lookup_result_limit, :fallback_value, :missing_behavior,
               :is_required, :notes, :sort_order, NOW(), NOW())',
         );
         $statement->execute($payload);
@@ -131,6 +131,9 @@ final class MappingRepository
                  lookup_key_column = :lookup_key_column,
                  lookup_value_column = :lookup_value_column,
                  lookup_key_template = :lookup_key_template,
+                 lookup_match_mode = :lookup_match_mode,
+                 lookup_result_mode = :lookup_result_mode,
+                 lookup_result_limit = :lookup_result_limit,
                  fallback_value = :fallback_value,
                  missing_behavior = :missing_behavior,
                  is_required = :is_required,
@@ -232,6 +235,13 @@ final class MappingRepository
             'lookup_key_column' => trim((string) ($data['lookup_key_column'] ?? '')) ?: null,
             'lookup_value_column' => trim((string) ($data['lookup_value_column'] ?? '')) ?: null,
             'lookup_key_template' => trim((string) ($data['lookup_key_template'] ?? '')) ?: null,
+            'lookup_match_mode' => in_array((string) ($data['lookup_match_mode'] ?? 'exact'), ['exact', 'prefix', 'suffix', 'contains', 'like'], true)
+                ? (string) ($data['lookup_match_mode'] ?? 'exact')
+                : 'exact',
+            'lookup_result_mode' => in_array((string) ($data['lookup_result_mode'] ?? 'first'), ['first', 'list', 'count', 'sum', 'min', 'max'], true)
+                ? (string) ($data['lookup_result_mode'] ?? 'first')
+                : 'first',
+            'lookup_result_limit' => empty($data['lookup_result_limit']) ? null : max(1, min((int) $data['lookup_result_limit'], 500)),
             'fallback_value' => array_key_exists('fallback_value', $data) ? (string) $data['fallback_value'] : null,
             'missing_behavior' => in_array((string) ($data['missing_behavior'] ?? 'error'), ['error', 'warning', 'fallback', 'nullable'], true)
                 ? (string) ($data['missing_behavior'] ?? 'error')
