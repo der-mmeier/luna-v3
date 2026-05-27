@@ -14,6 +14,108 @@ Jeder Eintrag soll enthalten:
 - Offene Punkte
 - Commit-Hash, falls vorhanden
 
+## Abschlussprüfung: sichtbare deutsche UI-Texte
+
+Bei jeder Codex-Aufgabe muss am Ende geprüft werden, ob neu geänderte sichtbare deutsche UI-Texte korrekte Umlaute verwenden.
+
+Diese Prüfung gilt ausschließlich für Texte, die Menschen in der Oberfläche sehen.
+
+Dazu gehören:
+
+- Labels
+- Button-Texte
+- Formularbeschriftungen
+- Hilfetexte
+- Validierungsmeldungen
+- Fehlermeldungen in der UI
+- Tabellenüberschriften
+- Navigationspunkte
+- Statusmeldungen
+- Empty-State-Texte
+- sichtbare Beschreibungstexte in der Admin-Oberfläche
+
+Diese Prüfung gilt ausdrücklich nicht für technischen Code.
+
+Niemals wegen Umlauten ändern:
+
+- PHP-Klassen
+- PHP-Methoden
+- PHP-Variablen
+- Konstanten
+- Enum-Werte
+- Array-Keys
+- JSON-Keys
+- Request-/Response-Felder
+- Datenbanktabellen
+- Datenbankspalten
+- Migrationen
+- Dateinamen
+- CSS-Klassen
+- JavaScript-Identifier
+- Routen
+- CLI-Befehle
+- Config-Keys
+- technische Werte wie `source_column`, `lookup_value`, `target_column`, `price_group`, `missing_behavior`
+
+In sichtbaren deutschen UI-Texten müssen Umlaute korrekt geschrieben werden.
+
+Richtig:
+
+- `Bitte wählen`
+- `Zurück`
+- `Hinzufügen`
+- `Löschen`
+- `Ändern`
+- `Übernehmen`
+- `Für dieses Mapping sind keine Felder vorhanden.`
+- `Größe`
+- `Schlüssel`
+- `Verknüpfung`
+- `Auflösung`
+- `gültig`
+- `ungültig`
+- `möglich`
+- `öffnen`
+- `schließen`
+- `Prüfung`
+- `Ausführung`
+- `Zuordnung`
+
+Falsch in sichtbaren UI-Texten:
+
+- `Bitte waehlen`
+- `Zurueck`
+- `Hinzufuegen`
+- `Loeschen`
+- `Aendern`
+- `Uebernehmen`
+- `Fuer dieses Mapping sind keine Felder vorhanden.`
+- `Groesse`
+- `Schluessel`
+- `Verknuepfung`
+- `Aufloesung`
+- `gueltig`
+- `ungueltig`
+- `moeglich`
+- `oeffnen`
+- `schliessen`
+- `Pruefung`
+- `Ausfuehrung`
+
+Wichtig:
+
+Technische Bezeichner dürfen nicht verändert werden, auch wenn sie deutsch aussehen oder keine Umlaute enthalten. Diese Regel betrifft ausschließlich sichtbare Ausgabetexte für Menschen.
+
+Der Abschlussbericht muss enthalten:
+
+```text
+UI-Umlautprüfung: durchgeführt
+```
+
+Wenn bewusst ein sichtbarer UI-Text ohne Umlaut bleibt, muss der Grund genannt werden.
+
+---
+
 ---
 
 ## 2026-05-16 — Initiale Codex-Struktur
@@ -552,3 +654,81 @@ Mapping-Tabellenlisten liefern für Dropdowns `name` und `label`; das JavaScript
 ### Offene Punkte
 
 - Browserbasierte Sichtprüfung des Theme-Switches und der dynamischen Selects bleibt bei fehlenden externen Testconnections manuell nachzuholen.
+
+---
+
+## 2026-05-25 - Meilenstein 1.3.0 Multi-Source Lookup Mapping und Value Resolver
+
+### Ziel
+
+Mappings sollen aus einer Primary Source und optional mehreren Lookup Sources einen normalisierten Transfer-Datensatz erzeugen.
+
+### Aufgabe
+
+Feldtypen `source_column`, `static_value` und `lookup_value` implementieren, Lookup-Key-Templates aus Source- und Transfer-Kontext rendern, Lookup-Werte ueber weitere Connections aufloesen, Fallback-/Fehlerverhalten vorbereiten und die Dry-Run-Vorschau um Primary-Source-Werte, Resolver-Ereignisse und Transfer-Datensatz erweitern.
+
+### Geaenderte Dateien
+
+- database/migrations/2026_05_25_000004_add_lookup_mapping_fields.sql
+- src/Mapping/*
+- src/Transfer/*
+- src/Repository/MappingRepository.php
+- src/Core/Application.php
+- routes/web.php
+- resources/views/admin/mappings/*
+- tests/Unit/LookupMappingResolverTest.php
+- ROADMAP.md
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+- docs/DATA_MODEL_DRAFT.md
+- docs/SECURITY_MODEL.md
+
+### Ergebnis
+
+Vorbereitet. Lookup Mapping nutzt separate Resolver-Services und einen `LookupValueProvider`, sodass mehrere Lookup-Felder dieselbe oder unterschiedliche Connections verwenden koennen. Dry Runs zeigen weiterhin die bestehenden Preview Rows und zusaetzlich `primary_source_preview`, `transfer_preview` und sichere Resolver-Events.
+
+### Offene Punkte
+
+- Browserbasierter Dry-Run mit echten AsfInStockRings-Daten bleibt manuell zu pruefen.
+
+---
+
+## 2026-05-27 - 1.3.0 Feldzuordnung: Transfer-Feldliste statt DB-Spalten
+
+### Aufgabe
+
+Transfer-Feld in der Feldzuordnungsmaske fachlich von Target- und Lookup-Tabellenspalten trennen. `target_column` bleibt technische Persistenzspalte, wird in der UI aber als Mapping-eigenes Transfer-Feld behandelt.
+
+### Geaenderte Dateien
+
+- routes/web.php
+- resources/views/admin/mappings/fields.php
+- public/assets/js/mapping-tables.js
+- src/Mapping/MappingValidator.php
+- CHANGELOG.md
+- ROADMAP.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+`Transfer-Feld` ist ein Select aus einer minimalen Mapping-Transferfeldliste (`name`, `price_group`, `price`, `pseudo_price`, `product_name`) plus bereits gespeicherten `target_column`-Werten des Mappings. Lookup Key Column und Lookup Value Column werden per Lookup Connection und Lookup Tabelle aus den Lookup-Tabellenspalten geladen. Die Validator-Pruefung vergleicht `target_column` nicht mehr mit Target-DB-Spalten.
+
+---
+
+## 2026-05-28 - 1.3.0 Lookup Mapping UI fachlich korrigiert
+
+### Aufgabe
+
+Die Feldzuordnungsmaske soll eine Lookup-Regel mit echten Source- und Lookup-Selects testbar machen. Hartcodierte Transfer-Feld-Vorschlaege duerfen nicht mehr angezeigt werden.
+
+### Geaenderte Dateien
+
+- routes/web.php
+- resources/views/admin/mappings/fields.php
+- public/assets/js/mapping-tables.js
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+Die Maske nutzt jetzt einen Source-Filter mit `numerisch > 0`, zeigt maximal 10 passende Primary-Source-Zeilen, laedt Lookup-Tabellen als Select pro Lookup Connection, laedt Lookup Key/Value Columns aus der gewaehlten Lookup-Tabelle und zeigt einen Lookup-Test fuer die aktuellen Beispielzeilen. `target_column` bleibt technisch erhalten, wird in der UI aber nur noch als optionaler Ausgabe-Alias verwendet; leer wird beim Speichern `resolved_value` verwendet.

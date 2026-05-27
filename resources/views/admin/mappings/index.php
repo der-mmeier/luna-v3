@@ -44,7 +44,7 @@
                 </tr>
             <?php endforeach; ?>
             <?php if (($mappings ?? []) === []): ?>
-                <tr><td colspan="8" class="text-body-secondary">Noch keine Mapping Sets angelegt.</td></tr>
+                <tr><td colspan="8" class="text-body-secondary">Noch keine Mapping-Sets angelegt.</td></tr>
             <?php endif; ?>
             </tbody>
         </table>

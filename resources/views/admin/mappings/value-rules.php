@@ -71,7 +71,7 @@
                     </tr>
                 <?php endforeach; ?>
                 <?php if (($rules ?? []) === []): ?>
-                    <tr><td colspan="4" class="text-body-secondary">Noch keine Value Rules angelegt.</td></tr>
+                    <tr><td colspan="4" class="text-body-secondary">Noch keine Value-Rules angelegt.</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>

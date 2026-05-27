@@ -5,7 +5,7 @@
 </div>
 
 <?php if ((string) $endpoint['visibility'] === 'private'): ?>
-    <div class="alert alert-warning">Private Endpoints benoetigen ein Secret. Das Secret wird nicht angezeigt und nicht in diesem Test offengelegt.</div>
+    <div class="alert alert-warning">Private Endpoints benötigen ein Secret. Das Secret wird nicht angezeigt und nicht in diesem Test offengelegt.</div>
 <?php endif; ?>
 
 <div class="card admin-card">

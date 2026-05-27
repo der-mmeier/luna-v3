@@ -10,8 +10,14 @@
 
 $short = static function (mixed $value): string {
     $text = (string) $value;
-    return strlen($text) > 80 ? substr($text, 0, 77) . '...' : $text;
+    return strlen($text) > 32 ? substr($text, 0, 29) . '...' : $text;
 };
+
+$sampleColumns = array_map(static fn (array $column): string => (string) ($column['column_name'] ?? ''), $columns ?? []);
+
+if ($sampleColumns === [] && ($samples ?? []) !== []) {
+    $sampleColumns = array_keys($samples[0]);
+}
 ?>
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
@@ -85,18 +91,29 @@ $short = static function (mixed $value): string {
     <div class="card-header">Beispieldaten</div>
     <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
-            <tbody>
-            <?php foreach ($samples ?? [] as $row): ?>
+            <?php if (($samples ?? []) !== []): ?>
+                <thead>
                 <tr>
-                    <?php foreach ($row as $value): ?>
-                        <td><?= htmlspecialchars($short($value), ENT_QUOTES, 'UTF-8') ?></td>
+                    <?php foreach ($sampleColumns as $column): ?>
+                        <th><code><?= htmlspecialchars($column, ENT_QUOTES, 'UTF-8') ?></code></th>
                     <?php endforeach; ?>
                 </tr>
-            <?php endforeach; ?>
-            <?php if (($samples ?? []) === []): ?>
+                </thead>
+                <tbody>
+                <?php foreach ($samples as $row): ?>
+                    <tr>
+                        <?php foreach ($sampleColumns as $column): ?>
+                            <?php $value = $row[$column] ?? ''; ?>
+                            <td class="luna-truncate-cell" title="<?= htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($short($value), ENT_QUOTES, 'UTF-8') ?></td>
+                        <?php endforeach; ?>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            <?php else: ?>
+                <tbody>
                 <tr><td class="text-body-secondary">Keine Beispieldaten verfügbar.</td></tr>
+                </tbody>
             <?php endif; ?>
-            </tbody>
         </table>
     </div>
 </div>

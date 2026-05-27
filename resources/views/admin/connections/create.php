@@ -14,7 +14,7 @@ $roles = $roles ?? ['source', 'transfer', 'target'];
 $drivers = $drivers ?? ['mysql', 'mariadb'];
 $formAction = $formAction ?? '/admin/connections';
 $heading = $heading ?? 'Connection anlegen';
-$lead = $lead ?? 'Fuer 1.2.0 werden mehrere MySQL/MariaDB-Verbindungen pro Workspace vorbereitet. Quellverbindungen sind standardmaessig read-only.';
+$lead = $lead ?? 'Für 1.2.0 werden mehrere MySQL/MariaDB-Verbindungen pro Workspace vorbereitet. Quellverbindungen sind standardmäßig read-only.';
 ?>
 <div class="mb-4">
     <h1 class="h3 mb-1"><?= htmlspecialchars($heading, ENT_QUOTES, 'UTF-8') ?></h1>
@@ -85,7 +85,7 @@ $lead = $lead ?? 'Fuer 1.2.0 werden mehrere MySQL/MariaDB-Verbindungen pro Works
         <div class="col-md-4">
             <label class="form-label" for="password">Passwort</label>
             <input class="form-control" id="password" name="password" type="password" autocomplete="new-password">
-            <div class="form-text">Leer lassen, um das bestehende Passwort unveraendert zu behalten.</div>
+            <div class="form-text">Leer lassen, um das bestehende Passwort unverändert zu behalten.</div>
         </div>
         <div class="col-md-4">
             <label class="form-label" for="charset">Charset</label>

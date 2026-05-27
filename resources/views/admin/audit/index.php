@@ -1,7 +1,7 @@
 <?php /** @var array<int, array<string, mixed>> $entries */ ?>
 <div class="mb-4">
     <h1 class="h3 mb-1">Audit</h1>
-    <p class="text-body-secondary mb-0">Letzte 100 Audit-Eintraege ohne Secrets.</p>
+    <p class="text-body-secondary mb-0">Letzte 100 Audit-Einträge ohne Secrets.</p>
 </div>
 
 <div class="card admin-card">
@@ -20,7 +20,7 @@
                 </tr>
             <?php endforeach; ?>
             <?php if (($entries ?? []) === []): ?>
-                <tr><td colspan="6" class="text-body-secondary">Keine Audit-Eintraege gefunden.</td></tr>
+                <tr><td colspan="6" class="text-body-secondary">Keine Audit-Einträge gefunden.</td></tr>
             <?php endif; ?>
             </tbody>
         </table>

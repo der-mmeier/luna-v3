@@ -48,14 +48,9 @@ final class MappingValidator
         }
 
         $sourceColumns = [];
-        $targetColumns = [];
 
         if ($sourceConnection !== null && $sourceTable !== '') {
             $sourceColumns = $this->columnsFor($sourceConnection, $sourceTable, 'Source', $result);
-        }
-
-        if ($targetConnection !== null && $targetTable !== '') {
-            $targetColumns = $this->columnsFor($targetConnection, $targetTable, 'Target', $result);
         }
 
         $fields = $this->mappings->fieldsForSet($mappingSetId);
@@ -70,47 +65,43 @@ final class MappingValidator
             }
 
             if ($targetColumn === '') {
-                $result->addError('Ein Mapping Field hat keine Target Column.');
-            } elseif (! isset($targetColumns[$targetColumn]) && $targetColumns !== []) {
-                $result->addError(sprintf('Target Column "%s" existiert nicht.', $targetColumn));
+                $result->addError('Ein Mapping Field hat kein Transfer-Feld.');
             }
 
             if ($targetColumn !== '') {
                 if (isset($mappedTargets[$targetColumn])) {
-                    $result->addError(sprintf('Target Column "%s" ist mehrfach gemappt.', $targetColumn));
+                    $result->addError(sprintf('Transfer-Feld "%s" ist mehrfach gemappt.', $targetColumn));
                 }
                 $mappedTargets[$targetColumn] = true;
             }
 
-            if (! in_array($transformType, ['static', 'json_path'], true)) {
+            if (! in_array($transformType, ['static', 'static_value', 'lookup_value', 'json_path'], true)) {
                 $sourceColumn = (string) ($field['source_column'] ?? '');
                 if ($sourceColumn === '') {
-                    $result->addError(sprintf('Source Column für Target "%s" fehlt.', $targetColumn));
+                    $result->addError(sprintf('Source Column für Transfer-Feld "%s" fehlt.', $targetColumn));
                 } elseif (! isset($sourceColumns[$sourceColumn]) && $sourceColumns !== []) {
                     $result->addError(sprintf('Source Column "%s" existiert nicht.', $sourceColumn));
                 }
             }
 
             if ($transformType === 'json_path' && trim((string) ($field['source_json_path'] ?? '')) === '') {
-                $result->addError(sprintf('JSON Path für Target "%s" fehlt.', $targetColumn));
+                $result->addError(sprintf('JSON Path für Transfer-Feld "%s" fehlt.', $targetColumn));
             }
 
-            if ($transformType === 'static' && (string) ($field['default_value'] ?? '') === '') {
-                $result->addError(sprintf('Static Mapping für Target "%s" braucht default_value.', $targetColumn));
+            if (in_array($transformType, ['static', 'static_value'], true) && (string) ($field['default_value'] ?? '') === '') {
+                $result->addError(sprintf('Static Mapping für Transfer-Feld "%s" braucht default_value.', $targetColumn));
+            }
+
+            if ($transformType === 'lookup_value') {
+                foreach (['lookup_connection_id', 'lookup_table', 'lookup_key_column', 'lookup_value_column', 'lookup_key_template'] as $key) {
+                    if (empty($field[$key])) {
+                        $result->addError(sprintf('Lookup Mapping für Transfer-Feld "%s" braucht %s.', $targetColumn, $key));
+                    }
+                }
             }
 
             if ($transformType === 'enum_map' && $this->mappings->valueRulesForField((int) $field['id']) === []) {
-                $result->addError(sprintf('Enum Mapping für Target "%s" braucht mindestens eine Value Rule.', $targetColumn));
-            }
-        }
-
-        foreach ($targetColumns as $name => $column) {
-            $required = ($column['is_nullable'] ?? '') === 'NO'
-                && ($column['column_default'] ?? null) === null
-                && ! str_contains((string) ($column['extra'] ?? ''), 'auto_increment');
-
-            if ($required && ! isset($mappedTargets[$name])) {
-                $result->addWarning(sprintf('Pflichtfeld "%s" der Target Table ist nicht gemappt.', $name));
+                $result->addError(sprintf('Enum Mapping für Transfer-Feld "%s" braucht mindestens eine Value Rule.', $targetColumn));
             }
         }
 

@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace Luna\Transfer;
 
 use Luna\Repository\MappingRepository;
+use Luna\Mapping\MappingFieldResolver;
 
 final class MappingRowTransformer
 {
-    public function __construct(private readonly MappingRepository $mappings) {}
+    public function __construct(
+        private readonly ?MappingRepository $mappings,
+        private readonly ?MappingFieldResolver $fieldResolver = null,
+    ) {}
 
     public function transform(array $sourceRow, array $fields, MappingExecutionResult $result): array
     {
@@ -17,6 +21,11 @@ final class MappingRowTransformer
         foreach ($fields as $field) {
             $targetColumn = (string) $field['target_column'];
             $type = (string) $field['transform_type'];
+
+            if ($this->fieldResolver !== null && in_array($type, ['source_column', 'static_value', 'lookup_value'], true)) {
+                $target[$targetColumn] = $this->fieldResolver->resolve($sourceRow, $target, $field, $result);
+                continue;
+            }
 
             $target[$targetColumn] = match ($type) {
                 'direct' => $sourceRow[(string) $field['source_column']] ?? null,
@@ -35,7 +44,7 @@ final class MappingRowTransformer
     {
         $sourceValue = (string) ($sourceRow[(string) $field['source_column']] ?? '');
 
-        foreach ($this->mappings->valueRulesForField((int) $field['id']) as $rule) {
+        foreach (($this->mappings?->valueRulesForField((int) $field['id']) ?? []) as $rule) {
             if ((string) $rule['source_value'] === $sourceValue) {
                 return $rule['target_value'];
             }

@@ -34,14 +34,19 @@
         <div class="col-md-2">
             <div class="card admin-card"><div class="card-body"><div class="small text-body-secondary">Dry Run</div><strong><?= (int) $run['dry_run'] === 1 ? 'Ja' : 'Nein' ?></strong></div></div>
         </div>
-        <?php foreach (['source_count' => 'Source', 'transformed_count' => 'Transformiert', 'written_count' => 'Geschrieben', 'skipped_count' => 'Uebersprungen', 'error_count' => 'Fehler'] as $key => $label): ?>
+        <?php foreach (['source_count' => 'Source', 'transformed_count' => 'Transformiert', 'written_count' => 'Geschrieben', 'skipped_count' => 'Übersprungen', 'error_count' => 'Fehler'] as $key => $label): ?>
             <div class="col-md-2">
                 <div class="card admin-card"><div class="card-body"><div class="small text-body-secondary"><?= $label ?></div><strong><?= (int) $run[$key] ?></strong></div></div>
             </div>
         <?php endforeach; ?>
     </div>
 
-    <?php if (! empty($summary['preview_rows'])): ?>
+    <?php if (! empty($summary['records'])): ?>
+        <div class="card admin-card mb-4">
+            <div class="card-header">Dry Run: Source, Lookups, Transfer und Errors</div>
+            <pre class="p-3 mb-0"><?= htmlspecialchars(json_encode($summary['records'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?></pre>
+        </div>
+    <?php elseif (! empty($summary['preview_rows'])): ?>
         <div class="card admin-card mb-4">
             <div class="card-header">Dry Run Preview</div>
             <pre class="p-3 mb-0"><?= htmlspecialchars(json_encode($summary['preview_rows'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?></pre>

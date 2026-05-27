@@ -103,8 +103,12 @@ final class MappingRepository
         $payload['mapping_set_id'] = $mappingSetId;
         $statement = $this->database->pdo()->prepare(
             'INSERT INTO luna_mapping_fields
-             (mapping_set_id, source_column, source_json_path, target_column, transform_type, default_value, is_required, notes, sort_order, created_at, updated_at)
-             VALUES (:mapping_set_id, :source_column, :source_json_path, :target_column, :transform_type, :default_value, :is_required, :notes, :sort_order, NOW(), NOW())',
+             (mapping_set_id, source_column, source_json_path, target_column, transform_type, default_value,
+              lookup_connection_id, lookup_table, lookup_key_column, lookup_value_column, lookup_key_template, fallback_value, missing_behavior,
+              is_required, notes, sort_order, created_at, updated_at)
+             VALUES (:mapping_set_id, :source_column, :source_json_path, :target_column, :transform_type, :default_value,
+              :lookup_connection_id, :lookup_table, :lookup_key_column, :lookup_value_column, :lookup_key_template, :fallback_value, :missing_behavior,
+              :is_required, :notes, :sort_order, NOW(), NOW())',
         );
         $statement->execute($payload);
 
@@ -122,6 +126,13 @@ final class MappingRepository
                  target_column = :target_column,
                  transform_type = :transform_type,
                  default_value = :default_value,
+                 lookup_connection_id = :lookup_connection_id,
+                 lookup_table = :lookup_table,
+                 lookup_key_column = :lookup_key_column,
+                 lookup_value_column = :lookup_value_column,
+                 lookup_key_template = :lookup_key_template,
+                 fallback_value = :fallback_value,
+                 missing_behavior = :missing_behavior,
                  is_required = :is_required,
                  notes = :notes,
                  sort_order = :sort_order,
@@ -216,6 +227,15 @@ final class MappingRepository
             'target_column' => trim((string) ($data['target_column'] ?? '')),
             'transform_type' => trim((string) ($data['transform_type'] ?? 'direct')) ?: 'direct',
             'default_value' => array_key_exists('default_value', $data) ? (string) $data['default_value'] : null,
+            'lookup_connection_id' => empty($data['lookup_connection_id']) ? null : (int) $data['lookup_connection_id'],
+            'lookup_table' => trim((string) ($data['lookup_table'] ?? '')) ?: null,
+            'lookup_key_column' => trim((string) ($data['lookup_key_column'] ?? '')) ?: null,
+            'lookup_value_column' => trim((string) ($data['lookup_value_column'] ?? '')) ?: null,
+            'lookup_key_template' => trim((string) ($data['lookup_key_template'] ?? '')) ?: null,
+            'fallback_value' => array_key_exists('fallback_value', $data) ? (string) $data['fallback_value'] : null,
+            'missing_behavior' => in_array((string) ($data['missing_behavior'] ?? 'error'), ['error', 'warning', 'fallback', 'nullable'], true)
+                ? (string) ($data['missing_behavior'] ?? 'error')
+                : 'error',
             'is_required' => ! empty($data['is_required']) ? 1 : 0,
             'notes' => trim((string) ($data['notes'] ?? '')) ?: null,
             'sort_order' => (int) ($data['sort_order'] ?? 0),
