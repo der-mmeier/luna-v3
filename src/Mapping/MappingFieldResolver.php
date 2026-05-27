@@ -47,6 +47,8 @@ final class MappingFieldResolver
     {
         $targetColumn = (string) ($field['target_column'] ?? 'lookup_value');
         $template = (string) ($field['lookup_key_template'] ?? '');
+        $matchMode = LookupMatchMode::normalize(isset($field['lookup_match_mode']) ? (string) $field['lookup_match_mode'] : null);
+        $resultMode = LookupResultMode::normalize(isset($field['lookup_result_mode']) ? (string) $field['lookup_result_mode'] : null);
         $rendered = $this->templateRenderer->render($template, $sourceRow, $transferRow);
 
         if (! $rendered->isValid()) {
@@ -57,6 +59,8 @@ final class MappingFieldResolver
                 'lookup_table' => (string) ($field['lookup_table'] ?? ''),
                 'lookup_key_column' => (string) ($field['lookup_key_column'] ?? ''),
                 'lookup_value_column' => (string) ($field['lookup_value_column'] ?? ''),
+                'lookup_match_mode' => $matchMode,
+                'lookup_result_mode' => $resultMode,
                 'status' => 'template_placeholder_missing',
                 'missing_placeholders' => $rendered->missingPlaceholders,
             ]);
@@ -66,6 +70,10 @@ final class MappingFieldResolver
             }
 
             return null;
+        }
+
+        if (! LookupMatchMode::hasSearchValue($matchMode, $rendered->value)) {
+            return $this->handleMissingLookup($field, $result, $targetColumn, 'lookup_key_empty', $rendered->value, $template);
         }
 
         $lookup = $this->lookupProvider->lookup($field, $rendered->value);
@@ -79,6 +87,11 @@ final class MappingFieldResolver
                 'lookup_table' => (string) ($field['lookup_table'] ?? ''),
                 'lookup_key_column' => (string) ($field['lookup_key_column'] ?? ''),
                 'lookup_value_column' => (string) ($field['lookup_value_column'] ?? ''),
+                'lookup_match_mode' => $matchMode,
+                'lookup_result_mode' => $resultMode,
+                'rendered_pattern' => LookupMatchMode::parameter($matchMode, $rendered->value),
+                'match_count' => $lookup->matchCount,
+                'matched_values' => array_slice($lookup->matchedValues, 0, 10),
                 'value' => $lookup->value,
                 'status' => 'found',
             ]);
@@ -135,6 +148,9 @@ final class MappingFieldResolver
             'lookup_table' => (string) ($field['lookup_table'] ?? ''),
             'lookup_key_column' => (string) ($field['lookup_key_column'] ?? ''),
             'lookup_value_column' => (string) ($field['lookup_value_column'] ?? ''),
+            'lookup_match_mode' => LookupMatchMode::normalize(isset($field['lookup_match_mode']) ? (string) $field['lookup_match_mode'] : null),
+            'lookup_result_mode' => LookupResultMode::normalize(isset($field['lookup_result_mode']) ? (string) $field['lookup_result_mode'] : null),
+            'rendered_pattern' => LookupMatchMode::parameter(LookupMatchMode::normalize(isset($field['lookup_match_mode']) ? (string) $field['lookup_match_mode'] : null), $lookupKey),
             'value' => null,
             'status' => $status,
         ];

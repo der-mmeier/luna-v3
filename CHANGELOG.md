@@ -10,6 +10,7 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- Lookup Pattern Match Resolver 1.3.1 mit Match Modes `exact`, `prefix`, `suffix`, `contains`, `like` und Result Handling `first`, `list`, `count`, `sum`, `min`, `max`.
 - Workbench UX 1.1.0 mit dunklem Standard-Theme, Light/Dark-Switch und lokalem `luna_theme`-Cookie
 - Workspace-Erstellung und -Bearbeitung über die Admin UI inklusive Slug-Validierung und Audit Events
 - dynamische Source-/Target-Tabellenauswahl beim Mapping-Anlegen und -Bearbeiten über `/admin/api/connection-tables?connection_id=ID`; die bisherige JSON-Route `/admin/schema/{connectionId}/tables.json` bleibt als Kompatibilitätsroute erhalten und lädt für Dropdowns nur Tabellennamen

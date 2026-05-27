@@ -24,6 +24,9 @@ final class PdoLookupValueProvider implements LookupValueProvider
         $table = (string) ($field['lookup_table'] ?? '');
         $keyColumn = (string) ($field['lookup_key_column'] ?? '');
         $valueColumn = (string) ($field['lookup_value_column'] ?? '');
+        $matchMode = LookupMatchMode::normalize(isset($field['lookup_match_mode']) ? (string) $field['lookup_match_mode'] : null);
+        $resultMode = LookupResultMode::normalize(isset($field['lookup_result_mode']) ? (string) $field['lookup_result_mode'] : null);
+        $limit = $this->resultLimit($field);
 
         if (! $this->validIdentifier($table)) {
             return LookupResult::error('lookup_table_not_found');
@@ -35,6 +38,10 @@ final class PdoLookupValueProvider implements LookupValueProvider
 
         if (! $this->validIdentifier($valueColumn)) {
             return LookupResult::error('lookup_value_column_not_found');
+        }
+
+        if (! LookupMatchMode::hasSearchValue($matchMode, $key)) {
+            return LookupResult::error('lookup_key_empty');
         }
 
         try {
@@ -54,8 +61,16 @@ final class PdoLookupValueProvider implements LookupValueProvider
                 return LookupResult::error($schemaError);
             }
 
-            $statement = $pdo->prepare(sprintf('SELECT `%s` AS lookup_value FROM `%s` WHERE `%s` = :lookup_key LIMIT 2', $valueColumn, $table, $keyColumn));
-            $statement->execute(['lookup_key' => $key]);
+            $sql = sprintf(
+                'SELECT `%s` AS lookup_value FROM `%s` WHERE `%s` %s :lookup_key LIMIT %d',
+                $valueColumn,
+                $table,
+                $keyColumn,
+                LookupMatchMode::sqlOperator($matchMode),
+                $matchMode === 'exact' && $resultMode === 'first' ? 2 : $limit,
+            );
+            $statement = $pdo->prepare($sql);
+            $statement->execute(['lookup_key' => LookupMatchMode::parameter($matchMode, $key)]);
             $rows = $statement->fetchAll();
         } catch (Throwable) {
             return LookupResult::error('lookup_connection_unavailable');
@@ -65,11 +80,11 @@ final class PdoLookupValueProvider implements LookupValueProvider
             return LookupResult::error('lookup_key_not_found');
         }
 
-        if (count($rows) > 1) {
+        if ($matchMode === 'exact' && $resultMode === 'first' && count($rows) > 1) {
             return LookupResult::error('ambiguous_lookup_result');
         }
 
-        return LookupResult::found($rows[0]['lookup_value'] ?? null);
+        return LookupResultMode::reduce(array_values(array_map(static fn (array $row): mixed => $row['lookup_value'] ?? null, $rows)), $resultMode);
     }
 
     private function validIdentifier(string $identifier): bool
@@ -95,5 +110,15 @@ final class PdoLookupValueProvider implements LookupValueProvider
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $field
+     */
+    private function resultLimit(array $field): int
+    {
+        $limit = (int) ($field['lookup_result_limit'] ?? 100);
+
+        return max(1, min($limit, 500));
     }
 }

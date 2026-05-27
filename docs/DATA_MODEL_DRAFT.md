@@ -80,6 +80,7 @@ Für 0.8.0 nutzt der Mapping Designer diese Tabellen direkt:
 - `luna_mapping_sets` speichert Workspace, Source-/Target-Connection, Source-/Target-Table und Status.
 - `luna_mapping_fields` speichert Source Column, optionalen JSON Path, Target Column, Transform Type, Default Value, Required-Hinweis, Notizen und Sortierung.
 - Fuer Lookup Mapping 1.3.0 kann `luna_mapping_fields` zusaetzlich `lookup_connection_id`, `lookup_table`, `lookup_key_column`, `lookup_value_column`, `lookup_key_template`, `fallback_value` und `missing_behavior` speichern.
+- Fuer Lookup Pattern Matching 1.3.1 ergaenzt `luna_mapping_fields` additiv `lookup_match_mode`, `lookup_result_mode` und `lookup_result_limit`. Ohne gesetzte Werte bleiben bestehende Regeln kompatibel mit `exact` und `first`.
 - Lookup-Metadaten verweisen auf weitere Connection-Profile, speichern aber keine Zugangsdaten. Der Transfer-Datensatz bleibt die normalisierte Mapping-Ausgabe und ist nicht identisch mit einem spaeteren Endpoint-Profil oder Zielsystem.
 - `luna_mapping_value_rules` speichert fachliche Übersetzungsregeln für `enum_map`.
 - Connection-Secrets werden nicht in Mapping-Tabellen gespeichert.

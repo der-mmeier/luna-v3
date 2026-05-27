@@ -11,6 +11,8 @@ use Luna\Http\Request;
 use Luna\Http\Response;
 use Luna\Jobs\JobRunner;
 use Luna\Mapping\LookupKeyTemplateRenderer;
+use Luna\Mapping\LookupMatchMode;
+use Luna\Mapping\LookupResultMode;
 use Luna\Mapping\MappingValidator;
 use Luna\Mapping\TransformType;
 use Luna\Reports\ReportMailer;
@@ -89,6 +91,9 @@ if (! function_exists('mappingFieldValues')) {
             'lookup_key_column' => (string) $request->post('lookup_key_column', ''),
             'lookup_value_column' => (string) $request->post('lookup_value_column', ''),
             'lookup_key_template' => (string) $request->post('lookup_key_template', ''),
+            'lookup_match_mode' => (string) $request->post('lookup_match_mode', 'exact'),
+            'lookup_result_mode' => (string) $request->post('lookup_result_mode', 'first'),
+            'lookup_result_limit' => $request->post('lookup_result_limit'),
             'fallback_value' => (string) $request->post('fallback_value', ''),
             'missing_behavior' => (string) $request->post('missing_behavior', 'error'),
             'is_required' => $request->post('is_required') !== null ? '1' : '',
@@ -197,6 +202,9 @@ if (! function_exists('mappingPreviewValues')) {
             'lookup_key_column' => (string) ($values['lookup_key_column'] ?? ''),
             'lookup_value_column' => (string) ($values['lookup_value_column'] ?? ''),
             'lookup_key_template' => (string) ($values['lookup_key_template'] ?? ''),
+            'lookup_match_mode' => LookupMatchMode::normalize(isset($values['lookup_match_mode']) ? (string) $values['lookup_match_mode'] : null),
+            'lookup_result_mode' => LookupResultMode::normalize(isset($values['lookup_result_mode']) ? (string) $values['lookup_result_mode'] : null),
+            'lookup_result_limit' => empty($values['lookup_result_limit']) ? 100 : max(1, min((int) $values['lookup_result_limit'], 500)),
             'fallback_value' => (string) ($values['fallback_value'] ?? ''),
             'missing_behavior' => (string) ($values['missing_behavior'] ?? 'nullable'),
             'sort_order' => (int) ($values['sort_order'] ?? 0),
@@ -250,6 +258,9 @@ if (! function_exists('mappingLookupTestResults')) {
         $keyColumn = (string) ($values['lookup_key_column'] ?? '');
         $valueColumn = (string) ($values['lookup_value_column'] ?? '');
         $template = (string) ($values['lookup_key_template'] ?? '');
+        $matchMode = LookupMatchMode::normalize(isset($values['lookup_match_mode']) ? (string) $values['lookup_match_mode'] : null);
+        $resultMode = LookupResultMode::normalize(isset($values['lookup_result_mode']) ? (string) $values['lookup_result_mode'] : null);
+        $limit = max(1, min((int) ($values['lookup_result_limit'] ?? 100), 500));
         $results = [];
 
         if ($sourceRows === [] || $sourceColumn === '' || $connectionId <= 0 || $table === '' || $keyColumn === '' || $valueColumn === '' || $template === '') {
@@ -268,7 +279,14 @@ if (! function_exists('mappingLookupTestResults')) {
             }
 
             $pdo = $pdoFactory()->create(ExternalDatabaseConfig::fromProfile($profile, $connections()->secretsFor($connectionId)), false);
-            $statement = $pdo->prepare(sprintf('SELECT `%s` AS lookup_value FROM `%s` WHERE `%s` = :lookup_key LIMIT 1', $valueColumn, $table, $keyColumn));
+            $statement = $pdo->prepare(sprintf(
+                'SELECT `%s` AS lookup_value FROM `%s` WHERE `%s` %s :lookup_key LIMIT %d',
+                $valueColumn,
+                $table,
+                $keyColumn,
+                LookupMatchMode::sqlOperator($matchMode),
+                $limit,
+            ));
             $renderer = new LookupKeyTemplateRenderer();
 
             foreach ($sourceRows as $row) {
@@ -279,16 +297,21 @@ if (! function_exists('mappingLookupTestResults')) {
                     'source_value' => $sourceValue,
                     'template' => $template,
                     'rendered_key' => '',
+                    'rendered_pattern' => '',
+                    'lookup_match_mode' => $matchMode,
+                    'lookup_result_mode' => $resultMode,
                     'lookup_table' => $table,
                     'lookup_key_column' => $keyColumn,
                     'lookup_value_column' => $valueColumn,
+                    'match_count' => 0,
+                    'matched_values' => [],
                     'status' => 'übersprungen',
                     'message' => '',
                     'found_value' => null,
                 ];
 
-                if ($sourceValueText === '' || $sourceValueText === '-' || ! ctype_digit($sourceValueText) || (int) $sourceValueText <= 0) {
-                    $result['message'] = 'Source-Wert ist leer, nicht numerisch oder nicht größer als 0.';
+                if ($sourceValueText === '' || $sourceValueText === '-') {
+                    $result['message'] = 'Source-Wert ist leer oder ungültig.';
                     $results[] = $result;
                     continue;
                 }
@@ -303,17 +326,30 @@ if (! function_exists('mappingLookupTestResults')) {
                     continue;
                 }
 
-                $statement->execute(['lookup_key' => $rendered->value]);
-                $lookupRow = $statement->fetch();
-
-                if (is_array($lookupRow)) {
-                    $result['status'] = 'gefunden';
-                    $result['found_value'] = $lookupRow['lookup_value'] ?? null;
+                if (! LookupMatchMode::hasSearchValue($matchMode, $rendered->value)) {
+                    $result['message'] = 'Gerendertes Pattern ist leer oder ungültig.';
                     $results[] = $result;
                     continue;
                 }
 
-                $result['status'] = 'nicht gefunden';
+                $lookupPattern = LookupMatchMode::parameter($matchMode, $rendered->value);
+                $result['rendered_pattern'] = $lookupPattern;
+                $statement->execute(['lookup_key' => $lookupPattern]);
+                $lookupRows = $statement->fetchAll();
+                $matchedValues = array_values(array_map(static fn (array $row): mixed => $row['lookup_value'] ?? null, $lookupRows));
+                $lookupResult = LookupResultMode::reduce($matchedValues, $resultMode);
+                $result['match_count'] = $lookupResult->matchCount;
+                $result['matched_values'] = array_slice($lookupResult->matchedValues, 0, 10);
+
+                if ($lookupResult->found) {
+                    $result['status'] = 'gefunden';
+                    $result['found_value'] = $lookupResult->value;
+                    $results[] = $result;
+                    continue;
+                }
+
+                $result['status'] = $lookupResult->errorCode === 'lookup_key_not_found' ? 'nicht gefunden' : 'Fehler';
+                $result['message'] = (string) ($lookupResult->errorCode ?? '');
                 $results[] = $result;
             }
         } catch (Throwable) {
@@ -1236,6 +1272,9 @@ return static function (RouteCollection $routes, Application $app): void {
             'lookup_key_column' => $request->query('lookup_key_column', ''),
             'lookup_value_column' => $request->query('lookup_value_column', ''),
             'lookup_key_template' => $request->query('lookup_key_template', ''),
+            'lookup_match_mode' => $request->query('lookup_match_mode', 'exact'),
+            'lookup_result_mode' => $request->query('lookup_result_mode', 'first'),
+            'lookup_result_limit' => $request->query('lookup_result_limit', 100),
             'fallback_value' => $request->query('fallback_value', ''),
             'missing_behavior' => $request->query('missing_behavior', 'nullable'),
             'sort_order' => $request->query('sort_order', 0),
