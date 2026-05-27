@@ -441,25 +441,39 @@ feature/1.2.0-multi-connection-integration-foundation
 
 ---
 
-## 1.3.0 — Lookup Mapping und Value Resolver
+## 1.3.0 — Multi-Source Lookup Mapping und Value Resolver
 
 ### Ziel
 
-Luna muss Werte nicht nur 1:1 aus einer Datenquelle übernehmen, sondern Werte über eine zweite Datenquelle auflösen können.
+Luna muss Werte nicht nur 1:1 aus einer Datenquelle übernehmen, sondern aus einer Primary Source und optional mehreren Lookup Sources einen normalisierten Transfer-Datensatz erzeugen können.
+
+Wichtig ist die fachliche Trennung:
+
+```text
+n Sources → 1 Transfer-Datensatz → n Endpoint-Profile/Targets
+```
+
+Für 1.3.0 ist umzusetzen:
+
+```text
+n Sources → 1 Transfer-Datensatz
+```
+
+Die spätere Ausgabe an mehrere Endpoint-Profile oder Targets muss architektonisch vorbereitet werden, darf aber noch nicht vollständig umgesetzt werden.
 
 Beispiel für AsfInStockRings:
 
 ```text
-PIMCore Produkt:
+Primary Source: PIMCore Produkt
 name = "E001 Carbon Partnerringe"
 price_group = 2
 
-Preis-DB:
+Lookup Source: Preis-DB
 price_group_2 = 499.00
 price_group_2_pseudo = 599.00
 ```
 
-Daraus soll Luna eine API-fähige Struktur erzeugen:
+Daraus soll Luna einen Transfer-Datensatz erzeugen:
 
 ```json
 {
@@ -470,33 +484,69 @@ Daraus soll Luna eine API-fähige Struktur erzeugen:
 }
 ```
 
+Dieser Transfer-Datensatz ist nicht zwangsläufig das finale Target. Er ist die interne, normalisierte Struktur, aus der spätere Endpoint-Profile unterschiedliche Zielsysteme bedienen können.
+
+Beispiel:
+
+```text
+Transfer-Datensatz
+  → Endpoint Profile: WooCommerce Product API
+  → Endpoint Profile: Custom Lager API
+  → Endpoint Profile: JSON Feed Export
+```
+
 ### Umfang
 
 - Mapping-Feldtyp: `source_column`
 - Mapping-Feldtyp: `static_value`
 - Mapping-Feldtyp: `lookup_value`
+- Primary Source als führende Datenquelle eines Mappings
+- Lookup Sources als zusätzliche Datenquellen für Resolver
+- Mehrere Lookup-Felder pro Mapping
+- Mehrere Lookup-Connections pro Mapping vorbereiten und unterstützen
+- Transfer-Datensatz als eigene logische Ausgabe des Mappings sichtbar machen
+- Endpoint-Profile logisch vom Mapping/Transfer trennen und für spätere Versionen vorbereiten
 - Lookup-Regeln:
   - Lookup-Connection wählen
   - Lookup-Tabelle wählen
   - Key-Spalte wählen
   - Value-Spalte wählen
   - Key-Template definieren
+  - optionalen Fallback-Wert vorbereiten
+  - Verhalten bei fehlenden Lookup-Werten vorbereiten
+- Transfer-Felddefinition pro Mapping als eigene Liste, getrennt von Target- und Lookup-Tabellenspalten
 - Template-Unterstützung für Lookup-Keys:
   - `price_group_{{price_group}}`
   - `price_group_{{price_group}}_pseudo`
+  - weitere Platzhalter aus Source-Zeile oder bereits aufgebautem Transfer-Kontext
 - Preview/Dry-Run für Mapping
+- JSON-Vorschau des fertigen Transfer-Datensatzes
 - Fehleranzeige bei fehlenden Lookup-Keys
+- Fehleranzeige bei fehlenden Template-Platzhaltern
 - Optionale Fallback-Werte vorbereiten
 
 ### Akzeptanzkriterien
 
-- Ein Mapping kann Werte aus einer Source-Tabelle lesen
+- Ein Mapping kann Werte aus einer Primary Source lesen
+- Ein Mapping kann `source_column` ausführen
+- Ein Mapping kann `static_value` ausführen
+- Ein Mapping kann `lookup_value` ausführen
 - Ein Mapping kann pro Zeile einen Lookup gegen eine zweite Connection ausführen
+- Ein Mapping kann mehrere Lookup-Felder verwenden
+- Ein Mapping kann mehrere Lookup-Sources verwenden, wenn unterschiedliche Felder unterschiedliche Lookup-Connections konfigurieren
 - `price_group_x` und `price_group_x_pseudo` können aufgelöst werden
-- Dry-Run zeigt mindestens 10 Beispielzeilen als JSON-Vorschau
+- `price_group_{{price_group}}` wird korrekt gerendert
+- `price_group_{{price_group}}_pseudo` wird korrekt gerendert
+- Der fertige Transfer-Datensatz wird im Dry-Run sichtbar
+- Dry-Run zeigt mindestens 10 Beispielzeilen als JSON-Vorschau, sofern mindestens 10 Source-Zeilen vorhanden sind
 - Fehlende Preisgruppen werden sichtbar gemeldet
+- Fehlende Lookup-Keys werden sichtbar gemeldet
+- Fehlende Template-Platzhalter werden sichtbar gemeldet
 - Fehler werden nicht still verschluckt
-- Keine Secrets werden in Mapping-Preview oder Fehlerausgaben angezeigt
+- Optionale Fallback-Werte sind technisch vorbereitet und mindestens im Resolver berücksichtigt
+- Keine Secrets werden in Mapping-Preview, Dry-Run, CLI-Ausgaben, Logs oder Fehlerausgaben angezeigt
+- Die Datenstruktur blockiert nicht, dass später mehrere Endpoint-Profile aus einem Transfer-Datensatz entstehen
+- Bestehende 1.2.0-Flows bleiben rückwärtskompatibel
 - Neue Resolver- und Mapping-Logik ist durch PHPUnit-Tests abgedeckt
 - `composer check` läuft nach Abschluss des Meilensteins grün
 
@@ -505,6 +555,7 @@ Daraus soll Luna eine API-fähige Struktur erzeugen:
 ```text
 feature/1.3.0-lookup-mapping-value-resolver
 ```
+
 
 ---
 

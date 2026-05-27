@@ -10,6 +10,7 @@ use Luna\Core\Application;
 use Luna\Http\Request;
 use Luna\Http\Response;
 use Luna\Jobs\JobRunner;
+use Luna\Mapping\LookupKeyTemplateRenderer;
 use Luna\Mapping\MappingValidator;
 use Luna\Mapping\TransformType;
 use Luna\Reports\ReportMailer;
@@ -75,12 +76,21 @@ if (! function_exists('mappingSetErrors')) {
 if (! function_exists('mappingFieldValues')) {
     function mappingFieldValues(Request $request): array
     {
+        $targetColumn = trim((string) $request->post('target_column', ''));
+
         return [
             'source_column' => (string) $request->post('source_column', ''),
             'source_json_path' => (string) $request->post('source_json_path', ''),
-            'target_column' => (string) $request->post('target_column', ''),
+            'target_column' => $targetColumn === '' ? 'resolved_value' : $targetColumn,
             'transform_type' => (string) $request->post('transform_type', 'direct'),
             'default_value' => (string) $request->post('default_value', ''),
+            'lookup_connection_id' => $request->post('lookup_connection_id'),
+            'lookup_table' => (string) $request->post('lookup_table', ''),
+            'lookup_key_column' => (string) $request->post('lookup_key_column', ''),
+            'lookup_value_column' => (string) $request->post('lookup_value_column', ''),
+            'lookup_key_template' => (string) $request->post('lookup_key_template', ''),
+            'fallback_value' => (string) $request->post('fallback_value', ''),
+            'missing_behavior' => (string) $request->post('missing_behavior', 'error'),
             'is_required' => $request->post('is_required') !== null ? '1' : '',
             'notes' => (string) $request->post('notes', ''),
             'sort_order' => (int) $request->post('sort_order', 0),
@@ -110,12 +120,19 @@ if (! function_exists('mappingViewData')) {
 }
 
 if (! function_exists('mappingFieldsData')) {
-    function mappingFieldsData(Closure $mappings, Closure $connections, Closure $pdoFactory, int $id, array $extra = []): array
+    function mappingFieldsData(Closure $mappings, Closure $connections, Closure $pdoFactory, int $id, array $previewValues = [], array $extra = []): array
     {
         $data = mappingViewData($mappings, $id, $extra);
         $data['sourceColumns'] = [];
-        $data['targetColumns'] = [];
+        $data['sourceSamples'] = [];
+        $data['lookupColumns'] = [];
+        $data['lookupSamples'] = [];
+        $data['lookupTestResults'] = [];
+        $data['lookupTestRequested'] = ! empty($previewValues['lookup_test']);
+        $data['previewValues'] = mappingPreviewValues($previewValues);
+        $data['connections'] = [];
         $data['columnWarning'] = null;
+        $data['lookupWarning'] = null;
 
         if ($data['mapping'] === null) {
             return $data;
@@ -123,22 +140,283 @@ if (! function_exists('mappingFieldsData')) {
 
         try {
             $source = $connections()->find((int) $data['mapping']['source_connection_id']);
-            $target = $connections()->find((int) $data['mapping']['target_connection_id']);
+            $data['connections'] = $connections()->all();
 
             if ($source !== null && ! empty($data['mapping']['source_table'])) {
                 $sourceConfig = ExternalDatabaseConfig::fromProfile($source, $connections()->secretsFor((int) $source['id']));
-                $data['sourceColumns'] = (new SchemaInspector($pdoFactory()->create($sourceConfig)))->columns((string) $data['mapping']['source_table']);
+                $sourcePdo = $pdoFactory()->create($sourceConfig);
+                $data['sourceColumns'] = (new SchemaInspector($sourcePdo))->columns((string) $data['mapping']['source_table']);
+                $data['sourceSamples'] = mappingSampleRows($sourcePdo, (string) $data['mapping']['source_table'], $data['previewValues']);
             }
 
-            if ($target !== null && ! empty($data['mapping']['target_table'])) {
-                $targetConfig = ExternalDatabaseConfig::fromProfile($target, $connections()->secretsFor((int) $target['id']));
-                $data['targetColumns'] = (new SchemaInspector($pdoFactory()->create($targetConfig)))->columns((string) $data['mapping']['target_table']);
+            if ((int) $data['previewValues']['lookup_connection_id'] > 0 && (string) $data['previewValues']['lookup_table'] !== '') {
+                try {
+                    $lookupProfile = $connections()->find((int) $data['previewValues']['lookup_connection_id']);
+
+                    if ($lookupProfile !== null) {
+                        $lookupPdo = $pdoFactory()->create(ExternalDatabaseConfig::fromProfile($lookupProfile, $connections()->secretsFor((int) $lookupProfile['id'])), false);
+                        $data['lookupColumns'] = (new SchemaInspector($lookupPdo))->columns((string) $data['previewValues']['lookup_table']);
+                        $data['lookupSamples'] = (new SampleDataReader($lookupPdo))->sampleRows((string) $data['previewValues']['lookup_table'], null, 10);
+                    }
+                } catch (Throwable) {
+                    $data['lookupWarning'] = 'Lookup-Tabelle konnte nicht gelesen werden.';
+                }
+            }
+
+            if ($data['lookupTestRequested']) {
+                $data['lookupTestResults'] = mappingLookupTestResults($data['sourceSamples'], $data['previewValues'], $connections, $pdoFactory);
             }
         } catch (Throwable) {
-            $data['columnWarning'] = 'Spalten konnten nicht gelesen werden. Textfelder bleiben nutzbar.';
+            $data['columnWarning'] = 'Spalten oder Beispieldaten konnten nicht gelesen werden.';
         }
 
         return $data;
+    }
+}
+
+if (! function_exists('mappingPreviewValues')) {
+    function mappingPreviewValues(array $values): array
+    {
+        $operator = (string) ($values['source_filter_operator'] ?? 'is_numeric_gt_zero');
+        $sourceColumn = (string) ($values['source_column'] ?? '');
+        $sourceFilterColumn = (string) ($values['source_filter_column'] ?? '');
+
+        if (! in_array($operator, ['none', 'is_numeric_gt_zero', 'gt', 'gte', 'eq'], true)) {
+            $operator = 'is_numeric_gt_zero';
+        }
+
+        return [
+            'source_column' => $sourceColumn,
+            'source_filter_column' => $sourceFilterColumn === '' ? $sourceColumn : $sourceFilterColumn,
+            'source_filter_operator' => $operator,
+            'source_filter_value' => (string) ($values['source_filter_value'] ?? '0'),
+            'target_column' => trim((string) ($values['target_column'] ?? '')),
+            'transform_type' => (string) ($values['transform_type'] ?? 'lookup_value'),
+            'lookup_connection_id' => (int) ($values['lookup_connection_id'] ?? 0),
+            'lookup_table' => (string) ($values['lookup_table'] ?? ''),
+            'lookup_key_column' => (string) ($values['lookup_key_column'] ?? ''),
+            'lookup_value_column' => (string) ($values['lookup_value_column'] ?? ''),
+            'lookup_key_template' => (string) ($values['lookup_key_template'] ?? ''),
+            'fallback_value' => (string) ($values['fallback_value'] ?? ''),
+            'missing_behavior' => (string) ($values['missing_behavior'] ?? 'nullable'),
+            'sort_order' => (int) ($values['sort_order'] ?? 0),
+            'lookup_test' => ! empty($values['lookup_test']),
+        ];
+    }
+}
+
+if (! function_exists('mappingSampleRows')) {
+    function mappingSampleRows(PDO $pdo, string $tableName, array $values): array
+    {
+        $operator = (string) ($values['source_filter_operator'] ?? 'none');
+        $column = (string) ($values['source_filter_column'] ?? '');
+
+        if ($operator === 'none' || $column === '') {
+            return (new SampleDataReader($pdo))->sampleRows($tableName, null, 10);
+        }
+
+        mappingAssertIdentifier($tableName);
+        mappingAssertIdentifier($column);
+
+        $table = mappingQuoteIdentifier($tableName);
+        $quotedColumn = mappingQuoteIdentifier($column);
+
+        if ($operator === 'is_numeric_gt_zero') {
+            $statement = $pdo->query(sprintf(
+                "SELECT * FROM %s WHERE TRIM(CAST(%s AS CHAR)) REGEXP '^[0-9]+$' AND CAST(%s AS SIGNED) > 0 LIMIT 10",
+                $table,
+                $quotedColumn,
+                $quotedColumn,
+            ));
+
+            return $statement->fetchAll();
+        }
+
+        $value = (string) ($values['source_filter_value'] ?? '');
+        $sqlOperator = ['gt' => '>', 'gte' => '>=', 'eq' => '='][$operator] ?? '=';
+        $statement = $pdo->prepare(sprintf('SELECT * FROM %s WHERE %s %s :filter_value LIMIT 10', $table, $quotedColumn, $sqlOperator));
+        $statement->execute(['filter_value' => $value]);
+
+        return $statement->fetchAll();
+    }
+}
+
+if (! function_exists('mappingLookupTestResults')) {
+    function mappingLookupTestResults(array $sourceRows, array $values, Closure $connections, Closure $pdoFactory): array
+    {
+        $sourceColumn = (string) ($values['source_column'] ?? '');
+        $connectionId = (int) ($values['lookup_connection_id'] ?? 0);
+        $table = (string) ($values['lookup_table'] ?? '');
+        $keyColumn = (string) ($values['lookup_key_column'] ?? '');
+        $valueColumn = (string) ($values['lookup_value_column'] ?? '');
+        $template = (string) ($values['lookup_key_template'] ?? '');
+        $results = [];
+
+        if ($sourceRows === [] || $sourceColumn === '' || $connectionId <= 0 || $table === '' || $keyColumn === '' || $valueColumn === '' || $template === '') {
+            return $results;
+        }
+
+        try {
+            mappingAssertIdentifier($table);
+            mappingAssertIdentifier($keyColumn);
+            mappingAssertIdentifier($valueColumn);
+
+            $profile = $connections()->find($connectionId);
+
+            if ($profile === null) {
+                return $results;
+            }
+
+            $pdo = $pdoFactory()->create(ExternalDatabaseConfig::fromProfile($profile, $connections()->secretsFor($connectionId)), false);
+            $statement = $pdo->prepare(sprintf('SELECT `%s` AS lookup_value FROM `%s` WHERE `%s` = :lookup_key LIMIT 1', $valueColumn, $table, $keyColumn));
+            $renderer = new LookupKeyTemplateRenderer();
+
+            foreach ($sourceRows as $row) {
+                $sourceValue = $row[$sourceColumn] ?? null;
+                $sourceValueText = trim((string) $sourceValue);
+                $result = [
+                    'source_column' => $sourceColumn,
+                    'source_value' => $sourceValue,
+                    'template' => $template,
+                    'rendered_key' => '',
+                    'lookup_table' => $table,
+                    'lookup_key_column' => $keyColumn,
+                    'lookup_value_column' => $valueColumn,
+                    'status' => 'übersprungen',
+                    'message' => '',
+                    'found_value' => null,
+                ];
+
+                if ($sourceValueText === '' || $sourceValueText === '-' || ! ctype_digit($sourceValueText) || (int) $sourceValueText <= 0) {
+                    $result['message'] = 'Source-Wert ist leer, nicht numerisch oder nicht größer als 0.';
+                    $results[] = $result;
+                    continue;
+                }
+
+                $rendered = $renderer->render($template, $row, []);
+                $result['rendered_key'] = $rendered->value;
+
+                if (! $rendered->isValid()) {
+                    $result['status'] = 'Template-Platzhalter fehlt';
+                    $result['message'] = implode(', ', $rendered->missingPlaceholders);
+                    $results[] = $result;
+                    continue;
+                }
+
+                $statement->execute(['lookup_key' => $rendered->value]);
+                $lookupRow = $statement->fetch();
+
+                if (is_array($lookupRow)) {
+                    $result['status'] = 'gefunden';
+                    $result['found_value'] = $lookupRow['lookup_value'] ?? null;
+                    $results[] = $result;
+                    continue;
+                }
+
+                $result['status'] = 'nicht gefunden';
+                $results[] = $result;
+            }
+        } catch (Throwable) {
+            return $results;
+        }
+
+        return $results;
+    }
+}
+
+if (! function_exists('mappingAssertIdentifier')) {
+    function mappingAssertIdentifier(string $identifier): void
+    {
+        if (preg_match('/^[A-Za-z0-9_]+$/', $identifier) !== 1) {
+            throw new RuntimeException('Invalid SQL identifier.');
+        }
+    }
+}
+
+if (! function_exists('mappingQuoteIdentifier')) {
+    function mappingQuoteIdentifier(string $identifier): string
+    {
+        mappingAssertIdentifier($identifier);
+
+        return '`' . str_replace('`', '``', $identifier) . '`';
+    }
+}
+
+if (! function_exists('mappingLookupPreview')) {
+    function mappingLookupPreview(array $field, array $sourceSample, Closure $connections, Closure $pdoFactory, LookupKeyTemplateRenderer $renderer): array
+    {
+        $preview = [
+            'field' => (string) ($field['target_column'] ?? ''),
+            'connection' => null,
+            'table' => (string) ($field['lookup_table'] ?? ''),
+            'columns' => [],
+            'samples' => [],
+            'rendered_key' => null,
+            'missing_placeholders' => [],
+            'found_value' => null,
+            'status' => 'not_available',
+            'message' => 'Lookup-Preview ist erst nach gespeicherter Lookup Connection und Lookup Tabelle verfügbar.',
+        ];
+
+        $connectionId = (int) ($field['lookup_connection_id'] ?? 0);
+        $table = (string) ($field['lookup_table'] ?? '');
+
+        if ($connectionId <= 0 || $table === '') {
+            return $preview;
+        }
+
+        try {
+            $profile = $connections()->find($connectionId);
+
+            if ($profile === null) {
+                $preview['status'] = 'connection_missing';
+                $preview['message'] = 'Lookup Connection wurde nicht gefunden.';
+                return $preview;
+            }
+
+            $preview['connection'] = ['id' => (int) $profile['id'], 'name' => (string) $profile['name']];
+            $pdo = $pdoFactory()->create(ExternalDatabaseConfig::fromProfile($profile, $connections()->secretsFor($connectionId)), false);
+            $preview['columns'] = (new SchemaInspector($pdo))->columns($table);
+            $preview['samples'] = (new SampleDataReader($pdo))->sampleRows($table, null, 10);
+
+            $rendered = $renderer->render((string) ($field['lookup_key_template'] ?? ''), $sourceSample, []);
+            $preview['rendered_key'] = $rendered->value;
+            $preview['missing_placeholders'] = $rendered->missingPlaceholders;
+
+            if (! $rendered->isValid()) {
+                $preview['status'] = 'template_placeholder_missing';
+                $preview['message'] = 'Lookup-Key konnte wegen fehlender Platzhalter nicht gerendert werden.';
+                return $preview;
+            }
+
+            $keyColumn = (string) ($field['lookup_key_column'] ?? '');
+            $valueColumn = (string) ($field['lookup_value_column'] ?? '');
+
+            if ($keyColumn === '' || $valueColumn === '' || preg_match('/^[A-Za-z0-9_]+$/', $table) !== 1 || preg_match('/^[A-Za-z0-9_]+$/', $keyColumn) !== 1 || preg_match('/^[A-Za-z0-9_]+$/', $valueColumn) !== 1) {
+                $preview['status'] = 'invalid_lookup_config';
+                $preview['message'] = 'Lookup-Spalten oder Tabelle sind ungültig.';
+                return $preview;
+            }
+
+            $statement = $pdo->prepare(sprintf('SELECT `%s` AS lookup_value FROM `%s` WHERE `%s` = :lookup_key LIMIT 1', $valueColumn, $table, $keyColumn));
+            $statement->execute(['lookup_key' => $rendered->value]);
+            $row = $statement->fetch();
+
+            if (is_array($row)) {
+                $preview['found_value'] = $row['lookup_value'] ?? null;
+                $preview['status'] = 'found';
+                $preview['message'] = 'Lookup-Key wurde gefunden.';
+                return $preview;
+            }
+
+            $preview['status'] = 'not_found';
+            $preview['message'] = 'Lookup-Key wurde in der Lookup Source nicht gefunden.';
+            return $preview;
+        } catch (Throwable) {
+            $preview['status'] = 'preview_failed';
+            $preview['message'] = 'Lookup-Preview konnte nicht geladen werden.';
+            return $preview;
+        }
     }
 }
 
@@ -209,6 +487,45 @@ if (! function_exists('connectionTablesJsonResponse')) {
     }
 }
 
+if (! function_exists('connectionTableColumnsJsonResponse')) {
+    function connectionTableColumnsJsonResponse(Closure $connections, Closure $pdoFactory, Closure $configFor, int $connectionId, string $tableName): Response
+    {
+        try {
+            $profile = $connections()->find($connectionId);
+
+            if ($profile === null || $tableName === '') {
+                return Response::json([
+                    'success' => false,
+                    'connection_id' => $connectionId,
+                    'table' => $tableName,
+                    'columns' => [],
+                    'message' => 'Connection oder Tabelle nicht gefunden.',
+                ], 404);
+            }
+
+            $columns = (new SchemaInspector($pdoFactory()->create($configFor($profile), false)))->columns($tableName);
+
+            return Response::json([
+                'success' => true,
+                'connection_id' => $connectionId,
+                'table' => $tableName,
+                'columns' => array_map(static fn (array $column): array => [
+                    'name' => (string) $column['column_name'],
+                    'label' => (string) $column['column_name'],
+                ], $columns),
+            ]);
+        } catch (Throwable) {
+            return Response::json([
+                'success' => false,
+                'connection_id' => $connectionId,
+                'table' => $tableName,
+                'columns' => [],
+                'message' => 'Spalten konnten nicht geladen werden.',
+            ], 500);
+        }
+    }
+}
+
 if (! function_exists('jobValues')) {
     function jobValues(Request $request): array
     {
@@ -273,22 +590,22 @@ if (! function_exists('endpointErrors')) {
             $errors[] = 'Endpoint Key ist erforderlich.';
         }
         if (! in_array((string) $values['method'], ['GET', 'POST'], true)) {
-            $errors[] = 'Method ist ungueltig.';
+            $errors[] = 'Method ist ungültig.';
         }
         if (! in_array((string) $values['visibility'], ['public', 'private'], true)) {
-            $errors[] = 'Visibility ist ungueltig.';
+            $errors[] = 'Visibility ist ungültig.';
         }
         if (! in_array((string) $values['status'], ['draft', 'active', 'disabled'], true)) {
-            $errors[] = 'Status ist ungueltig.';
+            $errors[] = 'Status ist ungültig.';
         }
         if (! in_array((string) $values['source_type'], ['static', 'version', 'mapping_dry_run', 'job_status', 'latest_report'], true)) {
-            $errors[] = 'Source Type ist ungueltig.';
+            $errors[] = 'Source Type ist ungültig.';
         }
         if ($requireSecret && (string) $values['visibility'] === 'private') {
             $errors[] = 'Private Endpoints sollten ein Secret erhalten.';
         }
         if ($staticResponse !== '' && json_decode($staticResponse, true) === null && json_last_error() !== JSON_ERROR_NONE) {
-            $errors[] = 'Static Response JSON ist ungueltig.';
+            $errors[] = 'Static Response JSON ist ungültig.';
         }
 
         return $errors;
@@ -324,7 +641,7 @@ if (! function_exists('workspaceErrors')) {
         }
 
         if (! in_array((string) $values['status'], ['active', 'archived', 'disabled'], true)) {
-            $errors[] = 'Status ist ungueltig.';
+            $errors[] = 'Status ist ungültig.';
         }
 
         if ((string) $values['slug'] !== '' && $workspaces->slugExists((string) $values['slug'], $ignoreId)) {
@@ -694,6 +1011,16 @@ return static function (RouteCollection $routes, Application $app): void {
         return $connectionTablesJson((int) $request->query('connection_id', 0));
     }, 'admin.api.connection_tables', 'web');
 
+    $routes->get('/admin/api/connection-table-columns', static function (Request $request) use ($connections, $pdoFactory, $configFor): Response {
+        return connectionTableColumnsJsonResponse(
+            $connections,
+            $pdoFactory,
+            $configFor,
+            (int) $request->query('connection_id', 0),
+            (string) $request->query('table', ''),
+        );
+    }, 'admin.api.connection_table_columns', 'web');
+
     $routes->get('/admin/schema/{connectionId}/table', static function (Request $request) use ($admin, $connections, $configFor, $pdoFactory, $metadata): Response {
         $tableName = (string) $request->query('table', '');
 
@@ -897,11 +1224,28 @@ return static function (RouteCollection $routes, Application $app): void {
 
     $routes->get('/admin/mappings/{id}/fields', static function (Request $request) use ($admin, $mappings, $connections, $pdoFactory): Response {
         $id = (int) $request->route('id');
+        $previewValues = [
+            'source_column' => $request->query('source_column', ''),
+            'source_filter_column' => $request->query('source_filter_column', ''),
+            'source_filter_operator' => $request->query('source_filter_operator', 'is_numeric_gt_zero'),
+            'source_filter_value' => $request->query('source_filter_value', '0'),
+            'target_column' => $request->query('target_column', ''),
+            'transform_type' => $request->query('transform_type', 'lookup_value'),
+            'lookup_connection_id' => $request->query('lookup_connection_id', 0),
+            'lookup_table' => $request->query('lookup_table', ''),
+            'lookup_key_column' => $request->query('lookup_key_column', ''),
+            'lookup_value_column' => $request->query('lookup_value_column', ''),
+            'lookup_key_template' => $request->query('lookup_key_template', ''),
+            'fallback_value' => $request->query('fallback_value', ''),
+            'missing_behavior' => $request->query('missing_behavior', 'nullable'),
+            'sort_order' => $request->query('sort_order', 0),
+            'lookup_test' => $request->query('lookup_test', ''),
+        ];
 
-        return $admin('admin/mappings/fields', mappingFieldsData($mappings, $connections, $pdoFactory, $id, [
+        return $admin('admin/mappings/fields', mappingFieldsData($mappings, $connections, $pdoFactory, $id, $previewValues, [
             'title' => 'Feldzuordnungen',
             'active' => 'mappings',
-            'transformTypes' => TransformType::labels(),
+            'transformTypes' => TransformType::formLabels(),
         ]));
     }, 'admin.mappings.fields', 'web');
 
@@ -1217,7 +1561,7 @@ return static function (RouteCollection $routes, Application $app): void {
         $id = (int) $request->route('id');
         $endpoint = $endpoints()->find($id);
         $endpoints()->delete($id);
-        $audit()->log(isset($endpoint['workspace_id']) ? (int) $endpoint['workspace_id'] : null, 'endpoint.deleted', 'endpoint', (string) $id, 'Endpoint geloescht.');
+        $audit()->log(isset($endpoint['workspace_id']) ? (int) $endpoint['workspace_id'] : null, 'endpoint.deleted', 'endpoint', (string) $id, 'Endpoint gelöscht.');
 
         return new Response('', 302, ['Location' => '/admin/endpoints']);
     }, 'admin.endpoints.delete', 'web');
@@ -1229,7 +1573,7 @@ return static function (RouteCollection $routes, Application $app): void {
             return Response::notFound();
         }
 
-        $result = ['notice' => 'Private Endpoints benoetigen ein Secret. Secrets werden hier nicht angezeigt.'];
+        $result = ['notice' => 'Private Endpoints benötigen ein Secret. Secrets werden hier nicht angezeigt.'];
         if ((string) $endpoint['visibility'] === 'public') {
             $result = json_decode($app->services()->get('api.endpoint_response_builder')->build($endpoint)->body(), true) ?: [];
         }

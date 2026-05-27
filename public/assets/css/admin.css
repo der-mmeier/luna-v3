@@ -222,6 +222,13 @@ a:focus {
     border-color: var(--luna-border);
 }
 
+.luna-truncate-cell {
+    max-width: 32ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Forms */
 .form-control,
 .form-select {

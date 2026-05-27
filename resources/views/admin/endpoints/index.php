@@ -2,7 +2,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h1 class="h3 mb-1">Endpoints</h1>
-        <p class="text-body-secondary mb-0">Einfache API-Endpunkte fuer Integrationsprojekte.</p>
+        <p class="text-body-secondary mb-0">Einfache API-Endpunkte für Integrationsprojekte.</p>
     </div>
     <a class="btn btn-primary" href="/admin/endpoints/create">Endpoint anlegen</a>
 </div>
@@ -32,7 +32,7 @@
                     <td><?= htmlspecialchars((string) $endpoint['visibility'], ENT_QUOTES, 'UTF-8') ?></td>
                     <td><?= htmlspecialchars((string) $endpoint['status'], ENT_QUOTES, 'UTF-8') ?></td>
                     <td><?= htmlspecialchars((string) $endpoint['source_type'], ENT_QUOTES, 'UTF-8') ?></td>
-                    <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="/admin/endpoints/<?= (int) $endpoint['id'] ?>">Oeffnen</a></td>
+                    <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="/admin/endpoints/<?= (int) $endpoint['id'] ?>">Öffnen</a></td>
                 </tr>
             <?php endforeach; ?>
             <?php if (($endpoints ?? []) === []): ?>

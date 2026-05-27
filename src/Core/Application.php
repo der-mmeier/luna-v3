@@ -17,6 +17,8 @@ use Luna\Database\SystemDatabase;
 use Luna\Http\Response;
 use Luna\Jobs\JobRunner;
 use Luna\Mapping\MappingValidator;
+use Luna\Mapping\MappingFieldResolver;
+use Luna\Mapping\PdoLookupValueProvider;
 use Luna\Reports\ReportEngine;
 use Luna\Reports\ReportMailer;
 use Luna\Repository\AuditLogRepository;
@@ -122,7 +124,16 @@ final class Application
             $this->services->get(ConnectionProfileRepository::class),
             $externalPdoFactory,
         ));
-        $this->services->set(MappingRowTransformer::class, new MappingRowTransformer($this->services->get(MappingRepository::class)));
+        $lookupProvider = new PdoLookupValueProvider(
+            $this->services->get(ConnectionProfileRepository::class),
+            $externalPdoFactory,
+        );
+        $this->services->set(PdoLookupValueProvider::class, $lookupProvider);
+        $this->services->set(MappingFieldResolver::class, new MappingFieldResolver($lookupProvider));
+        $this->services->set(MappingRowTransformer::class, new MappingRowTransformer(
+            $this->services->get(MappingRepository::class),
+            $this->services->get(MappingFieldResolver::class),
+        ));
         $this->services->set(TargetWriter::class, new TargetWriter());
         $this->services->set(MappingExecutor::class, new MappingExecutor(
             $this->services->get(MappingRepository::class),

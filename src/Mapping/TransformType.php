@@ -9,6 +9,9 @@ final class TransformType
     private const LABELS = [
         'direct' => 'Direkt',
         'static' => 'Statischer Wert',
+        'source_column' => 'Source Column',
+        'static_value' => 'Static Value',
+        'lookup_value' => 'Lookup Value',
         'enum_map' => 'Value Mapping',
         'json_path' => 'JSON Path',
         'concat' => 'Concat Entwurf',
@@ -32,5 +35,19 @@ final class TransformType
     public static function labels(): array
     {
         return self::LABELS;
+    }
+
+    public static function formLabels(): array
+    {
+        return [
+            'source_column' => self::LABELS['source_column'],
+            'static_value' => self::LABELS['static_value'],
+            'lookup_value' => self::LABELS['lookup_value'],
+            'enum_map' => self::LABELS['enum_map'],
+            'json_path' => self::LABELS['json_path'],
+            'concat' => self::LABELS['concat'],
+            'direct' => 'Legacy: ' . self::LABELS['direct'],
+            'static' => 'Legacy: ' . self::LABELS['static'],
+        ];
     }
 }

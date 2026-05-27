@@ -57,14 +57,18 @@ final class MappingExecutor
         $sourcePdo = $this->pdoFactory->create(ExternalDatabaseConfig::fromProfile($source, $this->connections->secretsFor((int) $source['id'])));
         $rows = $this->readSourceRows($sourcePdo, (string) $set['source_table'], $limit ?? 25);
         $fields = $this->mappings->fieldsForSet($mappingSetId);
+        $fields = $this->withLookupConnectionNames($fields);
         $targetRows = [];
         $result->sourceCount = count($rows);
         $result->addLog('info', 'Source Rows gelesen.', ['source_count' => $result->sourceCount]);
 
         foreach ($rows as $row) {
+            $result->addSourceRow($row);
+            $eventOffset = $result->resolverEventCount();
             $targetRow = $this->transformer->transform($row, $fields, $result);
             $result->transformedCount++;
             $result->addPreviewRow($targetRow);
+            $result->addPreviewRecord($row, $targetRow, $result->resolverEventsSince($eventOffset));
             $targetRows[] = $targetRow;
         }
 
@@ -96,6 +100,32 @@ final class MappingExecutor
 
         $result->addLog('info', 'mapping.transfer.success');
         return $result;
+    }
+
+    private function withLookupConnectionNames(array $fields): array
+    {
+        $connectionNames = [];
+
+        foreach ($fields as $field) {
+            $connectionId = (int) ($field['lookup_connection_id'] ?? 0);
+
+            if ($connectionId <= 0 || array_key_exists($connectionId, $connectionNames)) {
+                continue;
+            }
+
+            $profile = $this->connections->find($connectionId);
+            $connectionNames[$connectionId] = $profile === null ? '' : (string) ($profile['name'] ?? '');
+        }
+
+        foreach ($fields as $index => $field) {
+            $connectionId = (int) ($field['lookup_connection_id'] ?? 0);
+
+            if ($connectionId > 0) {
+                $fields[$index]['lookup_connection_name'] = $connectionNames[$connectionId] ?? '';
+            }
+        }
+
+        return $fields;
     }
 
     private function readSourceRows(PDO $pdo, string $tableName, int $limit): array

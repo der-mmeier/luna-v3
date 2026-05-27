@@ -8,7 +8,7 @@ $values = $values ?? [];
 ?>
 <div class="mb-4">
     <h1 class="h3 mb-1">Endpoint anlegen</h1>
-    <p class="text-body-secondary mb-0">Private Endpoints speichern Secrets verschluesselt und zeigen sie nie an.</p>
+    <p class="text-body-secondary mb-0">Private Endpoints speichern Secrets verschlüsselt und zeigen sie nie an.</p>
 </div>
 
 <?php foreach ($errors ?? [] as $error): ?>

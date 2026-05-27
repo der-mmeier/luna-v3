@@ -11,6 +11,12 @@
             table: '[data-role="target-table"]',
             filter: '[data-role="target-table-filter"]',
             status: '[data-role="target-table-status"]'
+        },
+        {
+            connection: '[data-role="lookup-connection"]',
+            table: '[data-role="lookup-table"]',
+            filter: '[data-role="lookup-table-filter"]',
+            status: '[data-role="lookup-table-status"]'
         }
     ];
 
@@ -31,7 +37,7 @@
     function fillSelect(select, tables, currentValue, filterText) {
         var normalizedFilter = (filterText || '').toLowerCase();
         select.innerHTML = '';
-        select.appendChild(option('', 'Bitte waehlen', currentValue === ''));
+        select.appendChild(option('', 'Bitte wählen', currentValue === ''));
 
         if (currentValue && !tables.some(function (table) { return table.name === currentValue; })) {
             select.appendChild(option(currentValue, currentValue + ' (gespeichert)', true));
@@ -121,5 +127,90 @@
         reload(false);
     }
 
+    function fillColumnSelect(select, columns, currentValue) {
+        select.innerHTML = '';
+        select.appendChild(option('', 'Bitte wählen', currentValue === ''));
+
+        if (currentValue && !columns.some(function (column) { return column.name === currentValue; })) {
+            select.appendChild(option(currentValue, currentValue + ' (gespeichert)', true));
+        }
+
+        columns.forEach(function (column) {
+            var name = column.name || '';
+            var label = column.label || name || '';
+
+            if (!name) {
+                return;
+            }
+
+            select.appendChild(option(name, label, name === currentValue));
+        });
+    }
+
+    function setupLookupColumns() {
+        var connection = document.querySelector('[data-role="lookup-connection"]');
+        var table = document.querySelector('[data-role="lookup-table"]');
+        var keyColumn = document.querySelector('[data-role="lookup-key-column"]');
+        var valueColumn = document.querySelector('[data-role="lookup-value-column"]');
+
+        if (!connection || !table || !keyColumn || !valueColumn) {
+            return;
+        }
+
+        var currentKeyColumn = keyColumn.getAttribute('data-current') || keyColumn.value || '';
+        var currentValueColumn = valueColumn.getAttribute('data-current') || valueColumn.value || '';
+
+        function reload() {
+            var connectionId = connection.value || '';
+            var tableName = table.value || '';
+
+            if (!connectionId || !tableName) {
+                fillColumnSelect(keyColumn, [], currentKeyColumn);
+                fillColumnSelect(valueColumn, [], currentValueColumn);
+                return;
+            }
+
+            keyColumn.disabled = true;
+            valueColumn.disabled = true;
+
+            fetch('/admin/api/connection-table-columns?connection_id=' + encodeURIComponent(connectionId) + '&table=' + encodeURIComponent(tableName), {
+                headers: {'Accept': 'application/json'}
+            })
+                .then(function (response) { return response.json(); })
+                .then(function (payload) {
+                    if (!payload.success) {
+                        throw new Error(payload.message || 'Spalten konnten nicht geladen werden.');
+                    }
+
+                    var columns = Array.isArray(payload.columns) ? payload.columns : [];
+                    fillColumnSelect(keyColumn, columns, currentKeyColumn);
+                    fillColumnSelect(valueColumn, columns, currentValueColumn);
+                })
+                .catch(function () {
+                    fillColumnSelect(keyColumn, [], currentKeyColumn);
+                    fillColumnSelect(valueColumn, [], currentValueColumn);
+                })
+                .finally(function () {
+                    keyColumn.disabled = false;
+                    valueColumn.disabled = false;
+                });
+        }
+
+        connection.addEventListener('change', reload);
+        table.addEventListener('change', reload);
+        table.addEventListener('blur', reload);
+        keyColumn.addEventListener('change', function () {
+            currentKeyColumn = keyColumn.value;
+            keyColumn.setAttribute('data-current', currentKeyColumn);
+        });
+        valueColumn.addEventListener('change', function () {
+            currentValueColumn = valueColumn.value;
+            valueColumn.setAttribute('data-current', currentValueColumn);
+        });
+
+        reload();
+    }
+
     pairs.forEach(setup);
+    setupLookupColumns();
 })();

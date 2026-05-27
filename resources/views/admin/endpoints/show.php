@@ -20,8 +20,8 @@
             <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>/test">
                 <button class="btn btn-outline-primary" type="submit">Endpoint testen</button>
             </form>
-            <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>/delete" onsubmit="return confirm('Endpoint wirklich loeschen?');">
-                <button class="btn btn-outline-danger" type="submit">Loeschen</button>
+            <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>/delete" onsubmit="return confirm('Endpoint wirklich löschen?');">
+                <button class="btn btn-outline-danger" type="submit">Löschen</button>
             </form>
         </div>
     </div>

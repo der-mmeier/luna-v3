@@ -63,6 +63,107 @@ Vor jeder größeren Änderung:
 - Öffentlich erreichbare Dateien gehören nach `public/`
 - Runtime-spezifischer Export-Code muss klar von Admin-/Workbench-Code getrennt bleiben
 
+### Sichtbare UI-Texte: deutsche Umlaute
+
+Diese Regel gilt ausschließlich für Texte, die Menschen in der Oberfläche sehen.
+
+Sie gilt nur für:
+
+- Labels
+- Button-Texte
+- Formularbeschriftungen
+- Hilfetexte
+- Validierungsmeldungen
+- Fehlermeldungen in der UI
+- Tabellenüberschriften
+- Navigationspunkte
+- Statusmeldungen
+- leere Zustände / Empty States
+- sichtbare Beschreibungstexte in der Admin-Oberfläche
+
+Diese Regel gilt ausdrücklich niemals für technischen Code.
+
+Niemals wegen Umlauten ändern:
+
+- PHP-Klassen
+- PHP-Methoden
+- PHP-Variablen
+- Konstanten
+- Enum-Werte
+- Array-Keys
+- JSON-Keys
+- Request-/Response-Felder
+- Datenbanktabellen
+- Datenbankspalten
+- Migrationen
+- Dateinamen
+- CSS-Klassen
+- JavaScript-Identifier
+- Routen
+- CLI-Befehle
+- Config-Keys
+- technische Werte wie `source_column`, `lookup_value`, `target_column`, `price_group`, `missing_behavior`
+
+In sichtbaren deutschen UI-Texten müssen Umlaute korrekt geschrieben werden.
+
+Richtig:
+
+- `Bitte wählen`
+- `Zurück`
+- `Hinzufügen`
+- `Löschen`
+- `Ändern`
+- `Übernehmen`
+- `Für dieses Mapping sind keine Felder vorhanden.`
+- `Größe`
+- `Schlüssel`
+- `Verknüpfung`
+- `Auflösung`
+- `gültig`
+- `ungültig`
+- `möglich`
+- `öffnen`
+- `schließen`
+- `Prüfung`
+- `Ausführung`
+- `Zuordnung`
+
+Falsch in sichtbaren UI-Texten:
+
+- `Bitte waehlen`
+- `Zurueck`
+- `Hinzufuegen`
+- `Loeschen`
+- `Aendern`
+- `Uebernehmen`
+- `Fuer dieses Mapping sind keine Felder vorhanden.`
+- `Groesse`
+- `Schluessel`
+- `Verknuepfung`
+- `Aufloesung`
+- `gueltig`
+- `ungueltig`
+- `moeglich`
+- `oeffnen`
+- `schliessen`
+- `Pruefung`
+- `Ausfuehrung`
+
+Wichtig:
+
+Technische Bezeichner dürfen nicht verändert werden, auch wenn sie deutsch aussehen oder keine Umlaute enthalten. Diese Regel betrifft ausschließlich sichtbare Ausgabetexte für Menschen.
+
+Vor Abschluss jeder Aufgabe muss geprüft werden, ob neu geänderte sichtbare UI-Texte korrekte deutsche Umlaute verwenden.
+
+Der Abschlussbericht muss enthalten:
+
+```text
+UI-Umlautprüfung: durchgeführt
+```
+
+Wenn bewusst ein sichtbarer Text ohne Umlaut bleibt, muss der Grund genannt werden.
+
+
 ## Architekturprinzipien
 
 - `public/index.php` ist der zentrale öffentliche Einstiegspunkt der Workbench

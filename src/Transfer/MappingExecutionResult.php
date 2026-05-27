@@ -12,8 +12,11 @@ final class MappingExecutionResult
     public int $skippedCount = 0;
     public int $errorCount = 0;
     private array $previewRows = [];
+    private array $sourcePreviewRows = [];
+    private array $previewRecords = [];
     private array $errors = [];
     private array $warnings = [];
+    private array $resolverEvents = [];
     private array $logs = [];
 
     public function __construct(public readonly bool $dryRun) {}
@@ -21,8 +24,61 @@ final class MappingExecutionResult
     public function addPreviewRow(array $row): void
     {
         if (count($this->previewRows) < 20) {
-            $this->previewRows[] = $row;
+            $this->previewRows[] = $this->mask($row);
         }
+    }
+
+    public function addSourceRow(array $row): void
+    {
+        if (count($this->sourcePreviewRows) < 20) {
+            $this->sourcePreviewRows[] = $this->mask($row);
+        }
+    }
+
+    public function addPreviewRecord(array $source, array $transfer, array $events): void
+    {
+        if (count($this->previewRecords) >= 20) {
+            return;
+        }
+
+        $lookups = array_values(array_filter(array_map(static function (array $event): ?array {
+            $context = is_array($event['context'] ?? null) ? $event['context'] : [];
+
+            if (($context['resolver'] ?? null) !== 'lookup_value') {
+                return null;
+            }
+
+            return [
+                'field' => (string) ($event['target_column'] ?? ''),
+                'template' => (string) ($context['template'] ?? ''),
+                'rendered_key' => (string) ($context['rendered_key'] ?? ''),
+                'lookup_connection' => (string) ($context['lookup_connection'] ?? ''),
+                'lookup_table' => (string) ($context['lookup_table'] ?? ''),
+                'lookup_key_column' => (string) ($context['lookup_key_column'] ?? ''),
+                'lookup_value_column' => (string) ($context['lookup_value_column'] ?? ''),
+                'value' => $context['value'] ?? null,
+                'status' => (string) ($context['status'] ?? $event['code'] ?? ''),
+            ];
+        }, $events)));
+
+        $errors = array_values(array_filter(array_map(static function (array $event): ?array {
+            if (($event['level'] ?? null) !== 'error') {
+                return null;
+            }
+
+            return [
+                'field' => (string) ($event['target_column'] ?? ''),
+                'code' => (string) ($event['code'] ?? ''),
+                'context' => is_array($event['context'] ?? null) ? $event['context'] : [],
+            ];
+        }, $events)));
+
+        $this->previewRecords[] = [
+            'source' => $this->mask($source),
+            'lookups' => $this->mask($lookups),
+            'transfer' => $this->mask($transfer),
+            'errors' => $this->mask($errors),
+        ];
     }
 
     public function addError(string $message): void
@@ -36,6 +92,38 @@ final class MappingExecutionResult
     {
         $this->warnings[] = $message;
         $this->addLog('warning', $message);
+    }
+
+    public function addResolverError(string $code, string $targetColumn, array $context = []): void
+    {
+        $this->resolverEvents[] = [
+            'level' => 'error',
+            'code' => $code,
+            'target_column' => $targetColumn,
+            'context' => $this->mask($context),
+        ];
+        $this->addError($code . ':' . $targetColumn);
+    }
+
+    public function addResolverWarning(string $code, string $targetColumn, array $context = []): void
+    {
+        $this->resolverEvents[] = [
+            'level' => 'warning',
+            'code' => $code,
+            'target_column' => $targetColumn,
+            'context' => $this->mask($context),
+        ];
+        $this->addWarning($code . ':' . $targetColumn);
+    }
+
+    public function addResolverEvent(string $code, string $targetColumn, array $context = []): void
+    {
+        $this->resolverEvents[] = [
+            'level' => 'info',
+            'code' => $code,
+            'target_column' => $targetColumn,
+            'context' => $this->mask($context),
+        ];
     }
 
     public function addLog(string $level, string $message, array $context = []): void
@@ -53,6 +141,10 @@ final class MappingExecutionResult
             'skipped_count' => $this->skippedCount,
             'error_count' => $this->errorCount,
             'preview_rows' => $this->previewRows,
+            'primary_source_preview' => $this->sourcePreviewRows,
+            'transfer_preview' => $this->previewRows,
+            'records' => $this->previewRecords,
+            'resolver_events' => $this->resolverEvents,
             'errors' => $this->errors,
             'warnings' => $this->warnings,
             'logs' => $this->logs,
@@ -79,10 +171,25 @@ final class MappingExecutionResult
         return $this->logs;
     }
 
+    public function resolverEvents(): array
+    {
+        return $this->resolverEvents;
+    }
+
+    public function resolverEventCount(): int
+    {
+        return count($this->resolverEvents);
+    }
+
+    public function resolverEventsSince(int $offset): array
+    {
+        return array_slice($this->resolverEvents, $offset);
+    }
+
     private function mask(array $context): array
     {
         foreach ($context as $key => $value) {
-            if (is_string($key) && preg_match('/secret|password|token|api_key|app_key|client_secret|key/i', $key) === 1) {
+            if (is_string($key) && preg_match('/(^|_)(secret|password|token|api_key|app_key|client_secret|dsn|secret_value_encrypted)(_|$)/i', $key) === 1) {
                 $context[$key] = '***';
             } elseif (is_array($value)) {
                 $context[$key] = $this->mask($value);

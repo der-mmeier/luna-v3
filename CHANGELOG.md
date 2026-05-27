@@ -17,6 +17,7 @@ Format basiert lose auf Keep a Changelog.
 - Multi-Connection-Grundlage für 1.2.0 ergänzt: Connection-Rollen `source`, `transfer`, `target`, validierte MySQL/MariaDB-Driver, Source-read-only-Default und CLI-Verbindungstest `php bin/luna connection:test <connection-id>`.
 - Connections können über `/admin/connections/{id}/edit` bearbeitet werden, ohne bestehende Secrets bei leerem Passwortfeld zu löschen; Workspace-Create redirectet nach Erfolg zurück auf `/admin/workspaces`.
 - Mapping-Tabellenlisten liefern wieder `name` und `label`; das Frontend setzt sichtbare Option-Texte mit Fallback auf den Tabellennamen.
+- Lookup Mapping 1.3.0 mit den Feldtypen `source_column`, `static_value` und `lookup_value`, Template-Keys wie `price_group_{{price_group}}`, Multi-Connection-Lookups und Dry-Run-Transfer-Vorschau ohne Secrets.
 - Endpoint Builder für einfache public/private API-Endpunkte mit Admin UI
 - verschlüsselte Endpoint-Secrets in `luna_endpoint_secrets`
 - Endpoint Runtime unter `/api/e/{endpoint_key}` für `static`, `version`, `mapping_dry_run`, `job_status` und `latest_report`
@@ -58,6 +59,8 @@ Format basiert lose auf Keep a Changelog.
 
 ### Changed
 
+- Lookup-Mapping-UI 1.3.0 fokussiert jetzt Source-Filter, Lookup Connection/Table, Lookup-Spalten und Lookup-Test; hartcodierte Transfer-Feld-Vorschläge wurden aus der Feldzuordnungsmaske entfernt.
+- Feldzuordnungsmaske 1.3.0 behandelt `target_column` nur noch als optionalen Ausgabe-Alias; Lookup Key/Value Columns kommen aus der Lookup-Tabelle.
 - CLI-Ausgabe fuer `mapping:dry-run`, `mapping:run --force` und `job:run` zeigt jetzt finalen Run-Status, Zaehler und sichere Fehlermeldungen statt nur die angelegte Run-ID.
 - Echte Mapping-Transfers mit `read_only` Target Connection werden eindeutig als fehlgeschlagen blockiert und mit `written_count = 0` protokolliert.
 

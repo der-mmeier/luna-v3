@@ -6,7 +6,7 @@
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
     <div>
         <h1 class="h3 mb-1">Workspaces</h1>
-        <p class="text-body-secondary mb-0">Projektbereiche fuer Integrationsvorhaben.</p>
+        <p class="text-body-secondary mb-0">Projektbereiche für Integrationsvorhaben.</p>
     </div>
     <a class="btn btn-primary" href="/admin/workspaces/create">Workspace anlegen</a>
 </div>
@@ -19,7 +19,7 @@
     <div class="card admin-card">
         <div class="card-body">
             <h2 class="h5">Noch keine Workspaces</h2>
-            <p class="text-body-secondary">Lege den ersten Workspace an, um Connections, Mappings, Jobs, Reports und Endpoints zu buendeln.</p>
+            <p class="text-body-secondary">Lege den ersten Workspace an, um Connections, Mappings, Jobs, Reports und Endpoints zu bündeln.</p>
             <a class="btn btn-primary" href="/admin/workspaces/create">Ersten Workspace anlegen</a>
         </div>
     </div>

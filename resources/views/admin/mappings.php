@@ -4,7 +4,7 @@
 ?>
 <div class="mb-4">
     <h1 class="h3 mb-1">Mappings</h1>
-    <p class="text-body-secondary mb-0">Platzhalter für den späteren Mapping Designer.</p>
+    <p class="text-body-secondary mb-0">Platzhalter für den späteren Mapping-Designer.</p>
 </div>
 
 <div class="card admin-card">
