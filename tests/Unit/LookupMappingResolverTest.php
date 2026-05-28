@@ -261,6 +261,150 @@ final class LookupMappingResolverTest extends TestCase
         self::assertTrue($result->isSuccessful());
     }
 
+    public function testKeyValueMapReturnsLookupKeysWithoutTransformation(): void
+    {
+        $result = new MappingExecutionResult(true);
+        $value = $this->resolver(new PatternLookupProvider([
+            ['product_code' => 'S001D48', 'quantity' => 17],
+            ['product_code' => 'S001D50', 'quantity' => 22],
+            ['product_code' => 'S001H60', 'quantity' => 5],
+        ]))->resolve(
+            ['customfield_asf_model' => 'S001'],
+            [],
+            array_merge($this->patternField('quantities', 'prefix', 'key_value_map', '{{customfield_asf_model}}'), [
+                'lookup_result_key_column' => 'product_code',
+            ]),
+            $result,
+        );
+
+        self::assertSame(['S001D48' => 17, 'S001D50' => 22, 'S001H60' => 5], $value);
+        self::assertSame('key_value_map', $result->resolverEvents()[0]['context']['lookup_result_mode']);
+        self::assertSame('product_code', $result->resolverEvents()[0]['context']['lookup_result_key_column']);
+    }
+
+    public function testKeyValueMapCanRemoveRenderedPrefix(): void
+    {
+        $result = new MappingExecutionResult(true);
+        $value = $this->resolver(new PatternLookupProvider([
+            ['product_code' => 'S001D48', 'quantity' => 17],
+            ['product_code' => 'S001D50', 'quantity' => 22],
+        ]))->resolve(
+            ['customfield_asf_model' => 'S001'],
+            [],
+            array_merge($this->patternField('quantities', 'prefix', 'key_value_map', '{{customfield_asf_model}}'), [
+                'lookup_result_key_column' => 'product_code',
+                'lookup_result_key_transform' => 'remove_prefix',
+                'lookup_result_key_prefix_template' => '{{customfield_asf_model}}',
+            ]),
+            $result,
+        );
+
+        self::assertSame(['D48' => 17, 'D50' => 22], $value);
+        self::assertSame('S001', $result->resolverEvents()[0]['context']['rendered_result_key_prefix']);
+    }
+
+    public function testMissingResultKeyColumnIsReported(): void
+    {
+        $result = new MappingExecutionResult(true);
+        $value = $this->resolver(new PatternLookupProvider([
+            ['product_code' => 'S001D48', 'quantity' => 17],
+        ]))->resolve(
+            ['customfield_asf_model' => 'S001'],
+            [],
+            $this->patternField('quantities', 'prefix', 'key_value_map', '{{customfield_asf_model}}'),
+            $result,
+        );
+
+        self::assertNull($value);
+        self::assertSame('missing_result_key_column', $result->resolverEvents()[0]['code']);
+    }
+
+    public function testEmptyResultKeyIsReported(): void
+    {
+        $lookupResult = LookupResultMode::reduceRows([
+            ['result_key' => '', 'lookup_value' => 17],
+        ], 'key_value_map');
+
+        self::assertFalse($lookupResult->found);
+        self::assertSame('empty_result_key', $lookupResult->errorCode);
+    }
+
+    public function testDuplicateResultKeysAreKeptAsListAndWarned(): void
+    {
+        $lookupResult = LookupResultMode::reduceRows([
+            ['result_key' => 'D48', 'lookup_value' => 17],
+            ['result_key' => 'D48', 'lookup_value' => 22],
+        ], 'key_value_map');
+
+        self::assertTrue($lookupResult->found);
+        self::assertSame(['D48' => [17, 22]], $lookupResult->value);
+        self::assertSame(['duplicate_result_key'], $lookupResult->warnings);
+
+        $result = new MappingExecutionResult(true);
+        $value = $this->resolver(new PatternLookupProvider([
+            ['product_code' => 'S001D48', 'quantity' => 17],
+            ['product_code' => 'S001D48', 'quantity' => 22],
+        ]))->resolve(
+            ['customfield_asf_model' => 'S001'],
+            [],
+            array_merge($this->patternField('quantities', 'prefix', 'key_value_map', '{{customfield_asf_model}}'), [
+                'lookup_result_key_column' => 'product_code',
+            ]),
+            $result,
+        );
+
+        self::assertSame(['S001D48' => [17, 22]], $value);
+        self::assertSame('duplicate_result_key', $result->resolverEvents()[1]['code']);
+    }
+
+    public function testMissingPrefixOnResultKeyKeepsKeyAndWarns(): void
+    {
+        $lookupResult = LookupResultMode::reduceRows([
+            ['result_key' => 'S002D48', 'lookup_value' => 17],
+        ], 'key_value_map', [
+            'key_transform' => 'remove_prefix',
+            'rendered_prefix' => 'S001',
+        ]);
+
+        self::assertTrue($lookupResult->found);
+        self::assertSame(['S002D48' => 17], $lookupResult->value);
+        self::assertSame(['prefix_not_found_on_result_key'], $lookupResult->warnings);
+    }
+
+    public function testMissingResultKeyPrefixPlaceholderIsReported(): void
+    {
+        $result = new MappingExecutionResult(true);
+        $value = $this->resolver(new PatternLookupProvider([
+            ['product_code' => 'S001D48', 'quantity' => 17],
+        ]))->resolve(
+            ['customfield_asf_model' => 'S001'],
+            [],
+            array_merge($this->patternField('quantities', 'prefix', 'key_value_map', '{{customfield_asf_model}}'), [
+                'lookup_result_key_column' => 'product_code',
+                'lookup_result_key_transform' => 'remove_prefix',
+                'lookup_result_key_prefix_template' => '{{model_prefix}}',
+                'missing_behavior' => 'nullable',
+            ]),
+            $result,
+        );
+
+        self::assertNull($value);
+        self::assertSame('template_placeholder_missing', $result->resolverEvents()[0]['code']);
+    }
+
+    public function testKeyValueMapErrorsDoNotExposeSecrets(): void
+    {
+        $lookupResult = LookupResultMode::reduceRows([
+            ['lookup_value' => 'secret-value'],
+        ], 'key_value_map');
+        $json = json_encode($lookupResult, JSON_THROW_ON_ERROR);
+
+        self::assertFalse($lookupResult->found);
+        self::assertSame('missing_result_key_column', $lookupResult->errorCode);
+        self::assertStringNotContainsString('password', $json);
+        self::assertStringNotContainsString('APP_KEY', $json);
+    }
+
     private function resolver(?LookupValueProvider $provider = null): MappingFieldResolver
     {
         return new MappingFieldResolver($provider ?? new ArrayLookupProvider([]));
@@ -337,21 +481,32 @@ final class PatternLookupProvider implements LookupValueProvider
     {
         $this->calls++;
         $mode = LookupMatchMode::normalize(isset($field['lookup_match_mode']) ? (string) $field['lookup_match_mode'] : null);
+        $resultMode = LookupResultMode::normalize(isset($field['lookup_result_mode']) ? (string) $field['lookup_result_mode'] : null);
 
         if (! LookupMatchMode::hasSearchValue($mode, $key)) {
             return LookupResult::error('lookup_key_empty');
         }
 
+        if ($resultMode === 'key_value_map' && empty($field['lookup_result_key_column'])) {
+            return LookupResult::error('missing_result_key_column');
+        }
+
         $pattern = LookupMatchMode::parameter($mode, $key);
-        $values = [];
+        $rows = [];
 
         foreach ($this->rows as $row) {
             if ($this->matches($row['product_code'], $mode, $pattern)) {
-                $values[] = $row['quantity'];
+                $rows[] = [
+                    'result_key' => $row[(string) ($field['lookup_result_key_column'] ?? 'product_code')] ?? null,
+                    'lookup_value' => $row['quantity'],
+                ];
             }
         }
 
-        return LookupResultMode::reduce($values, isset($field['lookup_result_mode']) ? (string) $field['lookup_result_mode'] : 'first');
+        return LookupResultMode::reduceRows($rows, $resultMode, [
+            'key_transform' => isset($field['lookup_result_key_transform']) ? (string) $field['lookup_result_key_transform'] : 'none',
+            'rendered_prefix' => (string) ($field['_lookup_result_key_prefix'] ?? ''),
+        ]);
     }
 
     private function matches(string $code, string $mode, string $pattern): bool

@@ -49,6 +49,7 @@ final class MappingFieldResolver
         $template = (string) ($field['lookup_key_template'] ?? '');
         $matchMode = LookupMatchMode::normalize(isset($field['lookup_match_mode']) ? (string) $field['lookup_match_mode'] : null);
         $resultMode = LookupResultMode::normalize(isset($field['lookup_result_mode']) ? (string) $field['lookup_result_mode'] : null);
+        $resultKeyTransform = LookupResultMode::normalizeKeyTransform(isset($field['lookup_result_key_transform']) ? (string) $field['lookup_result_key_transform'] : null);
         $rendered = $this->templateRenderer->render($template, $sourceRow, $transferRow);
 
         if (! $rendered->isValid()) {
@@ -61,6 +62,8 @@ final class MappingFieldResolver
                 'lookup_value_column' => (string) ($field['lookup_value_column'] ?? ''),
                 'lookup_match_mode' => $matchMode,
                 'lookup_result_mode' => $resultMode,
+                'lookup_result_key_column' => (string) ($field['lookup_result_key_column'] ?? ''),
+                'lookup_result_key_transform' => $resultKeyTransform,
                 'status' => 'template_placeholder_missing',
                 'missing_placeholders' => $rendered->missingPlaceholders,
             ]);
@@ -76,10 +79,23 @@ final class MappingFieldResolver
             return $this->handleMissingLookup($field, $result, $targetColumn, 'lookup_key_empty', $rendered->value, $template);
         }
 
+        $field['_lookup_result_key_prefix'] = '';
+
+        if ($resultMode === 'key_value_map' && $resultKeyTransform === 'remove_prefix') {
+            $prefixTemplate = (string) ($field['lookup_result_key_prefix_template'] ?? '');
+            $renderedPrefix = $this->templateRenderer->render($prefixTemplate, $sourceRow, $transferRow);
+
+            if (! $renderedPrefix->isValid()) {
+                return $this->handleMissingLookup($field, $result, $targetColumn, 'template_placeholder_missing', $rendered->value, $prefixTemplate);
+            }
+
+            $field['_lookup_result_key_prefix'] = $renderedPrefix->value;
+        }
+
         $lookup = $this->lookupProvider->lookup($field, $rendered->value);
 
         if ($lookup->found) {
-            $result->addResolverEvent('lookup_resolved', $targetColumn, [
+            $context = [
                 'resolver' => 'lookup_value',
                 'template' => $template,
                 'rendered_key' => $rendered->value,
@@ -89,12 +105,22 @@ final class MappingFieldResolver
                 'lookup_value_column' => (string) ($field['lookup_value_column'] ?? ''),
                 'lookup_match_mode' => $matchMode,
                 'lookup_result_mode' => $resultMode,
+                'lookup_result_key_column' => (string) ($field['lookup_result_key_column'] ?? ''),
+                'lookup_result_key_transform' => $resultKeyTransform,
+                'lookup_result_key_prefix_template' => (string) ($field['lookup_result_key_prefix_template'] ?? ''),
+                'rendered_result_key_prefix' => (string) ($field['_lookup_result_key_prefix'] ?? ''),
                 'rendered_pattern' => LookupMatchMode::parameter($matchMode, $rendered->value),
                 'match_count' => $lookup->matchCount,
                 'matched_values' => array_slice($lookup->matchedValues, 0, 10),
+                'result_warnings' => $lookup->warnings,
                 'value' => $lookup->value,
                 'status' => 'found',
-            ]);
+            ];
+            $result->addResolverEvent('lookup_resolved', $targetColumn, $context);
+
+            foreach ($lookup->warnings as $warning) {
+                $result->addResolverWarning((string) $warning, $targetColumn, $context);
+            }
 
             return $lookup->value;
         }
@@ -150,6 +176,10 @@ final class MappingFieldResolver
             'lookup_value_column' => (string) ($field['lookup_value_column'] ?? ''),
             'lookup_match_mode' => LookupMatchMode::normalize(isset($field['lookup_match_mode']) ? (string) $field['lookup_match_mode'] : null),
             'lookup_result_mode' => LookupResultMode::normalize(isset($field['lookup_result_mode']) ? (string) $field['lookup_result_mode'] : null),
+            'lookup_result_key_column' => (string) ($field['lookup_result_key_column'] ?? ''),
+            'lookup_result_key_transform' => LookupResultMode::normalizeKeyTransform(isset($field['lookup_result_key_transform']) ? (string) $field['lookup_result_key_transform'] : null),
+            'lookup_result_key_prefix_template' => (string) ($field['lookup_result_key_prefix_template'] ?? ''),
+            'rendered_result_key_prefix' => (string) ($field['_lookup_result_key_prefix'] ?? ''),
             'rendered_pattern' => LookupMatchMode::parameter(LookupMatchMode::normalize(isset($field['lookup_match_mode']) ? (string) $field['lookup_match_mode'] : null), $lookupKey),
             'value' => null,
             'status' => $status,

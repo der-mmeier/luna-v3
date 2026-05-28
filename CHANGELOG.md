@@ -10,6 +10,7 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- Lookup Result Mode 1.3.2 `key_value_map` mit Result-Key-Spalte, optionaler Prefix-Entfernung und sicherer Duplikatbehandlung für Key-Value Objekte.
 - Lookup Pattern Match Resolver 1.3.1 mit Match Modes `exact`, `prefix`, `suffix`, `contains`, `like` und Result Handling `first`, `list`, `count`, `sum`, `min`, `max`.
 - Workbench UX 1.1.0 mit dunklem Standard-Theme, Light/Dark-Switch und lokalem `luna_theme`-Cookie
 - Workspace-Erstellung und -Bearbeitung über die Admin UI inklusive Slug-Validierung und Audit Events

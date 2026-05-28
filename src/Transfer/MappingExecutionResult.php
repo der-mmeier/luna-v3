@@ -58,9 +58,13 @@ final class MappingExecutionResult
                 'lookup_value_column' => (string) ($context['lookup_value_column'] ?? ''),
                 'lookup_match_mode' => (string) ($context['lookup_match_mode'] ?? 'exact'),
                 'lookup_result_mode' => (string) ($context['lookup_result_mode'] ?? 'first'),
+                'lookup_result_key_column' => (string) ($context['lookup_result_key_column'] ?? ''),
+                'lookup_result_key_transform' => (string) ($context['lookup_result_key_transform'] ?? 'none'),
+                'rendered_result_key_prefix' => (string) ($context['rendered_result_key_prefix'] ?? ''),
                 'rendered_pattern' => (string) ($context['rendered_pattern'] ?? ''),
                 'match_count' => (int) ($context['match_count'] ?? 0),
                 'matched_values' => $context['matched_values'] ?? [],
+                'result_warnings' => $context['result_warnings'] ?? [],
                 'value' => $context['value'] ?? null,
                 'status' => (string) ($context['status'] ?? $event['code'] ?? ''),
             ];

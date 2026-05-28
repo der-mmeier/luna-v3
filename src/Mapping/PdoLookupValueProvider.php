@@ -26,6 +26,8 @@ final class PdoLookupValueProvider implements LookupValueProvider
         $valueColumn = (string) ($field['lookup_value_column'] ?? '');
         $matchMode = LookupMatchMode::normalize(isset($field['lookup_match_mode']) ? (string) $field['lookup_match_mode'] : null);
         $resultMode = LookupResultMode::normalize(isset($field['lookup_result_mode']) ? (string) $field['lookup_result_mode'] : null);
+        $resultKeyColumn = (string) ($field['lookup_result_key_column'] ?? '');
+        $resultKeyTransform = LookupResultMode::normalizeKeyTransform(isset($field['lookup_result_key_transform']) ? (string) $field['lookup_result_key_transform'] : null);
         $limit = $this->resultLimit($field);
 
         if (! $this->validIdentifier($table)) {
@@ -38,6 +40,10 @@ final class PdoLookupValueProvider implements LookupValueProvider
 
         if (! $this->validIdentifier($valueColumn)) {
             return LookupResult::error('lookup_value_column_not_found');
+        }
+
+        if ($resultMode === 'key_value_map' && ! $this->validIdentifier($resultKeyColumn)) {
+            return LookupResult::error('missing_result_key_column');
         }
 
         if (! LookupMatchMode::hasSearchValue($matchMode, $key)) {
@@ -55,15 +61,18 @@ final class PdoLookupValueProvider implements LookupValueProvider
                 ExternalDatabaseConfig::fromProfile($profile, $this->connections->secretsFor($connectionId)),
                 false,
             );
-            $schemaError = $this->schemaError($pdo, $table, $keyColumn, $valueColumn);
+            $schemaError = $this->schemaError($pdo, $table, $keyColumn, $valueColumn, $resultMode === 'key_value_map' ? $resultKeyColumn : null);
 
             if ($schemaError !== null) {
                 return LookupResult::error($schemaError);
             }
 
+            $select = $resultMode === 'key_value_map'
+                ? sprintf('`%s` AS result_key, `%s` AS lookup_value', $resultKeyColumn, $valueColumn)
+                : sprintf('`%s` AS lookup_value', $valueColumn);
             $sql = sprintf(
-                'SELECT `%s` AS lookup_value FROM `%s` WHERE `%s` %s :lookup_key LIMIT %d',
-                $valueColumn,
+                'SELECT %s FROM `%s` WHERE `%s` %s :lookup_key LIMIT %d',
+                $select,
                 $table,
                 $keyColumn,
                 LookupMatchMode::sqlOperator($matchMode),
@@ -84,7 +93,10 @@ final class PdoLookupValueProvider implements LookupValueProvider
             return LookupResult::error('ambiguous_lookup_result');
         }
 
-        return LookupResultMode::reduce(array_values(array_map(static fn (array $row): mixed => $row['lookup_value'] ?? null, $rows)), $resultMode);
+        return LookupResultMode::reduceRows($rows, $resultMode, [
+            'key_transform' => $resultKeyTransform,
+            'rendered_prefix' => (string) ($field['_lookup_result_key_prefix'] ?? ''),
+        ]);
     }
 
     private function validIdentifier(string $identifier): bool
@@ -92,7 +104,7 @@ final class PdoLookupValueProvider implements LookupValueProvider
         return preg_match('/^[A-Za-z0-9_]+$/', $identifier) === 1;
     }
 
-    private function schemaError(PDO $pdo, string $table, string $keyColumn, string $valueColumn): ?string
+    private function schemaError(PDO $pdo, string $table, string $keyColumn, string $valueColumn, ?string $resultKeyColumn = null): ?string
     {
         try {
             $statement = $pdo->query(sprintf('SHOW COLUMNS FROM `%s`', $table));
@@ -107,6 +119,10 @@ final class PdoLookupValueProvider implements LookupValueProvider
 
         if (! in_array($valueColumn, $columns, true)) {
             return 'lookup_value_column_not_found';
+        }
+
+        if ($resultKeyColumn !== null && ! in_array($resultKeyColumn, $columns, true)) {
+            return 'missing_result_key_column';
         }
 
         return null;

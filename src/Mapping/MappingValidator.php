@@ -110,6 +110,15 @@ final class MappingValidator
                 if (! LookupResultMode::isValid($resultMode)) {
                     $result->addError(sprintf('Lookup Result Mode "%s" ist nicht erlaubt.', $resultMode));
                 }
+
+                if ($resultMode === 'key_value_map' && empty($field['lookup_result_key_column'])) {
+                    $result->addError(sprintf('Lookup Mapping für Transfer-Feld "%s" braucht lookup_result_key_column.', $targetColumn));
+                }
+
+                $resultKeyTransform = (string) ($field['lookup_result_key_transform'] ?? 'none');
+                if (! LookupResultMode::isValidKeyTransform($resultKeyTransform)) {
+                    $result->addError(sprintf('Lookup Result Key Transform "%s" ist nicht erlaubt.', $resultKeyTransform));
+                }
             }
 
             if ($transformType === 'enum_map' && $this->mappings->valueRulesForField((int) $field['id']) === []) {
