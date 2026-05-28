@@ -763,3 +763,34 @@ Lookup-Regeln um Pattern-/Prefix-/Suffix-/Contains-/LIKE-Matches und konfigurier
 ### Ergebnis
 
 Vorbereitet. Lookup-Regeln speichern additiv `lookup_match_mode`, `lookup_result_mode` und `lookup_result_limit`. `exact`/`first` bleiben Default. Pattern-Matches nutzen validierte Match Modes und gebundene SQL-Werte. Result Handling unterstuetzt `first`, `list`, `count`, `sum`, `min` und `max`. Der Lookup-Test zeigt Pattern, Match Mode, Trefferanzahl, Result Handling und Ergebnis.
+
+---
+
+## 2026-05-28 - 1.3.2 Lookup Result Mode Key-Value Map
+
+### Aufgabe
+
+Lookup Result Handling um `key_value_map` erweitern, damit Pattern-Lookups mehrere Treffer als Key-Value Objekt in den Transfer-Kontext schreiben koennen. Result Keys kommen aus einer gewaehlten Lookup-Spalte und koennen optional per gerendertem Prefix gekuerzt werden.
+
+### Geaenderte Dateien
+
+- database/migrations/2026_05_28_000006_add_lookup_key_value_map_fields.sql
+- src/Mapping/LookupResultMode.php
+- src/Mapping/LookupResult.php
+- src/Mapping/PdoLookupValueProvider.php
+- src/Mapping/MappingFieldResolver.php
+- src/Mapping/MappingValidator.php
+- src/Repository/MappingRepository.php
+- src/Transfer/MappingExecutionResult.php
+- routes/web.php
+- resources/views/admin/mappings/fields.php
+- public/assets/js/mapping-tables.js
+- tests/Unit/LookupMappingResolverTest.php
+- CHANGELOG.md
+- docs/DATA_MODEL_DRAFT.md
+- docs/SECURITY_MODEL.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+Umgesetzt. `key_value_map` nutzt validierte Lookup-Spalten fuer Result Keys und Values. `remove_prefix` rendert ein separates Prefix-Template und entfernt dieses nur am Anfang des Result Keys. Doppelte Result Keys werden als Liste unter demselben Key erhalten und als `duplicate_result_key` gemeldet, damit keine Werte still verloren gehen.
