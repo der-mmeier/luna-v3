@@ -10,16 +10,19 @@ final class LookupResult
         public readonly bool $found,
         public readonly mixed $value,
         public readonly ?string $errorCode = null,
+        public readonly int $matchCount = 0,
+        public readonly array $matchedValues = [],
+        public readonly array $warnings = [],
     ) {
     }
 
-    public static function found(mixed $value): self
+    public static function found(mixed $value, int $matchCount = 1, array $matchedValues = [], array $warnings = []): self
     {
-        return new self(true, $value);
+        return new self(true, $value, null, $matchCount, $matchedValues, $warnings);
     }
 
-    public static function error(string $errorCode): self
+    public static function error(string $errorCode, int $matchCount = 0, array $matchedValues = [], array $warnings = []): self
     {
-        return new self(false, null, $errorCode);
+        return new self(false, null, $errorCode, $matchCount, $matchedValues, $warnings);
     }
 }

@@ -74,6 +74,8 @@ Typische Luna-Core-Werte:
 - Externe Datenbanken werden für Mapping-Validierung nur lesend über Schema-Metadaten abgefragt.
 - Mapping-Validierung darf keine Zieltabellen beschreiben oder verändern.
 - Lookup Mapping speichert nur nicht-sensitive Lookup-Metadaten wie Connection-ID, Tabellenname, Spaltennamen, Key-Template und Fallback-Verhalten.
+- Lookup Pattern Matching speichert nur Match-/Result-Modi und Limits. LIKE-Patterns werden aus Templates gerendert und als gebundene SQL-Werte verwendet; Tabellen- und Spaltennamen werden weiterhin validiert.
+- Lookup Key-Value Maps speichern nur die Result-Key-Spalte, den Key-Transform und ein optionales Prefix-Template. Result Keys und Values stammen aus validierten Lookup-Spalten; Duplikate werden nicht still überschrieben.
 - Lookup Resolver duerfen keine Passwoerter, entschluesselten Secrets oder vollstaendigen DSNs in Preview, JSON, CLI-Ausgaben, Logs oder Fehlermeldungen ausgeben.
 - Dry-Run- und Transfer-Previews maskieren sensitive Kontextschluessel und zeigen den normalisierten Transfer-Datensatz getrennt von spaeteren Endpoint-Profilen.
 

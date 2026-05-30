@@ -152,6 +152,7 @@
         var table = document.querySelector('[data-role="lookup-table"]');
         var keyColumn = document.querySelector('[data-role="lookup-key-column"]');
         var valueColumn = document.querySelector('[data-role="lookup-value-column"]');
+        var resultKeyColumn = document.querySelector('[data-role="lookup-result-key-column"]');
 
         if (!connection || !table || !keyColumn || !valueColumn) {
             return;
@@ -159,6 +160,7 @@
 
         var currentKeyColumn = keyColumn.getAttribute('data-current') || keyColumn.value || '';
         var currentValueColumn = valueColumn.getAttribute('data-current') || valueColumn.value || '';
+        var currentResultKeyColumn = resultKeyColumn ? resultKeyColumn.getAttribute('data-current') || resultKeyColumn.value || '' : '';
 
         function reload() {
             var connectionId = connection.value || '';
@@ -167,11 +169,17 @@
             if (!connectionId || !tableName) {
                 fillColumnSelect(keyColumn, [], currentKeyColumn);
                 fillColumnSelect(valueColumn, [], currentValueColumn);
+                if (resultKeyColumn) {
+                    fillColumnSelect(resultKeyColumn, [], currentResultKeyColumn);
+                }
                 return;
             }
 
             keyColumn.disabled = true;
             valueColumn.disabled = true;
+            if (resultKeyColumn) {
+                resultKeyColumn.disabled = true;
+            }
 
             fetch('/admin/api/connection-table-columns?connection_id=' + encodeURIComponent(connectionId) + '&table=' + encodeURIComponent(tableName), {
                 headers: {'Accept': 'application/json'}
@@ -185,14 +193,23 @@
                     var columns = Array.isArray(payload.columns) ? payload.columns : [];
                     fillColumnSelect(keyColumn, columns, currentKeyColumn);
                     fillColumnSelect(valueColumn, columns, currentValueColumn);
+                    if (resultKeyColumn) {
+                        fillColumnSelect(resultKeyColumn, columns, currentResultKeyColumn);
+                    }
                 })
                 .catch(function () {
                     fillColumnSelect(keyColumn, [], currentKeyColumn);
                     fillColumnSelect(valueColumn, [], currentValueColumn);
+                    if (resultKeyColumn) {
+                        fillColumnSelect(resultKeyColumn, [], currentResultKeyColumn);
+                    }
                 })
                 .finally(function () {
                     keyColumn.disabled = false;
                     valueColumn.disabled = false;
+                    if (resultKeyColumn) {
+                        resultKeyColumn.disabled = false;
+                    }
                 });
         }
 
@@ -207,6 +224,12 @@
             currentValueColumn = valueColumn.value;
             valueColumn.setAttribute('data-current', currentValueColumn);
         });
+        if (resultKeyColumn) {
+            resultKeyColumn.addEventListener('change', function () {
+                currentResultKeyColumn = resultKeyColumn.value;
+                resultKeyColumn.setAttribute('data-current', currentResultKeyColumn);
+            });
+        }
 
         reload();
     }

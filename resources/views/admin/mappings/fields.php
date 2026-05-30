@@ -213,6 +213,46 @@ foreach ($fields ?? [] as $field) {
                 <input class="form-control" name="lookup_key_template" value="<?= htmlspecialchars((string) ($previewValues['lookup_key_template'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" placeholder="price_group_{{priceGroup}}">
             </div>
             <div class="col-md-4">
+                <label class="form-label">Lookup Match Mode</label>
+                <select class="form-select" name="lookup_match_mode">
+                    <?php foreach (['exact' => 'Exakt', 'prefix' => 'Prefix', 'suffix' => 'Suffix', 'contains' => 'Enthält', 'like' => 'LIKE-Pattern'] as $mode => $label): ?>
+                        <option value="<?= $mode ?>"<?= $selected($mode, $previewValues['lookup_match_mode'] ?? 'exact') ?>><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Result Handling</label>
+                <select class="form-select" name="lookup_result_mode">
+                    <?php foreach (['first' => 'Ersten Wert verwenden', 'list' => 'Liste aller Werte', 'count' => 'Treffer zählen', 'sum' => 'Werte summieren', 'min' => 'Kleinsten Wert verwenden', 'max' => 'Größten Wert verwenden', 'key_value_map' => 'Key-Value Objekt'] as $mode => $label): ?>
+                        <option value="<?= $mode ?>"<?= $selected($mode, $previewValues['lookup_result_mode'] ?? 'first') ?>><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Result Key Column</label>
+                <select class="form-select" name="lookup_result_key_column" data-role="lookup-result-key-column" data-current="<?= htmlspecialchars((string) ($previewValues['lookup_result_key_column'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                    <option value="<?= htmlspecialchars((string) ($previewValues['lookup_result_key_column'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" selected><?= htmlspecialchars((string) (($previewValues['lookup_result_key_column'] ?? '') !== '' ? $previewValues['lookup_result_key_column'] : 'Bitte wählen'), ENT_QUOTES, 'UTF-8') ?></option>
+                </select>
+                <div class="form-text">Nur für Result Handling Key-Value Objekt: Spalte aus der Lookup-Tabelle für die Objekt-Keys.</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Result Key Transform</label>
+                <select class="form-select" name="lookup_result_key_transform">
+                    <?php foreach (['none' => 'Keine Änderung', 'remove_prefix' => 'Prefix entfernen'] as $transform => $label): ?>
+                        <option value="<?= $transform ?>"<?= $selected($transform, $previewValues['lookup_result_key_transform'] ?? 'none') ?>><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Result Key Prefix Template</label>
+                <input class="form-control" name="lookup_result_key_prefix_template" value="<?= htmlspecialchars((string) ($previewValues['lookup_result_key_prefix_template'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" placeholder="{{customfield_asf_model}}">
+                <div class="form-text">Nur bei Prefix entfernen: gerendertes Prefix, das vom Result Key entfernt wird.</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Result Limit</label>
+                <input class="form-control" name="lookup_result_limit" value="<?= htmlspecialchars((string) ($previewValues['lookup_result_limit'] ?? 100), ENT_QUOTES, 'UTF-8') ?>">
+            </div>
+            <div class="col-md-4">
                 <label class="form-label">Missing Behavior</label>
                 <select class="form-select" name="missing_behavior">
                     <?php foreach (['nullable', 'error', 'warning', 'fallback'] as $behavior): ?>
@@ -243,6 +283,9 @@ foreach ($fields ?? [] as $field) {
             <div class="col-12">
                 <div class="alert alert-secondary mb-0">
                     <strong>Beispiel:</strong> <code>priceGroup = 2</code> und Template <code>price_group_{{priceGroup}}</code> ergeben den Lookup-Key <code>price_group_2</code>. Gesucht wird dann in <code>zweipunkt_setting.name</code>, gelesen wird aus <code>zweipunkt_setting.value</code>.
+                    <hr>
+                    <div><strong>Prefix-Beispiel:</strong> Source <code>customfield_asf_model = S001</code>, Template <code>{{customfield_asf_model}}</code>, Match Mode Prefix sucht <code>product_code LIKE S001%</code>.</div>
+                    <div><strong>LIKE-Beispiel:</strong> Template <code>{{customfield_asf_model}}%</code>, Match Mode LIKE-Pattern sucht <code>product_code LIKE S001%</code>.</div>
                 </div>
             </div>
         </div>
@@ -284,11 +327,15 @@ foreach ($fields ?? [] as $field) {
                         <tr>
                             <th>Source-Wert</th>
                             <th>Template</th>
-                            <th>Gerenderter Key</th>
+                            <th>Gerendertes Pattern</th>
+                            <th>Match Mode</th>
                             <th>Suche</th>
                             <th>Wert aus</th>
+                            <th>Treffer</th>
+                            <th>Result Handling</th>
+                            <th>Result Key</th>
                             <th>Status</th>
-                            <th>Gefundener Wert</th>
+                            <th>Ergebnis</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -296,16 +343,31 @@ foreach ($fields ?? [] as $field) {
                             <tr>
                                 <td><code><?= htmlspecialchars((string) $result['source_column'], ENT_QUOTES, 'UTF-8') ?> = <?= htmlspecialchars((string) $result['source_value'], ENT_QUOTES, 'UTF-8') ?></code></td>
                                 <td><code><?= htmlspecialchars((string) $result['template'], ENT_QUOTES, 'UTF-8') ?></code></td>
-                                <td><code><?= htmlspecialchars((string) $result['rendered_key'], ENT_QUOTES, 'UTF-8') ?></code></td>
+                                <td><code><?= htmlspecialchars((string) ($result['rendered_pattern'] ?? $result['rendered_key']), ENT_QUOTES, 'UTF-8') ?></code></td>
+                                <td><?= htmlspecialchars((string) ($result['lookup_match_mode'] ?? 'exact'), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td><code><?= htmlspecialchars((string) $result['lookup_table'], ENT_QUOTES, 'UTF-8') ?>.<?= htmlspecialchars((string) $result['lookup_key_column'], ENT_QUOTES, 'UTF-8') ?></code></td>
                                 <td><code><?= htmlspecialchars((string) $result['lookup_table'], ENT_QUOTES, 'UTF-8') ?>.<?= htmlspecialchars((string) $result['lookup_value_column'], ENT_QUOTES, 'UTF-8') ?></code></td>
+                                <td><?= (int) ($result['match_count'] ?? 0) ?></td>
+                                <td><?= htmlspecialchars((string) ($result['lookup_result_mode'] ?? 'first'), ENT_QUOTES, 'UTF-8') ?></td>
+                                <td>
+                                    <?php if (($result['lookup_result_key_column'] ?? '') !== ''): ?>
+                                        <code><?= htmlspecialchars((string) $result['lookup_table'], ENT_QUOTES, 'UTF-8') ?>.<?= htmlspecialchars((string) $result['lookup_result_key_column'], ENT_QUOTES, 'UTF-8') ?></code>
+                                        <div class="text-body-secondary small"><?= htmlspecialchars((string) ($result['lookup_result_key_transform'] ?? 'none'), ENT_QUOTES, 'UTF-8') ?></div>
+                                    <?php endif; ?>
+                                    <?php if (($result['rendered_result_key_prefix'] ?? '') !== ''): ?>
+                                        <div class="text-body-secondary small">Gerendertes Prefix: <code><?= htmlspecialchars((string) $result['rendered_result_key_prefix'], ENT_QUOTES, 'UTF-8') ?></code></div>
+                                    <?php endif; ?>
+                                    <?php if (($result['result_warnings'] ?? []) !== []): ?>
+                                        <div class="text-body-secondary small"><?= htmlspecialchars(implode(', ', (array) $result['result_warnings']), ENT_QUOTES, 'UTF-8') ?></div>
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <?= htmlspecialchars((string) $result['status'], ENT_QUOTES, 'UTF-8') ?>
                                     <?php if (($result['message'] ?? '') !== ''): ?>
                                         <div class="text-body-secondary small"><?= htmlspecialchars((string) $result['message'], ENT_QUOTES, 'UTF-8') ?></div>
                                     <?php endif; ?>
                                 </td>
-                                <td><code><?= htmlspecialchars((string) ($result['found_value'] ?? ''), ENT_QUOTES, 'UTF-8') ?></code></td>
+                                <td><code><?= htmlspecialchars(is_array($result['found_value'] ?? null) ? json_encode($result['found_value'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : (string) ($result['found_value'] ?? ''), ENT_QUOTES, 'UTF-8') ?></code></td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>
