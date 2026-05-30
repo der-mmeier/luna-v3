@@ -43,6 +43,10 @@ Typische Luna-Core-Werte:
 
 ## API-Endpunkte
 
+- Exportierte Endpoint-Runtimes enthalten keine Admin-Routen oder Admin-Templates. Connection- und Endpoint-Secrets werden nicht in PHP-Konfigurationen oder Manifesten exportiert, sondern nur als `.env`-Variablennamen referenziert. Die exportierte `.env.example` enthält ausschließlich leere Platzhalter.
+- Der Export-Flag `--local-env` schreibt entschlüsselte Runtime-Secrets ausschließlich in die lokal erzeugte `.env`. Diese Datei ist für lokale Tests gedacht, wird nicht im Manifest aufgeführt und ist über `.gitignore` für `public/pim/.env` und `storage/exports/**/.env` geschützt.
+- Workspace-basierte Runtime-Exporte landen standardmäßig unter `storage/{workspace_slug}/exports/endpoints/{endpoint_key}/`; diese Export-Artefakte sind in `.gitignore` ausgeschlossen.
+- Export-ZIP-Archive enthalten `.env.example`, Manifest, API-, Runtime- und Config-Dateien, schließen echte `.env`-Dateien aber immer aus. ZIP-Downloads werden aus Endpoint und Workspace berechnet und akzeptieren keine frei übergebenen Dateipfade.
 - API-Endpunkte können den Secret-Modus `none`, `optional` oder `required` nutzen.
 - API-Secrets werden nicht im Klartext gespeichert.
 - JSON Endpoint Builder v2 speichert neue Endpoint-Secrets zusätzlich als Hash in `luna_endpoints.secret_hash`.

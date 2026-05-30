@@ -20,7 +20,7 @@ final class EndpointRepository
     public function all(): array
     {
         $statement = $this->pdo()->query(
-            'SELECT e.*, w.name AS workspace_name, ms.name AS mapping_name, j.name AS job_name
+            'SELECT e.*, w.name AS workspace_name, w.slug AS workspace_slug, ms.name AS mapping_name, j.name AS job_name
              FROM luna_endpoints e
              LEFT JOIN luna_workspaces w ON w.id = e.workspace_id
              LEFT JOIN luna_mapping_sets ms ON ms.id = e.mapping_set_id
@@ -34,7 +34,7 @@ final class EndpointRepository
     public function find(int $id): ?array
     {
         $statement = $this->pdo()->prepare(
-            'SELECT e.*, w.name AS workspace_name, ms.name AS mapping_name, j.name AS job_name
+            'SELECT e.*, w.name AS workspace_name, w.slug AS workspace_slug, ms.name AS mapping_name, j.name AS job_name
              FROM luna_endpoints e
              LEFT JOIN luna_workspaces w ON w.id = e.workspace_id
              LEFT JOIN luna_mapping_sets ms ON ms.id = e.mapping_set_id

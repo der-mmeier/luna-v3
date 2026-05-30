@@ -7,6 +7,8 @@ use Luna\Connections\ConnectionTester;
 use Luna\Connections\ExternalDatabaseConfig;
 use Luna\Database\MigrationRunner;
 use Luna\Database\SystemDatabase;
+use Luna\Export\EndpointExportArchiveService;
+use Luna\Export\EndpointRuntimeExporter;
 use Luna\Jobs\JobRunner;
 use Luna\Repository\ConnectionProfileRepository;
 use Luna\Repository\JobRunRepository;
@@ -38,7 +40,7 @@ function exitCodeForRun(array $run): int
 }
 
 if ($command === null) {
-    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run>\n");
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|endpoint:export>\n");
     exit(2);
 }
 
@@ -183,6 +185,47 @@ try {
         }
         printRunSummary('Mapping transfer run', $run);
         exit(exitCodeForRun($run));
+    }
+
+    if ($command === 'endpoint:export') {
+        $endpointKey = isset($argv[2]) ? (string) $argv[2] : '';
+        $target = null;
+        $force = in_array('--force', $argv, true);
+        $localEnv = in_array('--local-env', $argv, true);
+        $zip = in_array('--zip', $argv, true);
+
+        foreach ($argv as $argument) {
+            if (str_starts_with($argument, '--target=')) {
+                $target = substr($argument, strlen('--target='));
+            }
+        }
+
+        if ($endpointKey === '') {
+            fwrite(STDERR, "Usage: php bin/luna endpoint:export <endpoint-key> [--target=<directory>] [--force] [--local-env] [--zip]\n");
+            exit(2);
+        }
+
+        /** @var EndpointRuntimeExporter $exporter */
+        $exporter = $app->services()->get(EndpointRuntimeExporter::class);
+        $manifest = $target === null || $target === ''
+            ? $exporter->exportToWorkspaceStorage($endpointKey, $force, $localEnv)
+            : $exporter->export($endpointKey, $target, $force, $localEnv);
+
+        echo 'Endpoint export: ' . (string) $manifest['endpoint'] . "\n";
+        echo 'Target: ' . (string) ($manifest['target_path'] ?? $target ?? '') . "\n";
+        echo 'Files: ' . count((array) $manifest['files']) . "\n";
+        if ($zip) {
+            /** @var EndpointExportArchiveService $archiveService */
+            $archiveService = $app->services()->get(EndpointExportArchiveService::class);
+            $archivePath = (string) ($manifest['absolute_archive_path'] ?? '');
+            $archiveService->createArchive((string) ($manifest['absolute_target_path'] ?? $target), $archivePath, true);
+            echo 'Archive: ' . (string) ($manifest['archive_path'] ?? $archivePath) . "\n";
+        }
+        if ($localEnv) {
+            echo "Wrote local .env with runtime secrets.\n";
+        }
+        echo "Manifest: manifest.json\n";
+        exit(0);
     }
 
     fwrite(STDERR, sprintf("Unknown command: %s\n", $command));

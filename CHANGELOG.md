@@ -10,6 +10,11 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- Endpoint Export Runtime 1.5.0 mit CLI-Befehl `endpoint:export`, deploybarem Runtime-Paket, API-Datei, Runtime-Bootstrap, env-basierter Connection-Konfiguration, `.env.example` und Export-Manifest.
+- Endpoint Export Runtime kann mit `--local-env` optional eine lokale `.env` mit entschlüsselten Runtime-Secrets für Testexports schreiben; Standardexporte bleiben secretfrei und erzeugen nur `.env.example`.
+- Endpoint Runtime Exporte können über die Admin-Endpoint-Detailseite gestartet werden und nutzen standardmäßig `storage/{workspace_slug}/exports/endpoints/{endpoint_key}/`.
+- Admin-Endpoint-Exporte erzeugen automatisch ein ZIP-Archiv `{workspace_slug}-{endpoint_key}-runtime.zip`; der CLI-Export kann mit `--zip` ebenfalls ein Archiv erstellen, wobei echte `.env`-Dateien und Secrets ausgeschlossen bleiben.
+
 - Mapping Designer 1.4.0 unterstützt `mapping_mode = json_endpoint`, optionale Target Connections für Read-Export-Mappings, Lookup Connections pro Feldregel und den Transform `key_value_map_by_prefix`.
 - Source-Filter Builder für Mapping-Preview, CLI-Dry-Run und JSON Endpoint Runtime: mehrere Mapping-weite Filter werden zentral über `MappingSourceRowProvider` per AND angewendet und in `luna_mapping_source_filters` gespeichert.
 - `key_value_map_by_prefix` wird vor der Mapping-Transformation gebatcht vorab geladen, sodass Prefix-Maps nicht mehr pro Source Row eine eigene Lookup-Abfrage ausführen.
