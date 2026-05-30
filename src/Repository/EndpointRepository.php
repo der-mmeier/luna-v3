@@ -6,18 +6,20 @@ namespace Luna\Repository;
 
 use Luna\Database\SystemDatabase;
 use Luna\Security\EncryptionService;
+use PDO;
 
 final class EndpointRepository
 {
     public function __construct(
         private readonly SystemDatabase $database,
         private readonly EncryptionService $encryption,
+        private readonly ?PDO $pdo = null,
     ) {
     }
 
     public function all(): array
     {
-        $statement = $this->database->pdo()->query(
+        $statement = $this->pdo()->query(
             'SELECT e.*, w.name AS workspace_name, ms.name AS mapping_name, j.name AS job_name
              FROM luna_endpoints e
              LEFT JOIN luna_workspaces w ON w.id = e.workspace_id
@@ -31,7 +33,7 @@ final class EndpointRepository
 
     public function find(int $id): ?array
     {
-        $statement = $this->database->pdo()->prepare(
+        $statement = $this->pdo()->prepare(
             'SELECT e.*, w.name AS workspace_name, ms.name AS mapping_name, j.name AS job_name
              FROM luna_endpoints e
              LEFT JOIN luna_workspaces w ON w.id = e.workspace_id
@@ -47,7 +49,7 @@ final class EndpointRepository
 
     public function findByKey(string $endpointKey): ?array
     {
-        $statement = $this->database->pdo()->prepare(
+        $statement = $this->pdo()->prepare(
             'SELECT * FROM luna_endpoints WHERE endpoint_key = :endpoint_key',
         );
         $statement->execute(['endpoint_key' => self::normalizeEndpointKey($endpointKey)]);
@@ -56,23 +58,43 @@ final class EndpointRepository
         return $endpoint === false ? null : $endpoint;
     }
 
+    public function findBySlug(string $slug): ?array
+    {
+        return $this->findByKey($slug);
+    }
+
+    public function listByWorkspace(int $workspaceId): array
+    {
+        $statement = $this->pdo()->prepare(
+            'SELECT e.*, ms.name AS mapping_name
+             FROM luna_endpoints e
+             LEFT JOIN luna_mapping_sets ms ON ms.id = e.mapping_set_id
+             WHERE e.workspace_id = :workspace_id
+             ORDER BY e.updated_at DESC, e.name',
+        );
+        $statement->execute(['workspace_id' => $workspaceId]);
+
+        return $statement->fetchAll();
+    }
+
     public function create(array $data, array $secrets = []): int
     {
-        $pdo = $this->database->pdo();
+        $pdo = $this->pdo();
         $pdo->beginTransaction();
 
         try {
             $statement = $pdo->prepare(
                 'INSERT INTO luna_endpoints
-                 (workspace_id, name, endpoint_key, description, method, visibility, status, response_type, source_type,
-                  mapping_set_id, job_id, config_json, rate_limit_per_minute, notes, created_at, updated_at)
+                 (workspace_id, name, endpoint_key, description, method, visibility, status, secret_mode, response_type, source_type,
+                  mapping_set_id, job_id, config_json, cache_enabled, cache_ttl_seconds, rate_limit_per_minute, notes, created_at, updated_at)
                  VALUES
-                 (:workspace_id, :name, :endpoint_key, :description, :method, :visibility, :status, :response_type, :source_type,
-                  :mapping_set_id, :job_id, :config_json, :rate_limit_per_minute, :notes, NOW(), NOW())',
+                 (:workspace_id, :name, :endpoint_key, :description, :method, :visibility, :status, :secret_mode, :response_type, :source_type,
+                  :mapping_set_id, :job_id, :config_json, :cache_enabled, :cache_ttl_seconds, :rate_limit_per_minute, :notes, NOW(), NOW())',
             );
             $statement->execute($this->payload($data));
             $id = (int) $pdo->lastInsertId();
             $this->storeSecrets($id, $secrets);
+            $this->storeSecretHash($id, $secrets);
             $pdo->commit();
 
             return $id;
@@ -84,7 +106,7 @@ final class EndpointRepository
 
     public function update(int $id, array $data, array $secrets = []): void
     {
-        $pdo = $this->database->pdo();
+        $pdo = $this->pdo();
         $pdo->beginTransaction();
 
         try {
@@ -94,13 +116,14 @@ final class EndpointRepository
                 'UPDATE luna_endpoints
                  SET workspace_id = :workspace_id, name = :name, endpoint_key = :endpoint_key, description = :description,
                      method = :method, visibility = :visibility, status = :status, response_type = :response_type,
-                     source_type = :source_type, mapping_set_id = :mapping_set_id, job_id = :job_id,
-                     config_json = :config_json, rate_limit_per_minute = :rate_limit_per_minute,
+                     secret_mode = :secret_mode, source_type = :source_type, mapping_set_id = :mapping_set_id, job_id = :job_id,
+                     config_json = :config_json, cache_enabled = :cache_enabled, cache_ttl_seconds = :cache_ttl_seconds, rate_limit_per_minute = :rate_limit_per_minute,
                      notes = :notes, updated_at = NOW()
                  WHERE id = :id',
             );
             $statement->execute($payload);
             $this->storeSecrets($id, $secrets);
+            $this->storeSecretHash($id, $secrets);
             $pdo->commit();
         } catch (\Throwable $exception) {
             $pdo->rollBack();
@@ -110,13 +133,36 @@ final class EndpointRepository
 
     public function delete(int $id): void
     {
-        $statement = $this->database->pdo()->prepare('DELETE FROM luna_endpoints WHERE id = :id');
-        $statement->execute(['id' => $id]);
+        $pdo = $this->pdo();
+        $pdo->beginTransaction();
+
+        try {
+            $statement = $pdo->prepare('DELETE FROM luna_endpoint_secrets WHERE endpoint_id = :id');
+            $statement->execute(['id' => $id]);
+            $statement = $pdo->prepare('DELETE FROM luna_endpoints WHERE id = :id');
+            $statement->execute(['id' => $id]);
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
+    public function canDelete(int $id): DeleteCheckResult
+    {
+        return DeleteCheckResult::allowed();
+    }
+
+    public function updateStatus(int $id, string $status): void
+    {
+        $status = in_array($status, ['active', 'inactive', 'draft', 'disabled'], true) ? $status : 'inactive';
+        $statement = $this->pdo()->prepare('UPDATE luna_endpoints SET status = :status, updated_at = NOW() WHERE id = :id');
+        $statement->execute(['id' => $id, 'status' => $status]);
     }
 
     public function secretsFor(int $endpointId): array
     {
-        $statement = $this->database->pdo()->prepare(
+        $statement = $this->pdo()->prepare(
             'SELECT secret_key, secret_value_encrypted FROM luna_endpoint_secrets WHERE endpoint_id = :id',
         );
         $statement->execute(['id' => $endpointId]);
@@ -131,7 +177,7 @@ final class EndpointRepository
 
     public function hasSecret(int $endpointId, string $secretKey = 'secret'): bool
     {
-        $statement = $this->database->pdo()->prepare(
+        $statement = $this->pdo()->prepare(
             'SELECT COUNT(*) FROM luna_endpoint_secrets WHERE endpoint_id = :endpoint_id AND secret_key = :secret_key',
         );
         $statement->execute(['endpoint_id' => $endpointId, 'secret_key' => $secretKey]);
@@ -143,6 +189,14 @@ final class EndpointRepository
     {
         if ($providedSecret === '') {
             return false;
+        }
+
+        $statement = $this->pdo()->prepare('SELECT secret_hash FROM luna_endpoints WHERE id = :id');
+        $statement->execute(['id' => $endpointId]);
+        $hash = $statement->fetchColumn();
+
+        if (is_string($hash) && $hash !== '') {
+            return password_verify($providedSecret, $hash);
         }
 
         $secrets = $this->secretsFor($endpointId);
@@ -171,19 +225,38 @@ final class EndpointRepository
             'method' => strtoupper(trim((string) ($data['method'] ?? 'GET'))) ?: 'GET',
             'visibility' => trim((string) ($data['visibility'] ?? 'private')) ?: 'private',
             'status' => trim((string) ($data['status'] ?? 'draft')) ?: 'draft',
+            'secret_mode' => in_array((string) ($data['secret_mode'] ?? 'none'), ['none', 'optional', 'required'], true)
+                ? (string) ($data['secret_mode'] ?? 'none')
+                : 'none',
             'response_type' => trim((string) ($data['response_type'] ?? 'json')) ?: 'json',
             'source_type' => trim((string) ($data['source_type'] ?? 'static')) ?: 'static',
             'mapping_set_id' => empty($data['mapping_set_id']) ? null : (int) $data['mapping_set_id'],
             'job_id' => empty($data['job_id']) ? null : (int) $data['job_id'],
             'config_json' => trim((string) ($data['config_json'] ?? '')) ?: null,
+            'cache_enabled' => ! empty($data['cache_enabled']) ? 1 : 0,
+            'cache_ttl_seconds' => empty($data['cache_ttl_seconds']) ? null : max(1, min((int) $data['cache_ttl_seconds'], 86400)),
             'rate_limit_per_minute' => empty($data['rate_limit_per_minute']) ? null : (int) $data['rate_limit_per_minute'],
             'notes' => trim((string) ($data['notes'] ?? '')) ?: null,
         ];
     }
 
+    private function storeSecretHash(int $endpointId, array $secrets): void
+    {
+        $secret = $secrets['secret'] ?? null;
+        if ($secret === null || $secret === '') {
+            return;
+        }
+
+        $statement = $this->pdo()->prepare('UPDATE luna_endpoints SET secret_hash = :secret_hash, updated_at = NOW() WHERE id = :id');
+        $statement->execute([
+            'id' => $endpointId,
+            'secret_hash' => password_hash((string) $secret, PASSWORD_DEFAULT),
+        ]);
+    }
+
     private function storeSecrets(int $endpointId, array $secrets): void
     {
-        $statement = $this->database->pdo()->prepare(
+        $statement = $this->pdo()->prepare(
             'INSERT INTO luna_endpoint_secrets
              (endpoint_id, secret_key, secret_value_encrypted, encryption_version, created_at, updated_at)
              VALUES (:endpoint_id, :secret_key, :secret_value_encrypted, :encryption_version, NOW(), NOW())
@@ -203,4 +276,10 @@ final class EndpointRepository
             ]);
         }
     }
+
+    private function pdo(): PDO
+    {
+        return $this->pdo ?? $this->database->pdo();
+    }
 }
+

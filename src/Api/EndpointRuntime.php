@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Luna\Api;
 
-use Luna\Config\Config;
 use Luna\Http\Request;
 use Luna\Http\Response;
 use Luna\Repository\AuditLogRepository;
@@ -17,18 +16,18 @@ final class EndpointRuntime
         private readonly EndpointRepository $endpoints,
         private readonly EndpointAccessGuard $guard,
         private readonly EndpointResponseBuilder $builder,
+        private readonly EndpointJsonResponseFactory $responses,
         private readonly AuditLogRepository $audit,
-        private readonly Config $config,
     ) {
     }
 
     public function handle(Request $request): Response
     {
         $endpointKey = EndpointRepository::normalizeEndpointKey((string) $request->route('endpointKey', ''));
-        $endpoint = $this->endpoints->findByKey($endpointKey);
+        $endpoint = $this->endpoints->findBySlug($endpointKey);
 
         if ($endpoint === null) {
-            return Response::json(['error' => 'endpoint_not_found'], 404);
+            return $this->responses->error('endpoint_not_found', 'Endpoint not found.', 404);
         }
 
         $this->audit->log(
@@ -41,11 +40,11 @@ final class EndpointRuntime
         );
 
         if ((string) $endpoint['status'] !== 'active') {
-            return Response::json(['error' => 'endpoint_not_active'], 404);
+            return $this->responses->error('endpoint_inactive', 'Endpoint is inactive.', 404);
         }
 
         if (strtoupper((string) $endpoint['method']) !== $request->method()) {
-            return Response::json(['error' => 'method_not_allowed'], 405)->withHeader('Allow', strtoupper((string) $endpoint['method']));
+            return $this->responses->error('method_not_allowed', 'Method not allowed.', 405)->withHeader('Allow', strtoupper((string) $endpoint['method']));
         }
 
         $guardResponse = $this->guard->check($endpoint, $request);
@@ -75,12 +74,7 @@ final class EndpointRuntime
                 ['endpoint_key' => $endpoint['endpoint_key']],
             );
 
-            $payload = ['error' => 'endpoint_failed'];
-            if ($this->config->string('APP_ENV', 'local') !== 'production' && $this->config->bool('APP_DEBUG', false)) {
-                $payload['debug'] = 'Endpoint execution failed.';
-            }
-
-            return Response::json($payload, 500);
+            return $this->responses->error('runtime_error', 'Internal runtime error.', 500);
         }
     }
 }

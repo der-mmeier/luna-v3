@@ -9,8 +9,6 @@ use Luna\Connections\ExternalPdoConnectionFactory;
 use Luna\Repository\ConnectionProfileRepository;
 use Luna\Repository\MappingRepository;
 use Luna\Mapping\MappingValidator;
-use PDO;
-use RuntimeException;
 
 final class MappingExecutor
 {
@@ -21,6 +19,7 @@ final class MappingExecutor
         private readonly ExternalPdoConnectionFactory $pdoFactory,
         private readonly MappingRowTransformer $transformer,
         private readonly TargetWriter $writer,
+        private readonly MappingSourceRowProvider $sourceRows,
     ) {}
 
     public function execute(int $mappingSetId, bool $dryRun = true, ?int $limit = null): MappingExecutionResult
@@ -46,21 +45,24 @@ final class MappingExecutor
             $result->addError('Mapping Set existiert nicht.');
             return $result;
         }
+        $set['source_filters'] = $this->mappings->sourceFiltersForSet($mappingSetId);
 
+        $mode = (string) ($set['mapping_mode'] ?? 'transfer');
         $source = $this->connections->find((int) $set['source_connection_id']);
-        $target = $this->connections->find((int) $set['target_connection_id']);
-        if ($source === null || $target === null) {
-            $result->addError('Source oder Target Connection fehlt.');
+        $target = $mode === 'transfer' ? $this->connections->find((int) $set['target_connection_id']) : null;
+        if ($source === null || ($mode === 'transfer' && $target === null)) {
+            $result->addError($mode === 'transfer' ? 'Source oder Target Connection fehlt.' : 'Source Connection fehlt.');
             return $result;
         }
 
         $sourcePdo = $this->pdoFactory->create(ExternalDatabaseConfig::fromProfile($source, $this->connections->secretsFor((int) $source['id'])));
-        $rows = $this->readSourceRows($sourcePdo, (string) $set['source_table'], $limit ?? 25);
+        $rows = $this->sourceRows->rows($sourcePdo, (string) $set['source_table'], $set, $limit);
         $fields = $this->mappings->fieldsForSet($mappingSetId);
         $fields = $this->withLookupConnectionNames($fields);
         $targetRows = [];
         $result->sourceCount = count($rows);
         $result->addLog('info', 'Source Rows gelesen.', ['source_count' => $result->sourceCount]);
+        $this->transformer->warmUpPrefixLookups($rows, $fields, $result);
 
         foreach ($rows as $row) {
             $result->addSourceRow($row);
@@ -74,9 +76,9 @@ final class MappingExecutor
 
         $result->addLog('info', 'Rows transformiert.', ['transformed_count' => $result->transformedCount]);
 
-        if ($dryRun) {
+        if ($dryRun || $mode === 'json_endpoint') {
             $result->writtenCount = 0;
-            $result->addLog('info', 'Dry Run beendet, keine Zielschreiboperation ausgefuehrt.');
+            $result->addLog('info', $mode === 'json_endpoint' ? 'JSON Endpoint Mapping beendet, keine Zielschreiboperation ausgeführt.' : 'Dry Run beendet, keine Zielschreiboperation ausgeführt.');
             return $result;
         }
 
@@ -128,12 +130,4 @@ final class MappingExecutor
         return $fields;
     }
 
-    private function readSourceRows(PDO $pdo, string $tableName, int $limit): array
-    {
-        if (preg_match('/^[A-Za-z0-9_]+$/', $tableName) !== 1) {
-            throw new RuntimeException('Invalid source table.');
-        }
-        $limit = max(1, min($limit, 1000));
-        return $pdo->query(sprintf('SELECT * FROM `%s` LIMIT %d', $tableName, $limit))->fetchAll();
-    }
 }

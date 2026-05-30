@@ -17,6 +17,8 @@ return static function (RouteCollection $routes, Application $app): void {
 
     $endpointRuntime = static fn () => $app->services()->get('api.endpoint_runtime');
 
+    $routes->get('/api/endpoints/{endpointKey}', static fn ($request): Response => $endpointRuntime()->handle($request), 'api.endpoints.runtime', 'api');
+    $routes->post('/api/endpoints/{endpointKey}', static fn ($request): Response => $endpointRuntime()->handle($request), 'api.endpoints.runtime_post', 'api');
     $routes->get('/api/e/{endpointKey}', static fn ($request): Response => $endpointRuntime()->handle($request), 'api.endpoints.show', 'api');
     $routes->post('/api/e/{endpointKey}', static fn ($request): Response => $endpointRuntime()->handle($request), 'api.endpoints.post', 'api');
 };

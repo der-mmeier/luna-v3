@@ -20,12 +20,15 @@ final class EndpointResponseBuilder
         private readonly JobRunRepository $runs,
         private readonly ReportRepository $reports,
         private readonly JobRunner $jobRunner,
+        private readonly EndpointRunner $runner,
+        private readonly EndpointJsonResponseFactory $responses,
     ) {
     }
 
     public function build(array $endpoint): Response
     {
         return match ((string) $endpoint['source_type']) {
+            'mapping' => $this->runner->run($endpoint),
             'version' => Response::json([
                 'app' => $this->config->string('APP_NAME', 'Luna V3'),
                 'version' => AppVersion::VERSION,
@@ -55,7 +58,7 @@ final class EndpointResponseBuilder
     private function mappingDryRun(array $endpoint): Response
     {
         if (empty($endpoint['mapping_set_id'])) {
-            return Response::json(['error' => 'mapping_set_missing'], 422);
+            return $this->responses->error('mapping_not_found', 'Mapping not found.', 404);
         }
 
         $runId = $this->jobRunner->runMappingOnce((int) $endpoint['mapping_set_id'], true, 25);
@@ -67,19 +70,7 @@ final class EndpointResponseBuilder
             $preview = array_slice($preview, 0, 25);
         }
 
-        return Response::json([
-            'run_id' => $runId,
-            'status' => $run['status'] ?? 'unknown',
-            'summary' => [
-                'dry_run' => true,
-                'source_count' => (int) ($run['source_count'] ?? 0),
-                'transformed_count' => (int) ($run['transformed_count'] ?? 0),
-                'written_count' => (int) ($run['written_count'] ?? 0),
-                'skipped_count' => (int) ($run['skipped_count'] ?? 0),
-                'error_count' => (int) ($run['error_count'] ?? 0),
-            ],
-            'preview_rows' => is_array($preview) ? $preview : [],
-        ]);
+        return $this->responses->success(is_array($preview) ? array_values(array_filter($preview, 'is_array')) : []);
     }
 
     private function jobStatus(array $endpoint): Response

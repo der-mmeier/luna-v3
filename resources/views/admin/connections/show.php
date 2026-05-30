@@ -37,5 +37,10 @@
             <button class="btn btn-primary" type="submit">Verbindung testen</button>
         </form>
         <a class="btn btn-outline-primary" href="/admin/schema/<?= (int) $connection['id'] ?>">Schema anzeigen</a>
+        <a class="btn btn-outline-secondary" href="/admin/connections/<?= (int) $connection['id'] ?>/edit">Bearbeiten</a>
+        <form method="post" action="/admin/connections/<?= (int) $connection['id'] ?>/delete" onsubmit="return confirm('Diesen Eintrag wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.');">
+            <input type="hidden" name="confirm_delete" value="1">
+            <button class="btn btn-danger" type="submit">Löschen</button>
+        </form>
     </div>
 <?php endif; ?>

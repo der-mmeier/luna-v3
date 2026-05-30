@@ -9,6 +9,8 @@
 /** @var array<int, array<string, mixed>> $lookupTestResults */
 /** @var array<string, mixed> $previewValues */
 /** @var array<int, array<string, mixed>> $connections */
+/** @var array<int, array<string, mixed>> $sourceFilters */
+/** @var array<string, string> $sourceFilterOperators */
 /** @var string|null $columnWarning */
 /** @var string|null $lookupWarning */
 $short = static function (mixed $value): string {
@@ -19,6 +21,18 @@ $short = static function (mixed $value): string {
 $selected = static function (mixed $value, mixed $current): string {
     return (string) $value === (string) $current ? ' selected' : '';
 };
+
+$isReadExport = ($mapping['mapping_mode'] ?? 'transfer') === 'json_endpoint';
+$outputFieldLabel = $isReadExport ? 'Output Field / Ausgabe-Feld' : 'Target Column / Zielspalte';
+$sourceFilterRows = $sourceFilters ?? [];
+
+if ($sourceFilterRows === []) {
+    $sourceFilterRows = [[
+        'source_column' => '',
+        'operator' => '',
+        'filter_value' => '',
+    ]];
+}
 
 $renderPreviewTable = static function (array $rows, array $columns = []) use ($short): void {
     $names = array_map(static fn (array $column): string => (string) ($column['column_name'] ?? ''), $columns);
@@ -68,6 +82,10 @@ foreach ($fields ?? [] as $field) {
 <?php if ($mapping === null): ?>
     <div class="alert alert-warning">Mapping nicht gefunden.</div>
 <?php else: ?>
+    <?php if (! empty($alert)): ?>
+        <div class="alert alert-<?= htmlspecialchars((string) ($alert['type'] ?? 'info'), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string) ($alert['message'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
+    <?php endif; ?>
+
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h1 class="h3 mb-1">Lookup-Feldzuordnung</h1>
@@ -85,10 +103,57 @@ foreach ($fields ?? [] as $field) {
         <div class="alert alert-warning"><?= htmlspecialchars($columnWarning, ENT_QUOTES, 'UTF-8') ?></div>
     <?php endif; ?>
 
+    <form class="card admin-card mb-4" method="post" action="/admin/mappings/<?= (int) $mapping['id'] ?>/source-filters" data-role="source-filter-form">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                <div>
+                    <h2 class="h5 mb-1">Source Filters</h2>
+                    <p class="text-body-secondary mb-0">Alle Source-Filter werden mit AND kombiniert.</p>
+                </div>
+                <button class="btn btn-outline-primary" type="button" data-role="add-source-filter">Filter hinzufügen</button>
+            </div>
+            <div class="vstack gap-3" data-role="source-filter-rows">
+                <?php foreach ($sourceFilterRows as $index => $filter): ?>
+                    <div class="row g-3 align-items-end" data-role="source-filter-row">
+                        <div class="col-md-4">
+                            <label class="form-label">Source Column</label>
+                            <select class="form-select" name="source_column[]">
+                                <option value="">Keine Filterung</option>
+                                <?php foreach ($sourceColumns ?? [] as $column): ?>
+                                    <?php $columnName = (string) $column['column_name']; ?>
+                                    <option value="<?= htmlspecialchars($columnName, ENT_QUOTES, 'UTF-8') ?>"<?= $selected($columnName, $filter['source_column'] ?? '') ?>><?= htmlspecialchars($columnName, ENT_QUOTES, 'UTF-8') ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Operator</label>
+                            <select class="form-select" name="operator[]">
+                                <option value="">Keine Filterung</option>
+                                <?php foreach (($sourceFilterOperators ?? []) as $operator => $label): ?>
+                                    <option value="<?= htmlspecialchars((string) $operator, ENT_QUOTES, 'UTF-8') ?>"<?= $selected($operator, $filter['operator'] ?? '') ?>><?= htmlspecialchars((string) $label, ENT_QUOTES, 'UTF-8') ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Wert</label>
+                            <input class="form-control" name="filter_value[]" value="<?= htmlspecialchars((string) ($filter['filter_value'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                        </div>
+                        <div class="col-md-1 d-grid">
+                            <button class="btn btn-outline-danger" type="button" data-role="remove-source-filter"<?= $index === 0 && count($sourceFilterRows) === 1 ? ' disabled' : '' ?>>Entfernen</button>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <div class="card-footer d-flex justify-content-end">
+            <button class="btn btn-primary" type="submit">Source Filters speichern</button>
+        </div>
+    </form>
+
     <form class="card admin-card mb-4" method="post" action="/admin/mappings/<?= (int) $mapping['id'] ?>/fields">
         <div class="card-body row g-3">
             <div class="col-12">
-                <h2 class="h5 mb-1">Source-Filter und Lookup-Regel</h2>
+                <h2 class="h5 mb-1">Feldzuordnung und Lookup-Regel</h2>
                 <p class="text-body-secondary mb-0">Wähle echte Spalten aus Primary Source und Lookup Source. Nur das Lookup-Key-Template wird frei editiert.</p>
             </div>
             <div class="col-md-4">
@@ -102,26 +167,17 @@ foreach ($fields ?? [] as $field) {
                 </select>
             </div>
             <div class="col-md-4">
-                <label class="form-label">Source-Filter Spalte</label>
-                <select class="form-select" name="source_filter_column">
-                    <option value="">Keine Filterung</option>
-                    <?php foreach ($sourceColumns ?? [] as $column): ?>
-                        <?php $columnName = (string) $column['column_name']; ?>
-                        <option value="<?= htmlspecialchars($columnName, ENT_QUOTES, 'UTF-8') ?>"<?= $selected($columnName, $previewValues['source_filter_column'] ?? '') ?>><?= htmlspecialchars($columnName, ENT_QUOTES, 'UTF-8') ?></option>
+                <label class="form-label">Transform Type</label>
+                <select class="form-select" name="transform_type">
+                    <?php foreach (($transformTypes ?? []) as $type => $label): ?>
+                        <option value="<?= htmlspecialchars((string) $type, ENT_QUOTES, 'UTF-8') ?>"<?= $selected($type, $previewValues['transform_type'] ?? 'lookup_value') ?>><?= htmlspecialchars((string) $label, ENT_QUOTES, 'UTF-8') ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
             <div class="col-md-4">
-                <label class="form-label">Source-Filter Operator</label>
-                <select class="form-select" name="source_filter_operator">
-                    <?php foreach (['is_numeric_gt_zero' => 'numerisch > 0', 'none' => 'Keine Filterung', 'gt' => '>', 'gte' => '>=', 'eq' => '='] as $operator => $label): ?>
-                        <option value="<?= htmlspecialchars($operator, ENT_QUOTES, 'UTF-8') ?>"<?= $selected($operator, $previewValues['source_filter_operator'] ?? '') ?>><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Source-Filter Wert</label>
-                <input class="form-control" name="source_filter_value" value="<?= htmlspecialchars((string) ($previewValues['source_filter_value'] ?? '0'), ENT_QUOTES, 'UTF-8') ?>">
+                <label class="form-label"><?= htmlspecialchars($outputFieldLabel, ENT_QUOTES, 'UTF-8') ?></label>
+                <input class="form-control" name="target_column" value="<?= htmlspecialchars((string) ($previewValues['target_column'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" placeholder="<?= $isReadExport ? 'price' : 'target_column' ?>" required pattern="[A-Za-z0-9_]+">
+                <div class="form-text"><?= $isReadExport ? 'JSON-Key im Ergebnis, zum Beispiel model, price oder quantities.' : 'Zielspalte für Transfer-Mappings.' ?></div>
             </div>
             <div class="col-md-4">
                 <label class="form-label">Lookup Connection</label>
@@ -205,11 +261,6 @@ foreach ($fields ?? [] as $field) {
                 </select>
             </div>
             <div class="col-md-4">
-                <label class="form-label">Ausgabe-Alias</label>
-                <input class="form-control" name="target_column" value="<?= htmlspecialchars((string) ($previewValues['target_column'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" placeholder="resolved_value">
-                <div class="form-text">Optionaler Name für das Ergebnis dieser Lookup-Regel in der Preview/Transfer-Struktur.</div>
-            </div>
-            <div class="col-md-4">
                 <label class="form-label">Fallback Value</label>
                 <input class="form-control" name="fallback_value" value="<?= htmlspecialchars((string) ($previewValues['fallback_value'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
             </div>
@@ -227,7 +278,6 @@ foreach ($fields ?? [] as $field) {
                 <label class="form-label">Notizen</label>
                 <textarea class="form-control" name="notes" rows="2"></textarea>
             </div>
-            <input type="hidden" name="transform_type" value="lookup_value">
             <input type="hidden" name="source_json_path" value="">
             <input type="hidden" name="default_value" value="">
             <div class="col-12">
@@ -365,3 +415,64 @@ foreach ($fields ?? [] as $field) {
         </div>
     </div>
 <?php endif; ?>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.querySelector('[data-role="source-filter-form"]');
+
+    if (!form) {
+        return;
+    }
+
+    const rows = form.querySelector('[data-role="source-filter-rows"]');
+    const addButton = form.querySelector('[data-role="add-source-filter"]');
+
+    const refreshRemoveButtons = () => {
+        const allRows = rows.querySelectorAll('[data-role="source-filter-row"]');
+
+        allRows.forEach((row) => {
+            const removeButton = row.querySelector('[data-role="remove-source-filter"]');
+
+            if (removeButton) {
+                removeButton.disabled = allRows.length === 1;
+            }
+        });
+    };
+
+    addButton?.addEventListener('click', () => {
+        const firstRow = rows.querySelector('[data-role="source-filter-row"]');
+
+        if (!firstRow) {
+            return;
+        }
+
+        const nextRow = firstRow.cloneNode(true);
+
+        nextRow.querySelectorAll('select, input').forEach((field) => {
+            field.value = '';
+        });
+
+        rows.appendChild(nextRow);
+        refreshRemoveButtons();
+    });
+
+    rows.addEventListener('click', (event) => {
+        const target = event.target;
+
+        if (!(target instanceof HTMLElement) || target.dataset.role !== 'remove-source-filter') {
+            return;
+        }
+
+        const row = target.closest('[data-role="source-filter-row"]');
+
+        if (row && rows.querySelectorAll('[data-role="source-filter-row"]').length > 1) {
+            row.remove();
+        }
+
+        refreshRemoveButtons();
+    });
+
+    refreshRemoveButtons();
+});
+</script>
+

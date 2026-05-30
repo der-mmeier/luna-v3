@@ -43,13 +43,16 @@ Typische Luna-Core-Werte:
 
 ## API-Endpunkte
 
-- Private API-Endpunkte brauchen ein Secret.
+- API-Endpunkte können den Secret-Modus `none`, `optional` oder `required` nutzen.
 - API-Secrets werden nicht im Klartext gespeichert.
+- JSON Endpoint Builder v2 speichert neue Endpoint-Secrets zusätzlich als Hash in `luna_endpoints.secret_hash`.
 - Endpoint-Secrets werden getrennt von Connection-Secrets in `luna_endpoint_secrets` gespeichert.
 - Endpoint-Secrets werden mit `EncryptionService` auf Basis von `APP_KEY` verschlüsselt.
-- Private Endpoints akzeptieren `X-Luna-Endpoint-Secret`; Query-Secret ist nur außerhalb von production für lokale Tests erlaubt.
+- Runtime Endpoints akzeptieren `X-Luna-Endpoint-Secret`; `?secret=` bleibt als initialer Fallback möglich.
 - Ungültige oder fehlende Secrets führen zu einer generischen Fehlerantwort.
 - Endpoint-Zugriffe werden auditierbar protokolliert, ohne Secrets zu speichern.
+- Public Runtime-Fehler nutzen ein standardisiertes JSON-Format ohne Stacktraces, SQL-Queries, DSNs, Secret-Hashes oder Token-Fragmente.
+- Admin-Löschaktionen laufen nur per POST mit Bestätigung und prüfen Abhängigkeiten serverseitig. Fehlermeldungen nennen keine Secrets, DSNs, Passwörter oder Secret-Hashes.
 
 ## UI-Präferenzen
 

@@ -12,17 +12,21 @@ final class MappingExecutionResult
     public int $skippedCount = 0;
     public int $errorCount = 0;
     private array $previewRows = [];
+    private array $outputRows = [];
     private array $sourcePreviewRows = [];
     private array $previewRecords = [];
     private array $errors = [];
     private array $warnings = [];
     private array $resolverEvents = [];
     private array $logs = [];
+    private array $diagnostics = [];
 
     public function __construct(public readonly bool $dryRun) {}
 
     public function addPreviewRow(array $row): void
     {
+        $this->outputRows[] = $this->mask($row);
+
         if (count($this->previewRows) < 20) {
             $this->previewRows[] = $this->mask($row);
         }
@@ -140,6 +144,16 @@ final class MappingExecutionResult
         $this->logs[] = ['level' => $level, 'message' => $message, 'context' => $this->mask($context)];
     }
 
+    /**
+     * @param array<string, int|float> $diagnostics
+     */
+    public function addDiagnostics(array $diagnostics): void
+    {
+        foreach ($diagnostics as $key => $value) {
+            $this->diagnostics[$key] = $value;
+        }
+    }
+
     public function toSummaryArray(): array
     {
         return [
@@ -150,6 +164,7 @@ final class MappingExecutionResult
             'skipped_count' => $this->skippedCount,
             'error_count' => $this->errorCount,
             'preview_rows' => $this->previewRows,
+            'output_rows' => $this->outputRows,
             'primary_source_preview' => $this->sourcePreviewRows,
             'transfer_preview' => $this->previewRows,
             'records' => $this->previewRecords,
@@ -157,6 +172,7 @@ final class MappingExecutionResult
             'errors' => $this->errors,
             'warnings' => $this->warnings,
             'logs' => $this->logs,
+            'diagnostics' => $this->diagnostics,
         ];
     }
 
