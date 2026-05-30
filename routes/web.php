@@ -7,6 +7,8 @@ use Luna\Connections\ConnectionTester;
 use Luna\Connections\ExternalDatabaseConfig;
 use Luna\Connections\ExternalPdoConnectionFactory;
 use Luna\Core\Application;
+use Luna\Export\EndpointExportArchiveService;
+use Luna\Export\EndpointRuntimeExporter;
 use Luna\Http\Request;
 use Luna\Http\Response;
 use Luna\Jobs\JobRunner;
@@ -822,6 +824,8 @@ return static function (RouteCollection $routes, Application $app): void {
     $runs = static fn (): JobRunRepository => $app->services()->get('repository.job_runs');
     $reports = static fn (): ReportRepository => $app->services()->get('repository.reports');
     $endpoints = static fn (): EndpointRepository => $app->services()->get('repository.endpoints');
+    $endpointExporter = static fn (): EndpointRuntimeExporter => $app->services()->get(EndpointRuntimeExporter::class);
+    $endpointArchive = static fn (): EndpointExportArchiveService => $app->services()->get(EndpointExportArchiveService::class);
     $sourceRows = static fn (): MappingSourceRowProvider => $app->services()->get(MappingSourceRowProvider::class);
     $jobRunner = static fn (): JobRunner => $app->services()->get('jobs.runner');
     $reportMailer = static fn (): ReportMailer => $app->services()->get('reports.mailer');
@@ -1888,7 +1892,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/endpoints/' . $id]);
     }, 'admin.endpoints.store', 'web');
 
-    $routes->get('/admin/endpoints/{id}', static function (Request $request) use ($admin, $endpoints, $workspaces, $mappings, $jobs): Response {
+    $routes->get('/admin/endpoints/{id}', static function (Request $request) use ($admin, $endpoints, $endpointExporter, $workspaces, $mappings, $jobs): Response {
         $id = (int) $request->route('id');
         $endpoint = $endpoints()->find($id);
         $config = $endpoint === null ? [] : (json_decode((string) ($endpoint['config_json'] ?? '{}'), true) ?: []);
@@ -1902,6 +1906,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'jobs' => safeList($jobs),
             'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
             'hasSecret' => $endpoint !== null && $endpoints()->hasSecret((int) $endpoint['id']),
+            'exportStatus' => $endpoint !== null ? $endpointExporter()->exportStatusForEndpoint((int) $endpoint['id']) : null,
             'alert' => null,
         ]);
     }, 'admin.endpoints.show', 'web');
@@ -1938,6 +1943,91 @@ return static function (RouteCollection $routes, Application $app): void {
 
         return new Response('', 302, ['Location' => '/admin/endpoints/' . $id]);
     }, 'admin.endpoints.update', 'web');
+
+    $routes->post('/admin/endpoints/{id}/export', static function (Request $request) use ($admin, $endpoints, $endpointExporter, $endpointArchive, $audit, $workspaces, $mappings, $jobs): Response {
+        $id = (int) $request->route('id');
+        $endpoint = $endpoints()->find($id);
+
+        if ($endpoint === null) {
+            return Response::notFound();
+        }
+
+        try {
+            $manifest = $endpointExporter()->exportEndpointToWorkspaceStorage($id, true, ! empty($request->post('local_env')));
+            $archiveMessage = '';
+            try {
+                $endpointArchive()->createArchive((string) $manifest['absolute_target_path'], (string) $manifest['absolute_archive_path'], true);
+            } catch (Throwable) {
+                $archiveMessage = ' Endpoint wurde exportiert, aber das ZIP-Archiv konnte nicht erzeugt werden, weil die PHP-ZIP-Erweiterung fehlt oder das Archiv nicht geschrieben werden konnte.';
+            }
+            $audit()->log(isset($endpoint['workspace_id']) ? (int) $endpoint['workspace_id'] : null, 'endpoint.exported', 'endpoint', (string) $id, 'Endpoint Runtime exportiert.', [
+                'endpoint_key' => $endpoint['endpoint_key'] ?? '',
+                'target_path' => $manifest['target_path'] ?? '',
+                'archive_path' => $manifest['archive_path'] ?? '',
+                'local_env_written' => ! empty($manifest['local_env_written']),
+            ]);
+
+            $config = json_decode((string) ($endpoint['config_json'] ?? '{}'), true) ?: [];
+
+            return $admin('admin/endpoints/show', [
+                'title' => 'Endpoint',
+                'active' => 'endpoints',
+                'endpoint' => $endpoints()->find($id) ?? $endpoint,
+                'workspaces' => safeList($workspaces),
+                'mappings' => safeList($mappings),
+                'jobs' => safeList($jobs),
+                'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
+                'hasSecret' => $endpoints()->hasSecret($id),
+                'exportStatus' => $endpointExporter()->exportStatusForEndpoint($id),
+                'alert' => ['type' => $archiveMessage === '' ? 'success' : 'warning', 'message' => 'Endpoint Runtime wurde exportiert nach: ' . (string) ($manifest['target_path'] ?? '') . $archiveMessage],
+            ]);
+        } catch (Throwable) {
+            $config = json_decode((string) ($endpoint['config_json'] ?? '{}'), true) ?: [];
+
+            return $admin('admin/endpoints/show', [
+                'title' => 'Endpoint',
+                'active' => 'endpoints',
+                'endpoint' => $endpoint,
+                'workspaces' => safeList($workspaces),
+                'mappings' => safeList($mappings),
+                'jobs' => safeList($jobs),
+                'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
+                'hasSecret' => $endpoints()->hasSecret($id),
+                'exportStatus' => $endpointExporter()->exportStatusForEndpoint($id),
+                'alert' => ['type' => 'danger', 'message' => 'Endpoint Runtime konnte nicht exportiert werden.'],
+            ]);
+        }
+    }, 'admin.endpoints.export', 'web');
+
+    $routes->get('/admin/endpoints/{id}/export/download', static function (Request $request) use ($endpoints, $endpointExporter): Response {
+        $id = (int) $request->route('id');
+        $endpoint = $endpoints()->find($id);
+
+        if ($endpoint === null) {
+            return Response::notFound();
+        }
+
+        try {
+            $archivePath = $endpointExporter()->archivePathForEndpoint($endpoint);
+        } catch (Throwable) {
+            return Response::notFound();
+        }
+
+        if (! is_file($archivePath)) {
+            return Response::notFound('Export archive not found.');
+        }
+
+        $body = file_get_contents($archivePath);
+        if ($body === false) {
+            return Response::notFound('Export archive not found.');
+        }
+
+        return new Response($body, 200, [
+            'Content-Type' => 'application/zip',
+            'Content-Disposition' => 'attachment; filename="' . basename($archivePath) . '"',
+            'Content-Length' => (string) filesize($archivePath),
+        ]);
+    }, 'admin.endpoints.export.download', 'web');
 
     $routes->post('/admin/endpoints/{id}/delete', static function (Request $request) use ($admin, $endpoints, $audit, $workspaces, $mappings, $jobs): Response {
         $id = (int) $request->route('id');

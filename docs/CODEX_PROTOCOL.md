@@ -792,3 +792,38 @@ Source-Filter sind als eigene Mapping-weite Liste in `luna_mapping_source_filter
 ### Ergänzung: Prefix-Lookup-Warmup
 
 `key_value_map_by_prefix` sammelt vor der Row-Transformation alle gerenderten Prefixe pro Mapping-Lauf und lädt sie über `PrefixLookupWarmupProvider` gebündelt vor. `PdoLookupValueProvider` führt dafür Batch-Queries mit eindeutigen Prefix-Parametern und Chunking aus, gruppiert Treffer danach wieder nach Prefix und legt die Ergebnisse im Prefix-Cache ab. `lookupByPrefix()` bleibt als Fallback kompatibel, liest nach einem Warmup aber ohne weitere SQL-Abfrage aus dem Cache.
+
+---
+
+## 2026-05-30 - 1.5.0 Endpoint Export Runtime
+
+### Aufgabe
+
+Bestehende JSON Endpoints als eigenständige Runtime exportieren, damit produktive Consumer nur einen HTTP-JSON-Endpunkt benötigen und keine öffentliche Luna-Workbench betrieben werden muss.
+
+### Geänderte Dateien
+
+- bin/luna
+- src/Core/Application.php
+- src/Export/EndpointExportArchiveService.php
+- src/Export/EndpointRuntimeExporter.php
+- tests/Unit/EndpointRuntimeExporterTest.php
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+- docs/SECURITY_MODEL.md
+
+### Ergebnis
+
+Der CLI-Befehl `php bin/luna endpoint:export <endpoint-key> --target=<directory> [--force]` erzeugt ein deploybares Paket mit `api/{endpoint}.php`, eigenem Runtime-Bootstrap, Runtime-Klassen, `config/endpoint.{endpoint}.php`, `.env.example`, `.htaccess`-Schutzdateien und `manifest.json`. Die exportierte Runtime enthält keine Admin-Routen oder Admin-Templates und referenziert Connection- und Endpoint-Secrets ausschließlich über Env-Variablen. PHPUnit deckt Exportprofil, Manifest, Secret-Ausschluss, `.env.example`, Runtime-Erfolgsausgabe, Runtime-Fehlerformat und Secret-Prüfung ab.
+
+### Ergänzung: lokales Runtime-Env
+
+Der Export-Befehl unterstützt `--local-env`. Standardexporte schreiben weiterhin keine echte `.env`; mit `--local-env` wird zusätzlich eine lokale `.env` aus den vorhandenen Luna-Connection-Profilen und Secret-Stores erzeugt. Klartext-Secrets landen dabei ausschließlich in `.env`, nicht in PHP-Konfiguration, Manifest oder CLI-Ausgabe. `.gitignore` schützt `public/pim/.env`, `storage/exports/*/.env` und `storage/exports/**/*.env`.
+
+### Ergänzung: Admin-Export und Workspace-Storage
+
+Endpoint Runtime Exporte können über die Endpoint-Detailseite per POST gestartet werden. Der Standardpfad wird aus Workspace-Slug und Endpoint-Key berechnet: `storage/{workspace_slug}/exports/endpoints/{endpoint_key}/`. Der CLI-Befehl nutzt denselben Pfad, wenn kein `--target` angegeben ist; `--target` bleibt als Dev-/Expertenoption erhalten. Die Detailseite zeigt an, ob ein Export vorhanden ist, den Exportpfad und `exported_at` aus dem Manifest.
+
+### Ergänzung: ZIP-Archiv und Download
+
+Admin-Endpoint-Exporte erzeugen nach dem Ordnerexport automatisch ein ZIP-Archiv neben dem Endpoint-Ordner, z. B. `storage/asfinstocks/exports/endpoints/asfinstocks-isr_prices-runtime.zip`. Die Endpoint-Detailseite bietet einen berechneten Download-Link über `/admin/endpoints/{id}/export/download`; die Route akzeptiert keine freien Dateipfade. Der CLI-Befehl unterstützt `--zip` für denselben Archivschritt. `EndpointExportArchiveService` nimmt Runtime-Dateien, API-Datei, Config, `.env.example`, Manifest und `.htaccess` auf, schließt aber echte `.env`, alte ZIPs, Logs, temporäre Dateien, VCS-/IDE-Ordner, `node_modules` und `vendor` aus.

@@ -6,3 +6,28 @@ Thumbs.db
 
 /storage/cache/
 /storage/logs/
+/storage/*/exports/
+/storage/*/exports/**
+/storage/*/exports/**/*.zip
+/storage/**/exports/**/*.zip
+/public/pim/.env
+/public/pim/
+/public/pim/**
+/public/pim/**/*.zip
+/storage/exports/*/.env
+/storage/exports/**/*.env
+/storage/*/exports/**/.env
+/public/pim/**/.env
+# Luna endpoint export artifacts
+/public/pim/
+/storage/exports/
+
+# Exported runtime env files
+public/pim/.env
+public/pim/**/*.env
+storage/exports/**/.env
+storage/exports/**/*.env
+
+# Local exported endpoint packages
+storage/exports/*.zip
+storage/exports/**/*.zip

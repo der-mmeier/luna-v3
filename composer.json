@@ -6,6 +6,7 @@
   "require": {
     "php": ">=8.2",
     "ext-pdo": "*",
+    "ext-zip": "*",
     "vlucas/phpdotenv": "^v5.6.3"
   },
   "autoload": {

@@ -18,6 +18,8 @@ use Luna\Database\MigrationRunner;
 use Luna\Database\PdoConnectionFactory;
 use Luna\Database\SystemDatabase;
 use Luna\Http\Response;
+use Luna\Export\EndpointExportArchiveService;
+use Luna\Export\EndpointRuntimeExporter;
 use Luna\Jobs\JobRunner;
 use Luna\Mapping\MappingValidator;
 use Luna\Mapping\MappingFieldResolver;
@@ -195,6 +197,14 @@ final class Application
             $this->services->get(EndpointJsonResponseFactory::class),
             $this->services->get(AuditLogRepository::class),
         ));
+        $this->services->set(EndpointRuntimeExporter::class, new EndpointRuntimeExporter(
+            $this->services->get(EndpointRepository::class),
+            $this->services->get(MappingRepository::class),
+            $this->services->get(ConnectionProfileRepository::class),
+            $this->services->get(WorkspaceRepository::class),
+            $this->paths->basePath(),
+        ));
+        $this->services->set(EndpointExportArchiveService::class, new EndpointExportArchiveService());
 
         $this->services->set('paths', $this->paths);
         $this->services->set('config', $this->config);
@@ -225,5 +235,7 @@ final class Application
         $this->services->set('api.endpoint_runner', $this->services->get(EndpointRunner::class));
         $this->services->set('api.endpoint_response_builder', $this->services->get(EndpointResponseBuilder::class));
         $this->services->set('api.endpoint_runtime', $this->services->get(EndpointRuntime::class));
+        $this->services->set('export.endpoint_runtime', $this->services->get(EndpointRuntimeExporter::class));
+        $this->services->set('export.endpoint_archive', $this->services->get(EndpointExportArchiveService::class));
     }
 }
