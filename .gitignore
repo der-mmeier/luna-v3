@@ -31,3 +31,7 @@ storage/exports/**/*.env
 # Local exported endpoint packages
 storage/exports/*.zip
 storage/exports/**/*.zip
+
+# PHPUnit cache
+/.phpunit.cache/
+/.phpunit.result.cache
