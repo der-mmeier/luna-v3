@@ -48,6 +48,10 @@
                         <div class="d-flex gap-2">
                             <a class="btn btn-sm btn-outline-secondary" href="/admin/connections/<?= (int) $connection['id'] ?>">Details</a>
                             <a class="btn btn-sm btn-outline-primary" href="/admin/connections/<?= (int) $connection['id'] ?>/edit">Bearbeiten</a>
+                            <form method="post" action="/admin/connections/<?= (int) $connection['id'] ?>/delete" onsubmit="return confirm('Diesen Eintrag wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.');">
+                                <input type="hidden" name="confirm_delete" value="1">
+                                <button class="btn btn-sm btn-danger" type="submit">Löschen</button>
+                            </form>
                         </div>
                     </td>
                 </tr>

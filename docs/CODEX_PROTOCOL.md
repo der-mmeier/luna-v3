@@ -732,3 +732,63 @@ Die Feldzuordnungsmaske soll eine Lookup-Regel mit echten Source- und Lookup-Sel
 ### Ergebnis
 
 Die Maske nutzt jetzt einen Source-Filter mit `numerisch > 0`, zeigt maximal 10 passende Primary-Source-Zeilen, laedt Lookup-Tabellen als Select pro Lookup Connection, laedt Lookup Key/Value Columns aus der gewaehlten Lookup-Tabelle und zeigt einen Lookup-Test fuer die aktuellen Beispielzeilen. `target_column` bleibt technisch erhalten, wird in der UI aber nur noch als optionaler Ausgabe-Alias verwendet; leer wird beim Speichern `resolved_value` verwendet.
+
+---
+
+## 2026-05-28 - 1.4.0 JSON Endpoint Builder v2
+
+### Aufgabe
+
+Mapping-gebundene JSON-Endpoints mit Workspace-Bindung, Public Runtime, Secret-Modus, standardisiertem JSON-Format und Admin-Preview umsetzen.
+
+### Geaenderte Dateien
+
+- database/migrations/2026_05_28_000007_add_endpoint_builder_v2_fields.sql
+- src/Api/EndpointJsonResponseFactory.php
+- src/Api/EndpointSecretPolicy.php
+- src/Api/EndpointRunner.php
+- src/Api/EndpointAccessGuard.php
+- src/Api/EndpointResponseBuilder.php
+- src/Api/EndpointRuntime.php
+- src/Core/Application.php
+- src/Repository/EndpointRepository.php
+- routes/api.php
+- routes/web.php
+- resources/views/admin/endpoints/*
+- public/assets/js/mapping-tables.js
+- tests/Unit/EndpointBuilderV2Test.php
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+- docs/DATA_MODEL_DRAFT.md
+- docs/SECURITY_MODEL.md
+
+### Ergebnis
+
+Umgesetzt. Endpoints nutzen `source_type = mapping`, sind an Workspace und Mapping gebunden und liefern unter `/api/endpoints/{slug}` ein JSON-Envelope mit `success`, `generated_at`, `count` und `items`. Fehler werden standardisiert ohne Stacktraces oder Secrets ausgegeben. Cache-Felder sind persistiert und in der UI vorbereitet, aber noch nicht als Cache-Layer aktiv.
+
+### Ergänzung: Admin Delete Buttons
+
+Workspaces, Connections, Mappings und Endpoints haben POST-basierte Löschaktionen mit Browser-Bestätigung und serverseitiger Abhängigkeitsprüfung erhalten. Workspaces werden nur leer gelöscht, Connections nur ohne Mapping-/Schema-Abhängigkeiten, Mappings nur ohne Endpoint-/Job-Verweise. Endpoints können gelöscht werden, ohne Mappings oder Workspaces zu entfernen. PHPUnit deckt die Löschregeln und POST-only-Routen ab.
+---
+
+## 2026-05-29 - 1.4.0 JSON Endpoint Mapping Designer erweitert
+
+### Aufgabe
+
+JSON-Endpoint-Mappings sollen ohne Target Connection gespeichert werden können und Lookup-/Enrichment-Connections pro Mapping-Regel verwenden.
+
+### Ergebnis
+
+Mappings unterstützen `mapping_mode = transfer` und `mapping_mode = json_endpoint`. Transfer-Mappings verlangen weiterhin Source und Target; JSON-Endpoint-Mappings verlangen nur die Primary Source und laufen im Endpoint-Kontext read-only. Lookup-Felder speichern ihre Lookup Connection pro Regel. Der Transform `key_value_map_by_prefix` rendert ein Prefix-Template, sucht Lookup-Keys per Prefix und entfernt den Prefix aus den Ausgabe-Keys. Public Endpoints verwenden `output_rows`, damit die Runtime nicht still auf 20 Preview-Zeilen limitiert.
+
+### Ergänzung: zentraler Source-Filter
+
+Source-Filter werden am Mapping gespeichert und über `MappingSourceRowProvider` angewendet. Die UI-Preview nutzt denselben Provider wie `MappingExecutor`; dadurch verwenden CLI-Dry-Run, Endpoint Preview und Public Runtime denselben gefilterten Source-Row-Satz. Numerische Filter schließen `NULL`, leere Werte, nichtnumerische Werte und `0` bei `numeric_gt 0` aus.
+
+### Ergänzung: Source Filter Builder
+
+Source-Filter sind als eigene Mapping-weite Liste in `luna_mapping_source_filters` gespeichert. Der Mapping Designer zeigt mehrere Filterzeilen mit Source Column, Operator und Wert; alle Filter werden per AND kombiniert. `MappingSourceRowProvider` unterstützt Text-, Numeric- und Listenoperatoren und liest alte `source_filter_*`-Felder weiter als Fallback, wenn noch keine Filterliste gespeichert ist.
+
+### Ergänzung: Prefix-Lookup-Warmup
+
+`key_value_map_by_prefix` sammelt vor der Row-Transformation alle gerenderten Prefixe pro Mapping-Lauf und lädt sie über `PrefixLookupWarmupProvider` gebündelt vor. `PdoLookupValueProvider` führt dafür Batch-Queries mit eindeutigen Prefix-Parametern und Chunking aus, gruppiert Treffer danach wieder nach Prefix und legt die Ergebnisse im Prefix-Cache ab. `lookupByPrefix()` bleibt als Fallback kompatibel, liest nach einem Warmup aber ohne weitere SQL-Abfrage aus dem Cache.

@@ -21,7 +21,11 @@
         </div>
         <div class="card-footer d-flex gap-2">
             <button class="btn btn-primary" type="submit">Aktualisieren</button>
-            <a class="btn btn-outline-secondary" href="/admin/workspaces">Zurueck</a>
+            <a class="btn btn-outline-secondary" href="/admin/workspaces">Zurück</a>
+            <button class="btn btn-danger" type="submit" form="delete-workspace-form">Löschen</button>
         </div>
+    </form>
+    <form id="delete-workspace-form" method="post" action="/admin/workspaces/<?= (int) $workspace['id'] ?>/delete" onsubmit="return confirm('Diesen Eintrag wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.');">
+        <input type="hidden" name="confirm_delete" value="1">
     </form>
 <?php endif; ?>

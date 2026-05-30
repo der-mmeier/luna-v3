@@ -42,6 +42,15 @@ $values = $values ?? [];
                 <?php endforeach; ?>
             </select>
         </div>
+        <div class="col-md-6">
+            <label class="form-label" for="mapping_mode">Mapping-Modus</label>
+            <select class="form-select" id="mapping_mode" name="mapping_mode">
+                <?php foreach (['transfer' => 'Transfer', 'json_endpoint' => 'JSON Endpoint / Read Export'] as $mode => $label): ?>
+                    <option value="<?= $mode ?>" <?= ($values['mapping_mode'] ?? 'transfer') === $mode ? 'selected' : '' ?>><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></option>
+                <?php endforeach; ?>
+            </select>
+            <div class="form-text">JSON-Endpoint-Mappings benötigen kein Target.</div>
+        </div>
         <div class="col-12">
             <label class="form-label" for="name">Name</label>
             <input class="form-control" id="name" name="name" value="<?= htmlspecialchars((string) ($values['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" required>
@@ -75,6 +84,7 @@ $values = $values ?? [];
         </div>
         <div class="col-md-6">
             <label class="form-label" for="target_connection_id">Target Connection</label>
+            <div class="form-text mb-2">Für JSON-Endpoint-Mappings optional.</div>
             <select class="form-select" id="target_connection_id" name="target_connection_id" data-role="target-connection">
                 <option value="">Bitte wählen</option>
                 <?php foreach ($connections ?? [] as $connection): ?>

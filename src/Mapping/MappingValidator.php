@@ -34,8 +34,11 @@ final class MappingValidator
             $result->addWarning('Mapping Set ist keinem Workspace zugeordnet.');
         }
 
+        $mode = (string) ($set['mapping_mode'] ?? 'transfer');
         $sourceConnection = $this->connection((int) ($set['source_connection_id'] ?? 0), 'Source', $result);
-        $targetConnection = $this->connection((int) ($set['target_connection_id'] ?? 0), 'Target', $result);
+        $targetConnection = $mode === 'transfer'
+            ? $this->connection((int) ($set['target_connection_id'] ?? 0), 'Target', $result)
+            : null;
         $sourceTable = (string) ($set['source_table'] ?? '');
         $targetTable = (string) ($set['target_table'] ?? '');
 
@@ -43,7 +46,7 @@ final class MappingValidator
             $result->addError('Source Table ist nicht gesetzt.');
         }
 
-        if ($targetTable === '') {
+        if ($mode === 'transfer' && $targetTable === '') {
             $result->addError('Target Table ist nicht gesetzt.');
         }
 
@@ -75,7 +78,7 @@ final class MappingValidator
                 $mappedTargets[$targetColumn] = true;
             }
 
-            if (! in_array($transformType, ['static', 'static_value', 'lookup_value', 'json_path'], true)) {
+            if (! in_array($transformType, ['static', 'static_value', 'lookup_value', 'key_value_map_by_prefix', 'json_path'], true)) {
                 $sourceColumn = (string) ($field['source_column'] ?? '');
                 if ($sourceColumn === '') {
                     $result->addError(sprintf('Source Column für Transfer-Feld "%s" fehlt.', $targetColumn));
@@ -92,7 +95,7 @@ final class MappingValidator
                 $result->addError(sprintf('Static Mapping für Transfer-Feld "%s" braucht default_value.', $targetColumn));
             }
 
-            if ($transformType === 'lookup_value') {
+            if (in_array($transformType, ['lookup_value', 'key_value_map_by_prefix'], true)) {
                 foreach (['lookup_connection_id', 'lookup_table', 'lookup_key_column', 'lookup_value_column', 'lookup_key_template'] as $key) {
                     if (empty($field[$key])) {
                         $result->addError(sprintf('Lookup Mapping für Transfer-Feld "%s" braucht %s.', $targetColumn, $key));

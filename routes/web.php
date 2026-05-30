@@ -27,6 +27,7 @@ use Luna\Routing\RouteCollection;
 use Luna\Schema\SampleDataReader;
 use Luna\Schema\SchemaInspector;
 use Luna\Schema\TableNameReader;
+use Luna\Transfer\MappingSourceRowProvider;
 use Luna\View\ViewRenderer;
 
 if (! function_exists('safeList')) {
@@ -47,6 +48,7 @@ if (! function_exists('mappingSetValues')) {
             'workspace_id' => $request->post('workspace_id'),
             'name' => (string) $request->post('name', ''),
             'description' => (string) $request->post('description', ''),
+            'mapping_mode' => (string) $request->post('mapping_mode', 'transfer'),
             'source_connection_id' => $request->post('source_connection_id'),
             'source_table' => (string) $request->post('source_table', ''),
             'target_connection_id' => $request->post('target_connection_id'),
@@ -60,6 +62,7 @@ if (! function_exists('mappingSetErrors')) {
     function mappingSetErrors(array $values): array
     {
         $errors = [];
+        $mode = (string) ($values['mapping_mode'] ?? 'transfer');
 
         if (trim((string) $values['name']) === '') {
             $errors[] = 'Name ist erforderlich.';
@@ -67,6 +70,18 @@ if (! function_exists('mappingSetErrors')) {
 
         if (! in_array((string) $values['status'], ['draft', 'active', 'archived'], true)) {
             $errors[] = 'Status ist ungültig.';
+        }
+
+        if (! in_array($mode, ['transfer', 'json_endpoint'], true)) {
+            $errors[] = 'Mapping-Modus ist ungültig.';
+        }
+
+        if (empty($values['source_connection_id'])) {
+            $errors[] = 'Primary Source Connection ist erforderlich.';
+        }
+
+        if ($mode === 'transfer' && empty($values['target_connection_id'])) {
+            $errors[] = 'Target Connection ist für Transfer-Mappings erforderlich.';
         }
 
         return $errors;
@@ -81,7 +96,7 @@ if (! function_exists('mappingFieldValues')) {
         return [
             'source_column' => (string) $request->post('source_column', ''),
             'source_json_path' => (string) $request->post('source_json_path', ''),
-            'target_column' => $targetColumn === '' ? 'resolved_value' : $targetColumn,
+            'target_column' => $targetColumn,
             'transform_type' => (string) $request->post('transform_type', 'direct'),
             'default_value' => (string) $request->post('default_value', ''),
             'lookup_connection_id' => $request->post('lookup_connection_id'),
@@ -95,6 +110,46 @@ if (! function_exists('mappingFieldValues')) {
             'notes' => (string) $request->post('notes', ''),
             'sort_order' => (int) $request->post('sort_order', 0),
         ];
+    }
+}
+
+if (! function_exists('mappingFieldErrors')) {
+    function mappingFieldErrors(?array $set, array $values, ConnectionProfileRepository $connections): array
+    {
+        if ($set === null) {
+            return ['Mapping wurde nicht gefunden.'];
+        }
+
+        $transformType = (string) ($values['transform_type'] ?? 'direct');
+        $lookupConnectionId = (int) ($values['lookup_connection_id'] ?? 0);
+        $targetColumn = trim((string) ($values['target_column'] ?? ''));
+
+        if ($targetColumn === '') {
+            return ['Ausgabe-Feld ist erforderlich.'];
+        }
+
+        if (preg_match('/^[A-Za-z0-9_]+$/', $targetColumn) !== 1) {
+            return ['Ausgabe-Feld darf nur Buchstaben, Zahlen und Unterstriche enthalten.'];
+        }
+
+        if (! in_array($transformType, ['lookup_value', 'key_value_map_by_prefix'], true)) {
+            return [];
+        }
+
+        if ($lookupConnectionId <= 0) {
+            return ['Lookup Connection ist erforderlich.'];
+        }
+
+        $lookupConnection = $connections->find($lookupConnectionId);
+        if ($lookupConnection === null) {
+            return ['Lookup Connection wurde nicht gefunden.'];
+        }
+
+        if ((int) ($lookupConnection['workspace_id'] ?? 0) !== (int) ($set['workspace_id'] ?? 0)) {
+            return ['Lookup Connection gehört nicht zum Workspace des Mappings.'];
+        }
+
+        return [];
     }
 }
 
@@ -120,7 +175,7 @@ if (! function_exists('mappingViewData')) {
 }
 
 if (! function_exists('mappingFieldsData')) {
-    function mappingFieldsData(Closure $mappings, Closure $connections, Closure $pdoFactory, int $id, array $previewValues = [], array $extra = []): array
+    function mappingFieldsData(Closure $mappings, Closure $connections, Closure $pdoFactory, Closure $sourceRows, int $id, array $previewValues = [], array $extra = []): array
     {
         $data = mappingViewData($mappings, $id, $extra);
         $data['sourceColumns'] = [];
@@ -130,6 +185,7 @@ if (! function_exists('mappingFieldsData')) {
         $data['lookupTestResults'] = [];
         $data['lookupTestRequested'] = ! empty($previewValues['lookup_test']);
         $data['previewValues'] = mappingPreviewValues($previewValues);
+        $data['sourceFilters'] = [];
         $data['connections'] = [];
         $data['columnWarning'] = null;
         $data['lookupWarning'] = null;
@@ -137,6 +193,12 @@ if (! function_exists('mappingFieldsData')) {
         if ($data['mapping'] === null) {
             return $data;
         }
+
+        $data['sourceFilters'] = $mappings()->sourceFiltersForSet($id);
+        if ($data['sourceFilters'] === []) {
+            $data['sourceFilters'] = (new MappingSourceRowProvider())->filtersFromMappingSet($data['mapping']);
+        }
+        $data['previewValues'] = mappingPreviewValues($previewValues, $data['mapping']);
 
         try {
             $source = $connections()->find((int) $data['mapping']['source_connection_id']);
@@ -146,7 +208,9 @@ if (! function_exists('mappingFieldsData')) {
                 $sourceConfig = ExternalDatabaseConfig::fromProfile($source, $connections()->secretsFor((int) $source['id']));
                 $sourcePdo = $pdoFactory()->create($sourceConfig);
                 $data['sourceColumns'] = (new SchemaInspector($sourcePdo))->columns((string) $data['mapping']['source_table']);
-                $data['sourceSamples'] = mappingSampleRows($sourcePdo, (string) $data['mapping']['source_table'], $data['previewValues']);
+                $filterSet = $data['mapping'];
+                $filterSet['source_filters'] = $data['sourceFilters'];
+                $data['sourceSamples'] = $sourceRows()->rows($sourcePdo, (string) $data['mapping']['source_table'], $filterSet, 10);
             }
 
             if ((int) $data['previewValues']['lookup_connection_id'] > 0 && (string) $data['previewValues']['lookup_table'] !== '') {
@@ -175,13 +239,13 @@ if (! function_exists('mappingFieldsData')) {
 }
 
 if (! function_exists('mappingPreviewValues')) {
-    function mappingPreviewValues(array $values): array
+    function mappingPreviewValues(array $values, array $mapping = []): array
     {
-        $operator = (string) ($values['source_filter_operator'] ?? 'is_numeric_gt_zero');
+        $operator = (string) ($values['source_filter_operator'] ?? ($mapping['source_filter_operator'] ?? 'is_numeric_gt_zero'));
         $sourceColumn = (string) ($values['source_column'] ?? '');
-        $sourceFilterColumn = (string) ($values['source_filter_column'] ?? '');
+        $sourceFilterColumn = (string) ($values['source_filter_column'] ?? ($mapping['source_filter_column'] ?? ''));
 
-        if (! in_array($operator, ['none', 'is_numeric_gt_zero', 'gt', 'gte', 'eq'], true)) {
+        if (! in_array($operator, ['none', 'is_numeric_gt_zero', 'numeric_gt', 'gt', 'gte', 'eq'], true)) {
             $operator = 'is_numeric_gt_zero';
         }
 
@@ -189,7 +253,7 @@ if (! function_exists('mappingPreviewValues')) {
             'source_column' => $sourceColumn,
             'source_filter_column' => $sourceFilterColumn === '' ? $sourceColumn : $sourceFilterColumn,
             'source_filter_operator' => $operator,
-            'source_filter_value' => (string) ($values['source_filter_value'] ?? '0'),
+            'source_filter_value' => (string) ($values['source_filter_value'] ?? ($mapping['source_filter_value'] ?? '0')),
             'target_column' => trim((string) ($values['target_column'] ?? '')),
             'transform_type' => (string) ($values['transform_type'] ?? 'lookup_value'),
             'lookup_connection_id' => (int) ($values['lookup_connection_id'] ?? 0),
@@ -205,39 +269,82 @@ if (! function_exists('mappingPreviewValues')) {
     }
 }
 
+if (! function_exists('mappingPreviewFilterSet')) {
+    function mappingPreviewFilterSet(array $values): array
+    {
+        return [
+            'source_filter_column' => $values['source_filter_column'] ?? '',
+            'source_filter_operator' => $values['source_filter_operator'] ?? 'none',
+            'source_filter_value' => $values['source_filter_value'] ?? '',
+        ];
+    }
+}
+
+if (! function_exists('mappingSourceFilterValues')) {
+    function mappingSourceFilterValues(Request $request): array
+    {
+        $columns = $request->post('source_column', []);
+        $operators = $request->post('operator', []);
+        $values = $request->post('filter_value', []);
+
+        if (is_array($columns) || is_array($operators) || is_array($values)) {
+            $rows = [];
+            $max = max(count(is_array($columns) ? $columns : []), count(is_array($operators) ? $operators : []), count(is_array($values) ? $values : []));
+            for ($index = 0; $index < $max; $index++) {
+                $rows[] = [
+                    'source_column' => is_array($columns) ? (string) ($columns[$index] ?? '') : '',
+                    'operator' => is_array($operators) ? (string) ($operators[$index] ?? 'none') : 'none',
+                    'filter_value' => is_array($values) ? (string) ($values[$index] ?? '') : '',
+                    'sort_order' => $index,
+                ];
+            }
+
+            return $rows;
+        }
+
+        return [
+            [
+                'source_column' => (string) $request->post('source_filter_column', ''),
+                'operator' => (string) $request->post('source_filter_operator', 'none'),
+                'filter_value' => (string) $request->post('source_filter_value', ''),
+                'sort_order' => 0,
+            ],
+        ];
+    }
+}
+
+if (! function_exists('mappingSourceFilterOperatorLabels')) {
+    function mappingSourceFilterOperatorLabels(): array
+    {
+        return [
+            'equals' => 'ist gleich',
+            'not_equals' => 'ist nicht gleich',
+            'contains' => 'enthält',
+            'not_contains' => 'enthält nicht',
+            'starts_with' => 'beginnt mit',
+            'not_starts_with' => 'beginnt nicht mit',
+            'ends_with' => 'endet mit',
+            'not_ends_with' => 'endet nicht mit',
+            'like' => 'LIKE',
+            'not_like' => 'nicht LIKE',
+            'is_empty' => 'ist leer',
+            'is_not_empty' => 'ist nicht leer',
+            'numeric_equals' => 'numerisch =',
+            'numeric_not_equals' => 'numerisch !=',
+            'numeric_greater_than' => 'numerisch >',
+            'numeric_greater_or_equal' => 'numerisch >=',
+            'numeric_less_than' => 'numerisch <',
+            'numeric_less_or_equal' => 'numerisch <=',
+            'in' => 'in Liste',
+            'not_in' => 'nicht in Liste',
+        ];
+    }
+}
+
 if (! function_exists('mappingSampleRows')) {
     function mappingSampleRows(PDO $pdo, string $tableName, array $values): array
     {
-        $operator = (string) ($values['source_filter_operator'] ?? 'none');
-        $column = (string) ($values['source_filter_column'] ?? '');
-
-        if ($operator === 'none' || $column === '') {
-            return (new SampleDataReader($pdo))->sampleRows($tableName, null, 10);
-        }
-
-        mappingAssertIdentifier($tableName);
-        mappingAssertIdentifier($column);
-
-        $table = mappingQuoteIdentifier($tableName);
-        $quotedColumn = mappingQuoteIdentifier($column);
-
-        if ($operator === 'is_numeric_gt_zero') {
-            $statement = $pdo->query(sprintf(
-                "SELECT * FROM %s WHERE TRIM(CAST(%s AS CHAR)) REGEXP '^[0-9]+$' AND CAST(%s AS SIGNED) > 0 LIMIT 10",
-                $table,
-                $quotedColumn,
-                $quotedColumn,
-            ));
-
-            return $statement->fetchAll();
-        }
-
-        $value = (string) ($values['source_filter_value'] ?? '');
-        $sqlOperator = ['gt' => '>', 'gte' => '>=', 'eq' => '='][$operator] ?? '=';
-        $statement = $pdo->prepare(sprintf('SELECT * FROM %s WHERE %s %s :filter_value LIMIT 10', $table, $quotedColumn, $sqlOperator));
-        $statement->execute(['filter_value' => $value]);
-
-        return $statement->fetchAll();
+        return (new MappingSourceRowProvider())->rows($pdo, $tableName, mappingPreviewFilterSet($values), 10);
     }
 }
 
@@ -250,6 +357,7 @@ if (! function_exists('mappingLookupTestResults')) {
         $keyColumn = (string) ($values['lookup_key_column'] ?? '');
         $valueColumn = (string) ($values['lookup_value_column'] ?? '');
         $template = (string) ($values['lookup_key_template'] ?? '');
+        $transformType = (string) ($values['transform_type'] ?? 'lookup_value');
         $results = [];
 
         if ($sourceRows === [] || $sourceColumn === '' || $connectionId <= 0 || $table === '' || $keyColumn === '' || $valueColumn === '' || $template === '') {
@@ -268,7 +376,9 @@ if (! function_exists('mappingLookupTestResults')) {
             }
 
             $pdo = $pdoFactory()->create(ExternalDatabaseConfig::fromProfile($profile, $connections()->secretsFor($connectionId)), false);
-            $statement = $pdo->prepare(sprintf('SELECT `%s` AS lookup_value FROM `%s` WHERE `%s` = :lookup_key LIMIT 1', $valueColumn, $table, $keyColumn));
+            $statement = $pdo->prepare($transformType === 'key_value_map_by_prefix'
+                ? sprintf('SELECT `%s` AS lookup_key, `%s` AS lookup_value FROM `%s` WHERE `%s` LIKE :lookup_key ORDER BY `%s` LIMIT 10', $keyColumn, $valueColumn, $table, $keyColumn, $keyColumn)
+                : sprintf('SELECT `%s` AS lookup_value FROM `%s` WHERE `%s` = :lookup_key LIMIT 1', $valueColumn, $table, $keyColumn));
             $renderer = new LookupKeyTemplateRenderer();
 
             foreach ($sourceRows as $row) {
@@ -287,7 +397,7 @@ if (! function_exists('mappingLookupTestResults')) {
                     'found_value' => null,
                 ];
 
-                if ($sourceValueText === '' || $sourceValueText === '-' || ! ctype_digit($sourceValueText) || (int) $sourceValueText <= 0) {
+                if ($sourceValueText === '' || $sourceValueText === '-' || ($transformType !== 'key_value_map_by_prefix' && (! ctype_digit($sourceValueText) || (int) $sourceValueText <= 0))) {
                     $result['message'] = 'Source-Wert ist leer, nicht numerisch oder nicht größer als 0.';
                     $results[] = $result;
                     continue;
@@ -303,10 +413,17 @@ if (! function_exists('mappingLookupTestResults')) {
                     continue;
                 }
 
-                $statement->execute(['lookup_key' => $rendered->value]);
-                $lookupRow = $statement->fetch();
+                $statement->execute(['lookup_key' => $transformType === 'key_value_map_by_prefix' ? $rendered->value . '%' : $rendered->value]);
+                $lookupRow = $transformType === 'key_value_map_by_prefix' ? $statement->fetchAll() : $statement->fetch();
 
-                if (is_array($lookupRow)) {
+                if ($transformType === 'key_value_map_by_prefix' && is_array($lookupRow) && $lookupRow !== []) {
+                    $result['status'] = 'gefunden';
+                    $result['found_value'] = count($lookupRow) . ' Treffer';
+                    $results[] = $result;
+                    continue;
+                }
+
+                if ($transformType !== 'key_value_map_by_prefix' && is_array($lookupRow)) {
                     $result['status'] = 'gefunden';
                     $result['found_value'] = $lookupRow['lookup_value'] ?? null;
                     $results[] = $result;
@@ -451,6 +568,24 @@ if (! function_exists('workspaceCreateSuccessRedirect')) {
     }
 }
 
+if (! function_exists('deleteConfirmed')) {
+    function deleteConfirmed(Request $request): bool
+    {
+        return (string) $request->post('confirm_delete', '') === '1';
+    }
+}
+
+if (! function_exists('deleteBlockedMessage')) {
+    function deleteBlockedMessage(string $message, array $names = []): string
+    {
+        if ($names === []) {
+            return $message;
+        }
+
+        return $message . ' Betroffen: ' . implode(', ', array_slice(array_map('strval', $names), 0, 5)) . '.';
+    }
+}
+
 if (! function_exists('connectionTablesJsonResponse')) {
     function connectionTablesJsonResponse(Closure $connections, Closure $pdoFactory, Closure $configFor, int $connectionId): Response
     {
@@ -565,13 +700,16 @@ if (! function_exists('endpointValues')) {
             'endpoint_key' => EndpointRepository::normalizeEndpointKey((string) $request->post('endpoint_key', '')),
             'description' => (string) $request->post('description', ''),
             'method' => (string) $request->post('method', 'GET'),
-            'visibility' => (string) $request->post('visibility', 'private'),
-            'status' => (string) $request->post('status', 'draft'),
+            'visibility' => 'public',
+            'status' => (string) $request->post('status', 'inactive'),
+            'secret_mode' => (string) $request->post('secret_mode', 'none'),
             'response_type' => 'json',
-            'source_type' => (string) $request->post('source_type', 'static'),
+            'source_type' => 'mapping',
             'mapping_set_id' => $request->post('mapping_set_id'),
             'job_id' => $request->post('job_id'),
             'config_json' => $config === [] ? '' : (json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: ''),
+            'cache_enabled' => $request->post('cache_enabled') !== null ? '1' : '',
+            'cache_ttl_seconds' => $request->post('cache_ttl_seconds'),
             'rate_limit_per_minute' => $request->post('rate_limit_per_minute'),
             'notes' => (string) $request->post('notes', ''),
             'static_response' => $staticResponse,
@@ -580,7 +718,7 @@ if (! function_exists('endpointValues')) {
 }
 
 if (! function_exists('endpointErrors')) {
-    function endpointErrors(array $values, bool $requireSecret, string $staticResponse): array
+    function endpointErrors(array $values, bool $requireSecret, string $staticResponse, MappingRepository $mappings): array
     {
         $errors = [];
         if (trim((string) $values['name']) === '') {
@@ -589,20 +727,30 @@ if (! function_exists('endpointErrors')) {
         if (trim((string) $values['endpoint_key']) === '') {
             $errors[] = 'Endpoint Key ist erforderlich.';
         }
-        if (! in_array((string) $values['method'], ['GET', 'POST'], true)) {
+        if (! in_array((string) $values['method'], ['GET'], true)) {
             $errors[] = 'Method ist ungültig.';
         }
-        if (! in_array((string) $values['visibility'], ['public', 'private'], true)) {
-            $errors[] = 'Visibility ist ungültig.';
-        }
-        if (! in_array((string) $values['status'], ['draft', 'active', 'disabled'], true)) {
+        if (! in_array((string) $values['status'], ['inactive', 'active'], true)) {
             $errors[] = 'Status ist ungültig.';
         }
-        if (! in_array((string) $values['source_type'], ['static', 'version', 'mapping_dry_run', 'job_status', 'latest_report'], true)) {
-            $errors[] = 'Source Type ist ungültig.';
+        if (! in_array((string) $values['secret_mode'], ['none', 'optional', 'required'], true)) {
+            $errors[] = 'Secret-Modus ist ungültig.';
         }
-        if ($requireSecret && (string) $values['visibility'] === 'private') {
-            $errors[] = 'Private Endpoints sollten ein Secret erhalten.';
+        if (empty($values['workspace_id'])) {
+            $errors[] = 'Workspace ist erforderlich.';
+        }
+        if (empty($values['mapping_set_id'])) {
+            $errors[] = 'Mapping ist erforderlich.';
+        } else {
+            $mapping = $mappings->find((int) $values['mapping_set_id']);
+            if ($mapping === null) {
+                $errors[] = 'Mapping wurde nicht gefunden.';
+            } elseif ((int) ($mapping['workspace_id'] ?? 0) !== (int) ($values['workspace_id'] ?? 0)) {
+                $errors[] = 'Mapping gehört nicht zum gewählten Workspace.';
+            }
+        }
+        if ($requireSecret && (string) $values['secret_mode'] === 'required') {
+            $errors[] = 'Für Secret-Modus required muss ein Secret gesetzt werden.';
         }
         if ($staticResponse !== '' && json_decode($staticResponse, true) === null && json_last_error() !== JSON_ERROR_NONE) {
             $errors[] = 'Static Response JSON ist ungültig.';
@@ -674,6 +822,7 @@ return static function (RouteCollection $routes, Application $app): void {
     $runs = static fn (): JobRunRepository => $app->services()->get('repository.job_runs');
     $reports = static fn (): ReportRepository => $app->services()->get('repository.reports');
     $endpoints = static fn (): EndpointRepository => $app->services()->get('repository.endpoints');
+    $sourceRows = static fn (): MappingSourceRowProvider => $app->services()->get(MappingSourceRowProvider::class);
     $jobRunner = static fn (): JobRunner => $app->services()->get('jobs.runner');
     $reportMailer = static fn (): ReportMailer => $app->services()->get('reports.mailer');
     $validator = static fn (): MappingValidator => $app->services()->get('mapping.validator');
@@ -796,6 +945,65 @@ return static function (RouteCollection $routes, Application $app): void {
 
         return new Response('', 302, ['Location' => '/admin/workspaces/' . $id]);
     }, 'admin.workspaces.update', 'web');
+
+    $routes->post('/admin/workspaces/{id}/delete', static function (Request $request) use ($admin, $workspaces, $audit): Response {
+        $id = (int) $request->route('id');
+        $workspace = $workspaces()->find($id);
+
+        if ($workspace === null) {
+            return Response::notFound();
+        }
+
+        if (! deleteConfirmed($request)) {
+            return $admin('admin/workspaces/show', [
+                'title' => 'Workspace bearbeiten',
+                'active' => 'workspaces',
+                'workspace' => $workspace,
+                'values' => $workspace,
+                'errors' => ['Löschen wurde nicht bestätigt.'],
+            ]);
+        }
+
+        try {
+            $check = $workspaces()->canDelete($id);
+        } catch (Throwable) {
+            return $admin('admin/workspaces/show', [
+                'title' => 'Workspace bearbeiten',
+                'active' => 'workspaces',
+                'workspace' => $workspace,
+                'values' => $workspace,
+                'errors' => ['Workspace konnte nicht gelöscht werden.'],
+            ]);
+        }
+
+        if (! $check->allowed) {
+            return $admin('admin/workspaces/show', [
+                'title' => 'Workspace bearbeiten',
+                'active' => 'workspaces',
+                'workspace' => $workspace,
+                'values' => $workspace,
+                'errors' => [deleteBlockedMessage($check->message, $check->blockingNames)],
+            ]);
+        }
+
+        try {
+            $workspaces()->delete($id);
+            $audit()->log($id, 'workspace.deleted', 'workspace', (string) $id, 'Workspace gelöscht.', [
+                'slug' => $workspace['slug'] ?? '',
+                'name' => $workspace['name'] ?? '',
+            ]);
+        } catch (Throwable) {
+            return $admin('admin/workspaces/show', [
+                'title' => 'Workspace bearbeiten',
+                'active' => 'workspaces',
+                'workspace' => $workspace,
+                'values' => $workspace,
+                'errors' => ['Workspace konnte nicht gelöscht werden.'],
+            ]);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/workspaces']);
+    }, 'admin.workspaces.delete', 'web');
 
     $routes->get('/admin/connections', static function () use ($admin, $connections): Response {
         try {
@@ -979,6 +1187,65 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.connections.test', 'web');
 
+    $routes->post('/admin/connections/{id}/delete', static function (Request $request) use ($admin, $connections, $audit): Response {
+        $id = (int) $request->route('id');
+        $profile = $connections()->find($id);
+
+        if ($profile === null) {
+            return Response::notFound();
+        }
+
+        if (! deleteConfirmed($request)) {
+            return $admin('admin/connections/show', [
+                'title' => $profile['name'] ?? 'Connection',
+                'active' => 'connections',
+                'connection' => $profile,
+                'alert' => ['type' => 'danger', 'message' => 'Löschen wurde nicht bestätigt.'],
+            ]);
+        }
+
+        try {
+            $check = $connections()->canDelete($id);
+        } catch (Throwable) {
+            return $admin('admin/connections/show', [
+                'title' => $profile['name'] ?? 'Connection',
+                'active' => 'connections',
+                'connection' => $profile,
+                'alert' => ['type' => 'danger', 'message' => 'Connection konnte nicht gelöscht werden.'],
+            ]);
+        }
+
+        if (! $check->allowed) {
+            return $admin('admin/connections/show', [
+                'title' => $profile['name'] ?? 'Connection',
+                'active' => 'connections',
+                'connection' => $profile,
+                'alert' => ['type' => 'danger', 'message' => deleteBlockedMessage($check->message, $check->blockingNames)],
+            ]);
+        }
+
+        try {
+            $connections()->delete($id);
+            $audit()->log(
+                empty($profile['workspace_id']) ? null : (int) $profile['workspace_id'],
+                'connection.deleted',
+                'connection_profile',
+                (string) $id,
+                'Connection gelöscht.',
+                ['name' => $profile['name'] ?? '', 'type' => $profile['type'] ?? '', 'driver' => $profile['driver'] ?? ''],
+            );
+        } catch (Throwable) {
+            return $admin('admin/connections/show', [
+                'title' => $profile['name'] ?? 'Connection',
+                'active' => 'connections',
+                'connection' => $profile,
+                'alert' => ['type' => 'danger', 'message' => 'Connection konnte nicht gelöscht werden.'],
+            ]);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/connections']);
+    }, 'admin.connections.delete', 'web');
+
     $routes->get('/admin/schema', static function () use ($admin, $connections): Response {
         try {
             $profiles = array_filter($connections()->all(), static fn (array $profile): bool => (int) $profile['is_active'] === 1);
@@ -1134,7 +1401,7 @@ return static function (RouteCollection $routes, Application $app): void {
         'active' => 'mappings',
         'workspaces' => safeList($workspaces),
         'connections' => safeList($connections),
-        'values' => ['status' => 'draft'],
+        'values' => ['status' => 'draft', 'mapping_mode' => 'transfer'],
         'errors' => [],
     ]), 'admin.mappings.create', 'web');
 
@@ -1222,7 +1489,66 @@ return static function (RouteCollection $routes, Application $app): void {
         ]));
     }, 'admin.mappings.update', 'web');
 
-    $routes->get('/admin/mappings/{id}/fields', static function (Request $request) use ($admin, $mappings, $connections, $pdoFactory): Response {
+    $routes->post('/admin/mappings/{id}/delete', static function (Request $request) use ($admin, $mappings, $audit): Response {
+        $id = (int) $request->route('id');
+        $set = $mappings()->find($id);
+
+        if ($set === null) {
+            return Response::notFound();
+        }
+
+        if (! deleteConfirmed($request)) {
+            return $admin('admin/mappings/show', mappingViewData($mappings, $id, [
+                'title' => 'Mapping',
+                'active' => 'mappings',
+                'alert' => ['type' => 'danger', 'message' => 'Löschen wurde nicht bestätigt.'],
+                'validation' => null,
+            ]));
+        }
+
+        try {
+            $check = $mappings()->canDeleteSet($id);
+        } catch (Throwable) {
+            return $admin('admin/mappings/show', mappingViewData($mappings, $id, [
+                'title' => 'Mapping',
+                'active' => 'mappings',
+                'alert' => ['type' => 'danger', 'message' => 'Mapping konnte nicht gelöscht werden.'],
+                'validation' => null,
+            ]));
+        }
+
+        if (! $check->allowed) {
+            return $admin('admin/mappings/show', mappingViewData($mappings, $id, [
+                'title' => 'Mapping',
+                'active' => 'mappings',
+                'alert' => ['type' => 'danger', 'message' => deleteBlockedMessage($check->message, $check->blockingNames)],
+                'validation' => null,
+            ]));
+        }
+
+        try {
+            $mappings()->deleteSet($id);
+            $audit()->log(
+                empty($set['workspace_id']) ? null : (int) $set['workspace_id'],
+                'mapping_set.deleted',
+                'mapping_set',
+                (string) $id,
+                'Mapping Set gelöscht.',
+                ['name' => $set['name'] ?? ''],
+            );
+        } catch (Throwable) {
+            return $admin('admin/mappings/show', mappingViewData($mappings, $id, [
+                'title' => 'Mapping',
+                'active' => 'mappings',
+                'alert' => ['type' => 'danger', 'message' => 'Mapping konnte nicht gelöscht werden.'],
+                'validation' => null,
+            ]));
+        }
+
+        return new Response('', 302, ['Location' => '/admin/mappings']);
+    }, 'admin.mappings.delete', 'web');
+
+    $routes->get('/admin/mappings/{id}/fields', static function (Request $request) use ($admin, $mappings, $connections, $pdoFactory, $sourceRows): Response {
         $id = (int) $request->route('id');
         $previewValues = [
             'source_column' => $request->query('source_column', ''),
@@ -1242,17 +1568,61 @@ return static function (RouteCollection $routes, Application $app): void {
             'lookup_test' => $request->query('lookup_test', ''),
         ];
 
-        return $admin('admin/mappings/fields', mappingFieldsData($mappings, $connections, $pdoFactory, $id, $previewValues, [
+        return $admin('admin/mappings/fields', mappingFieldsData($mappings, $connections, $pdoFactory, $sourceRows, $id, $previewValues, [
             'title' => 'Feldzuordnungen',
             'active' => 'mappings',
             'transformTypes' => TransformType::formLabels(),
+            'sourceFilterOperators' => mappingSourceFilterOperatorLabels(),
         ]));
     }, 'admin.mappings.fields', 'web');
 
-    $routes->post('/admin/mappings/{id}/fields', static function (Request $request) use ($mappings, $audit): Response {
+    $routes->post('/admin/mappings/{id}/source-filters', static function (Request $request) use ($admin, $mappings, $connections, $pdoFactory, $sourceRows, $audit): Response {
         $id = (int) $request->route('id');
         $set = $mappings()->find($id);
-        $fieldId = $mappings()->addField($id, mappingFieldValues($request));
+
+        if ($set === null) {
+            return Response::notFound();
+        }
+
+        try {
+            $mappings()->replaceSourceFilters($id, mappingSourceFilterValues($request));
+            $audit()->log(
+                isset($set['workspace_id']) ? (int) $set['workspace_id'] : null,
+                'mapping_source_filters.updated',
+                'mapping_set',
+                (string) $id,
+                'Source Filters aktualisiert.',
+                ['mapping_set_id' => $id],
+            );
+        } catch (Throwable) {
+            return $admin('admin/mappings/fields', mappingFieldsData($mappings, $connections, $pdoFactory, $sourceRows, $id, [], [
+                'title' => 'Feldzuordnungen',
+                'active' => 'mappings',
+                'transformTypes' => TransformType::formLabels(),
+                'sourceFilterOperators' => mappingSourceFilterOperatorLabels(),
+                'alert' => ['type' => 'danger', 'message' => 'Source Filters konnten nicht gespeichert werden.'],
+            ]));
+        }
+
+        return new Response('', 302, ['Location' => '/admin/mappings/' . $id . '/fields']);
+    }, 'admin.mappings.source_filters.update', 'web');
+
+    $routes->post('/admin/mappings/{id}/fields', static function (Request $request) use ($admin, $mappings, $connections, $pdoFactory, $sourceRows, $audit): Response {
+        $id = (int) $request->route('id');
+        $set = $mappings()->find($id);
+        $values = mappingFieldValues($request);
+        $errors = mappingFieldErrors($set, $values, $connections());
+        if ($errors !== []) {
+            return $admin('admin/mappings/fields', mappingFieldsData($mappings, $connections, $pdoFactory, $sourceRows, $id, $values, [
+                'title' => 'Feldzuordnungen',
+                'active' => 'mappings',
+                'transformTypes' => TransformType::formLabels(),
+                'sourceFilterOperators' => mappingSourceFilterOperatorLabels(),
+                'alert' => ['type' => 'danger', 'message' => implode(' ', $errors)],
+            ]));
+        }
+
+        $fieldId = $mappings()->addField($id, $values);
         $audit()->log(
             isset($set['workspace_id']) ? (int) $set['workspace_id'] : null,
             'mapping_field.created',
@@ -1265,11 +1635,23 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/mappings/' . $id . '/fields']);
     }, 'admin.mappings.fields.store', 'web');
 
-    $routes->post('/admin/mappings/{id}/fields/{fieldId}', static function (Request $request) use ($mappings, $audit): Response {
+    $routes->post('/admin/mappings/{id}/fields/{fieldId}', static function (Request $request) use ($admin, $mappings, $connections, $pdoFactory, $sourceRows, $audit): Response {
         $id = (int) $request->route('id');
         $fieldId = (int) $request->route('fieldId');
         $set = $mappings()->find($id);
-        $mappings()->updateField($fieldId, mappingFieldValues($request));
+        $values = mappingFieldValues($request);
+        $errors = mappingFieldErrors($set, $values, $connections());
+        if ($errors !== []) {
+            return $admin('admin/mappings/fields', mappingFieldsData($mappings, $connections, $pdoFactory, $sourceRows, $id, $values, [
+                'title' => 'Feldzuordnungen',
+                'active' => 'mappings',
+                'transformTypes' => TransformType::formLabels(),
+                'sourceFilterOperators' => mappingSourceFilterOperatorLabels(),
+                'alert' => ['type' => 'danger', 'message' => implode(' ', $errors)],
+            ]));
+        }
+
+        $mappings()->updateField($fieldId, $values);
         $audit()->log(
             isset($set['workspace_id']) ? (int) $set['workspace_id'] : null,
             'mapping_field.updated',
@@ -1476,14 +1858,14 @@ return static function (RouteCollection $routes, Application $app): void {
         'workspaces' => safeList($workspaces),
         'mappings' => safeList($mappings),
         'jobs' => safeList($jobs),
-        'values' => ['method' => 'GET', 'visibility' => 'private', 'status' => 'draft', 'source_type' => 'static', 'response_type' => 'json'],
+            'values' => ['method' => 'GET', 'visibility' => 'public', 'status' => 'inactive', 'secret_mode' => 'none', 'source_type' => 'mapping', 'response_type' => 'json'],
         'errors' => [],
     ]), 'admin.endpoints.create', 'web');
 
     $routes->post('/admin/endpoints', static function (Request $request) use ($admin, $endpoints, $audit, $workspaces, $mappings, $jobs): Response {
         $values = endpointValues($request);
         $secret = (string) $request->post('secret', '');
-        $errors = endpointErrors($values, $secret === '', (string) $values['static_response']);
+        $errors = endpointErrors($values, $secret === '', (string) $values['static_response'], $mappings());
 
         if ($errors !== []) {
             return $admin('admin/endpoints/create', [
@@ -1533,7 +1915,7 @@ return static function (RouteCollection $routes, Application $app): void {
 
         $values = endpointValues($request);
         $secret = (string) $request->post('secret', '');
-        $errors = endpointErrors($values, false, (string) $values['static_response']);
+        $errors = endpointErrors($values, $secret === '' && ! $endpoints()->hasSecret($id), (string) $values['static_response'], $mappings());
         if ($errors !== []) {
             return $admin('admin/endpoints/show', [
                 'title' => 'Endpoint',
@@ -1557,11 +1939,39 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/endpoints/' . $id]);
     }, 'admin.endpoints.update', 'web');
 
-    $routes->post('/admin/endpoints/{id}/delete', static function (Request $request) use ($endpoints, $audit): Response {
+    $routes->post('/admin/endpoints/{id}/delete', static function (Request $request) use ($admin, $endpoints, $audit, $workspaces, $mappings, $jobs): Response {
         $id = (int) $request->route('id');
         $endpoint = $endpoints()->find($id);
-        $endpoints()->delete($id);
-        $audit()->log(isset($endpoint['workspace_id']) ? (int) $endpoint['workspace_id'] : null, 'endpoint.deleted', 'endpoint', (string) $id, 'Endpoint gelöscht.');
+
+        if ($endpoint === null) {
+            return Response::notFound();
+        }
+
+        if (! deleteConfirmed($request)) {
+            return new Response('', 302, ['Location' => '/admin/endpoints/' . $id]);
+        }
+
+        try {
+            $endpoints()->delete($id);
+            $audit()->log(isset($endpoint['workspace_id']) ? (int) $endpoint['workspace_id'] : null, 'endpoint.deleted', 'endpoint', (string) $id, 'Endpoint gelöscht.', [
+                'name' => $endpoint['name'] ?? '',
+                'endpoint_key' => $endpoint['endpoint_key'] ?? '',
+            ]);
+        } catch (Throwable) {
+            $config = json_decode((string) ($endpoint['config_json'] ?? '{}'), true) ?: [];
+
+            return $admin('admin/endpoints/show', [
+                'title' => 'Endpoint',
+                'active' => 'endpoints',
+                'endpoint' => $endpoint,
+                'workspaces' => safeList($workspaces),
+                'mappings' => safeList($mappings),
+                'jobs' => safeList($jobs),
+                'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
+                'hasSecret' => false,
+                'alert' => ['type' => 'danger', 'message' => 'Endpoint konnte nicht gelöscht werden.'],
+            ]);
+        }
 
         return new Response('', 302, ['Location' => '/admin/endpoints']);
     }, 'admin.endpoints.delete', 'web');
@@ -1573,10 +1983,7 @@ return static function (RouteCollection $routes, Application $app): void {
             return Response::notFound();
         }
 
-        $result = ['notice' => 'Private Endpoints benötigen ein Secret. Secrets werden hier nicht angezeigt.'];
-        if ((string) $endpoint['visibility'] === 'public') {
-            $result = json_decode($app->services()->get('api.endpoint_response_builder')->build($endpoint)->body(), true) ?: [];
-        }
+        $result = json_decode($app->services()->get('api.endpoint_response_builder')->build($endpoint)->body(), true) ?: [];
 
         return $admin('admin/endpoints/test', [
             'title' => 'Endpoint testen',

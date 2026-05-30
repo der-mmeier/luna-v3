@@ -22,7 +22,7 @@ final class MappingRowTransformer
             $targetColumn = (string) $field['target_column'];
             $type = (string) $field['transform_type'];
 
-            if ($this->fieldResolver !== null && in_array($type, ['source_column', 'static_value', 'lookup_value'], true)) {
+            if ($this->fieldResolver !== null && in_array($type, ['source_column', 'static_value', 'lookup_value', 'key_value_map_by_prefix'], true)) {
                 $target[$targetColumn] = $this->fieldResolver->resolve($sourceRow, $target, $field, $result);
                 continue;
             }
@@ -38,6 +38,15 @@ final class MappingRowTransformer
         }
 
         return $target;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $sourceRows
+     * @param list<array<string, mixed>> $fields
+     */
+    public function warmUpPrefixLookups(array $sourceRows, array $fields, MappingExecutionResult $result): void
+    {
+        $this->fieldResolver?->warmUpPrefixLookups($sourceRows, $fields, $result);
     }
 
     private function enumMap(array $sourceRow, array $field, MappingExecutionResult $result): mixed

@@ -132,6 +132,111 @@ final class LookupMappingResolverTest extends TestCase
         self::assertSame(['price_group' => 2, 'price' => 499.00, 'pseudo_price' => 599.00], $row);
     }
 
+    public function testDirectTransformWritesValueUnderOutputField(): void
+    {
+        $result = new MappingExecutionResult(true);
+        $transformer = new MappingRowTransformer(null, $this->resolver());
+
+        $row = $transformer->transform(['customfield_asf_model' => 'E001'], [
+            ['target_column' => 'model', 'transform_type' => 'direct', 'source_column' => 'customfield_asf_model'],
+        ], $result);
+
+        self::assertSame(['model' => 'E001'], $row);
+    }
+
+    public function testLookupValueWritesValueUnderOutputField(): void
+    {
+        $provider = new ArrayLookupProvider(['11:price_2' => 499]);
+        $result = new MappingExecutionResult(true);
+        $transformer = new MappingRowTransformer(null, $this->resolver($provider));
+
+        $row = $transformer->transform(['priceGroup' => 2], [
+            $this->lookupField('price', 11, 'price_{{priceGroup}}'),
+        ], $result);
+
+        self::assertSame(['price' => 499], $row);
+    }
+
+    public function testKeyValueMapByPrefixWritesObjectUnderOutputField(): void
+    {
+        $provider = new ArrayLookupProvider([], [
+            '13:E001' => ['E001D48' => '17', 'E001D50' => '22'],
+        ]);
+        $result = new MappingExecutionResult(true);
+        $transformer = new MappingRowTransformer(null, $this->resolver($provider));
+
+        $row = $transformer->transform(['customfield_asf_model' => 'E001'], [
+            $this->prefixMapField('quantities', 13, '{{customfield_asf_model}}'),
+        ], $result);
+
+        self::assertSame(['quantities' => ['D48' => 17, 'D50' => 22]], $row);
+    }
+
+    public function testIsrExampleMappingProducesExpectedOutputKeys(): void
+    {
+        $provider = new ArrayLookupProvider([
+            '11:price_2' => 499,
+            '11:pseudo_price_2' => 599,
+        ], [
+            '13:E001' => ['E001D48' => '17', 'E001D50' => '22'],
+        ]);
+        $result = new MappingExecutionResult(true);
+        $transformer = new MappingRowTransformer(null, $this->resolver($provider));
+
+        $row = $transformer->transform([
+            'customfield_asf_model' => 'E001',
+            'name' => 'Carbon Partnerringe E001',
+            'priceGroup' => 2,
+        ], [
+            ['target_column' => 'model', 'transform_type' => 'direct', 'source_column' => 'customfield_asf_model'],
+            ['target_column' => 'name', 'transform_type' => 'direct', 'source_column' => 'name'],
+            ['target_column' => 'price_group', 'transform_type' => 'direct', 'source_column' => 'priceGroup'],
+            $this->lookupField('price', 11, 'price_{{priceGroup}}'),
+            $this->lookupField('pseudo_price', 11, 'pseudo_price_{{priceGroup}}'),
+            $this->prefixMapField('quantities', 13, '{{customfield_asf_model}}'),
+        ], $result);
+
+        self::assertSame(['model', 'name', 'price_group', 'price', 'pseudo_price', 'quantities'], array_keys($row));
+        self::assertSame([
+            'model' => 'E001',
+            'name' => 'Carbon Partnerringe E001',
+            'price_group' => 2,
+            'price' => 499,
+            'pseudo_price' => 599,
+            'quantities' => ['D48' => 17, 'D50' => 22],
+        ], $row);
+    }
+
+    public function testKeyValueMapByPrefixRemovesPrefixFromOutputKeys(): void
+    {
+        $provider = new ArrayLookupProvider([], [
+            '13:E001' => ['E001D48' => '17', 'E001D50' => '22', 'E001H60' => '4'],
+        ]);
+        $result = new MappingExecutionResult(true);
+        $value = $this->resolver($provider)->resolve(
+            ['customfield_asf_model' => 'E001'],
+            [],
+            $this->prefixMapField('quantities', 13, '{{customfield_asf_model}}'),
+            $result,
+        );
+
+        self::assertSame(['D48' => 17, 'D50' => 22, 'H60' => 4], $value);
+    }
+
+    public function testKeyValueMapByPrefixReturnsEmptyObjectForNoMatches(): void
+    {
+        $result = new MappingExecutionResult(true);
+        $value = $this->resolver(new ArrayLookupProvider([], []))->resolve(
+            ['customfield_asf_model' => 'E999'],
+            [],
+            $this->prefixMapField('quantities', 13, '{{customfield_asf_model}}'),
+            $result,
+        );
+
+        self::assertInstanceOf(\stdClass::class, $value);
+        self::assertSame('{}', json_encode($value));
+    }
+
     public function testDryRunSummaryContainsJsonCompatibleTransferPreviewAndNoSecrets(): void
     {
         $provider = new ArrayLookupProvider(['11:price_group_2' => 499.00]);
@@ -179,6 +284,23 @@ final class LookupMappingResolverTest extends TestCase
             'missing_behavior' => 'error',
         ];
     }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function prefixMapField(string $targetColumn, int $connectionId, string $template): array
+    {
+        return [
+            'target_column' => $targetColumn,
+            'transform_type' => 'key_value_map_by_prefix',
+            'lookup_connection_id' => $connectionId,
+            'lookup_table' => 'products',
+            'lookup_key_column' => 'product_code',
+            'lookup_value_column' => 'quantity',
+            'lookup_key_template' => $template,
+            'missing_behavior' => 'error',
+        ];
+    }
 }
 
 final class ArrayLookupProvider implements LookupValueProvider
@@ -186,7 +308,10 @@ final class ArrayLookupProvider implements LookupValueProvider
     /**
      * @param array<string, mixed> $values
      */
-    public function __construct(private readonly array $values)
+    public function __construct(
+        private readonly array $values,
+        private readonly array $prefixValues = [],
+    )
     {
     }
 
@@ -197,5 +322,23 @@ final class ArrayLookupProvider implements LookupValueProvider
         return array_key_exists($lookupKey, $this->values)
             ? LookupResult::found($this->values[$lookupKey])
             : LookupResult::error('lookup_key_not_found');
+    }
+
+    public function lookupByPrefix(array $field, string $prefix): LookupResult
+    {
+        $lookupKey = (int) $field['lookup_connection_id'] . ':' . $prefix;
+        $rows = $this->prefixValues[$lookupKey] ?? [];
+
+        if ($rows === []) {
+            return LookupResult::found((object) []);
+        }
+
+        $map = [];
+        foreach ($rows as $key => $value) {
+            $outputKey = str_starts_with((string) $key, $prefix) ? substr((string) $key, strlen($prefix)) : (string) $key;
+            $map[$outputKey] = is_numeric($value) ? (int) $value : $value;
+        }
+
+        return LookupResult::found($map);
     }
 }

@@ -40,7 +40,15 @@
                     <td><?= htmlspecialchars((string) ($mapping['target_connection_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
                     <td><code><?= htmlspecialchars((string) ($mapping['target_table'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></code></td>
                     <td><span class="badge text-bg-secondary"><?= htmlspecialchars((string) $mapping['status'], ENT_QUOTES, 'UTF-8') ?></span></td>
-                    <td><a class="btn btn-sm btn-outline-primary" href="/admin/mappings/<?= (int) $mapping['id'] ?>">Details</a></td>
+                    <td>
+                        <div class="d-flex gap-2">
+                            <a class="btn btn-sm btn-outline-primary" href="/admin/mappings/<?= (int) $mapping['id'] ?>">Details</a>
+                            <form method="post" action="/admin/mappings/<?= (int) $mapping['id'] ?>/delete" onsubmit="return confirm('Diesen Eintrag wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.');">
+                                <input type="hidden" name="confirm_delete" value="1">
+                                <button class="btn btn-sm btn-danger" type="submit">Löschen</button>
+                            </form>
+                        </div>
+                    </td>
                 </tr>
             <?php endforeach; ?>
             <?php if (($mappings ?? []) === []): ?>

@@ -6,8 +6,11 @@ namespace Luna\Core;
 
 use Luna\Config\Config;
 use Luna\Api\EndpointAccessGuard;
+use Luna\Api\EndpointJsonResponseFactory;
 use Luna\Api\EndpointResponseBuilder;
 use Luna\Api\EndpointRuntime;
+use Luna\Api\EndpointRunner;
+use Luna\Api\EndpointSecretPolicy;
 use Luna\Connections\ConnectionTester;
 use Luna\Connections\ExternalPdoConnectionFactory;
 use Luna\Database\DatabaseConfig;
@@ -33,6 +36,7 @@ use Luna\Repository\WorkspaceRepository;
 use Luna\Security\EncryptionService;
 use Luna\Transfer\MappingExecutor;
 use Luna\Transfer\MappingRowTransformer;
+use Luna\Transfer\MappingSourceRowProvider;
 use Luna\Transfer\TargetWriter;
 use Luna\View\ViewRenderer;
 
@@ -135,6 +139,7 @@ final class Application
             $this->services->get(MappingFieldResolver::class),
         ));
         $this->services->set(TargetWriter::class, new TargetWriter());
+        $this->services->set(MappingSourceRowProvider::class, new MappingSourceRowProvider());
         $this->services->set(MappingExecutor::class, new MappingExecutor(
             $this->services->get(MappingRepository::class),
             $this->services->get(MappingValidator::class),
@@ -142,6 +147,7 @@ final class Application
             $externalPdoFactory,
             $this->services->get(MappingRowTransformer::class),
             $this->services->get(TargetWriter::class),
+            $this->services->get(MappingSourceRowProvider::class),
         ));
         $this->services->set(ReportEngine::class, new ReportEngine(
             $this->services->get(JobRunRepository::class),
@@ -160,10 +166,18 @@ final class Application
             $this->services->get(ReportEngine::class),
             $this->services->get(AuditLogRepository::class),
         ));
+        $this->services->set(EndpointJsonResponseFactory::class, new EndpointJsonResponseFactory());
+        $this->services->set(EndpointSecretPolicy::class, new EndpointSecretPolicy());
+        $this->services->set(EndpointRunner::class, new EndpointRunner(
+            $this->services->get(EndpointJsonResponseFactory::class),
+            fn (int $mappingSetId): ?array => $this->services->get(MappingRepository::class)->find($mappingSetId),
+            fn (int $mappingSetId, ?int $limit): mixed => $this->services->get(MappingExecutor::class)->execute($mappingSetId, true, $limit),
+        ));
         $this->services->set(EndpointAccessGuard::class, new EndpointAccessGuard(
             $this->services->get(EndpointRepository::class),
             $this->services->get(AuditLogRepository::class),
-            $this->config,
+            $this->services->get(EndpointSecretPolicy::class),
+            $this->services->get(EndpointJsonResponseFactory::class),
         ));
         $this->services->set(EndpointResponseBuilder::class, new EndpointResponseBuilder(
             $this->config,
@@ -171,13 +185,15 @@ final class Application
             $this->services->get(JobRunRepository::class),
             $this->services->get(ReportRepository::class),
             $this->services->get(JobRunner::class),
+            $this->services->get(EndpointRunner::class),
+            $this->services->get(EndpointJsonResponseFactory::class),
         ));
         $this->services->set(EndpointRuntime::class, new EndpointRuntime(
             $this->services->get(EndpointRepository::class),
             $this->services->get(EndpointAccessGuard::class),
             $this->services->get(EndpointResponseBuilder::class),
+            $this->services->get(EndpointJsonResponseFactory::class),
             $this->services->get(AuditLogRepository::class),
-            $this->config,
         ));
 
         $this->services->set('paths', $this->paths);
@@ -205,6 +221,8 @@ final class Application
         $this->services->set('reports.engine', $this->services->get(ReportEngine::class));
         $this->services->set('reports.mailer', $this->services->get(ReportMailer::class));
         $this->services->set('api.endpoint_guard', $this->services->get(EndpointAccessGuard::class));
+        $this->services->set('api.endpoint_response_factory', $this->services->get(EndpointJsonResponseFactory::class));
+        $this->services->set('api.endpoint_runner', $this->services->get(EndpointRunner::class));
         $this->services->set('api.endpoint_response_builder', $this->services->get(EndpointResponseBuilder::class));
         $this->services->set('api.endpoint_runtime', $this->services->get(EndpointRuntime::class));
     }

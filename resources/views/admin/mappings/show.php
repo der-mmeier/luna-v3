@@ -31,6 +31,10 @@ use Luna\Mapping\MappingValidationResult;
                 <input type="hidden" name="confirm" value="run">
                 <button class="btn btn-outline-danger" type="submit">Echten Transfer starten</button>
             </form>
+            <form method="post" action="/admin/mappings/<?= (int) $mapping['id'] ?>/delete" onsubmit="return confirm('Diesen Eintrag wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.');">
+                <input type="hidden" name="confirm_delete" value="1">
+                <button class="btn btn-danger" type="submit">Löschen</button>
+            </form>
         </div>
     </div>
 

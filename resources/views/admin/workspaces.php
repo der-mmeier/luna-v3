@@ -45,7 +45,15 @@
                         <td><span class="badge text-bg-light"><?= htmlspecialchars((string) $workspace['status'], ENT_QUOTES, 'UTF-8') ?></span></td>
                         <td><?= htmlspecialchars(substr((string) ($workspace['description'] ?? ''), 0, 100), ENT_QUOTES, 'UTF-8') ?></td>
                         <td><?= htmlspecialchars((string) $workspace['updated_at'], ENT_QUOTES, 'UTF-8') ?></td>
-                        <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="/admin/workspaces/<?= (int) $workspace['id'] ?>">Bearbeiten</a></td>
+                        <td class="text-end">
+                            <div class="d-flex justify-content-end gap-2">
+                                <a class="btn btn-sm btn-outline-secondary" href="/admin/workspaces/<?= (int) $workspace['id'] ?>">Bearbeiten</a>
+                                <form method="post" action="/admin/workspaces/<?= (int) $workspace['id'] ?>/delete" onsubmit="return confirm('Diesen Eintrag wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.');">
+                                    <input type="hidden" name="confirm_delete" value="1">
+                                    <button class="btn btn-sm btn-danger" type="submit">Löschen</button>
+                                </form>
+                            </div>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>

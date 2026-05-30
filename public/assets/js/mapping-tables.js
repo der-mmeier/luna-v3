@@ -211,6 +211,34 @@
         reload();
     }
 
+    function setupEndpointMappingFilter() {
+        var workspace = document.querySelector('select[name="workspace_id"]');
+        var mapping = document.querySelector('[data-role="endpoint-mapping-select"]');
+
+        if (!workspace || !mapping) {
+            return;
+        }
+
+        function applyFilter() {
+            var workspaceId = workspace.value || '';
+
+            Array.prototype.forEach.call(mapping.options, function (option) {
+                var optionWorkspaceId = option.getAttribute('data-workspace-id') || '';
+                var visible = option.value === '' || workspaceId === '' || optionWorkspaceId === workspaceId;
+                option.hidden = !visible;
+                option.disabled = !visible;
+            });
+
+            if (mapping.selectedOptions.length > 0 && mapping.selectedOptions[0].disabled) {
+                mapping.value = '';
+            }
+        }
+
+        workspace.addEventListener('change', applyFilter);
+        applyFilter();
+    }
+
     pairs.forEach(setup);
     setupLookupColumns();
+    setupEndpointMappingFilter();
 })();
