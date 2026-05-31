@@ -923,20 +923,30 @@ final class MappingExecutor
     {
         $groups = [];
 
-        foreach ($fields as $field) {
-            if (($field['transform_type'] ?? '') !== 'key_value_map_by_prefix') {
-                continue;
-            }
+        foreach ($sourceRows as $row) {
+            $targetRow = [];
 
-            foreach ($sourceRows as $row) {
-                $prefix = $this->renderTemplate((string) ($field['lookup_key_template'] ?? ''), $row, []);
-                if ($prefix === null || $prefix === '') {
+            foreach ($fields as $field) {
+                $target = (string) ($field['target_column'] ?? '');
+                $transformType = (string) ($field['transform_type'] ?? 'direct');
+
+                if ($transformType === 'key_value_map_by_prefix') {
+                    $prefix = $this->renderTemplate((string) ($field['lookup_key_template'] ?? ''), $row, $targetRow);
+                    if ($prefix === null || $prefix === '') {
+                        continue;
+                    }
+
+                    $groupKey = $this->lookupConfigKey($field) . '|' . $target . '|' . (string) ($field['lookup_key_template'] ?? '');
+                    $groups[$groupKey]['field'] = $field;
+                    $groups[$groupKey]['prefixes'][$prefix] = $prefix;
                     continue;
                 }
 
-                $groupKey = $this->lookupConfigKey($field);
-                $groups[$groupKey]['field'] = $field;
-                $groups[$groupKey]['prefixes'][$prefix] = $prefix;
+                if ($target === '' || ! in_array($transformType, ['source_column', 'direct', 'static_value', 'static', 'first_non_empty'], true)) {
+                    continue;
+                }
+
+                $targetRow[$target] = $this->resolveField($row, $targetRow, $field);
             }
         }
 
@@ -1018,10 +1028,40 @@ final class MappingExecutor
         return match ((string) ($field['transform_type'] ?? 'direct')) {
             'source_column', 'direct' => $sourceRow[(string) ($field['source_column'] ?? '')] ?? null,
             'static_value', 'static' => $field['default_value'] ?? null,
+            'first_non_empty' => $this->firstNonEmpty($sourceRow, $targetRow, $field),
             'lookup_value' => $this->lookupValue($sourceRow, $targetRow, $field),
             'key_value_map_by_prefix' => $this->prefixMap($sourceRow, $targetRow, $field),
             default => null,
         };
+    }
+
+    /**
+     * @param array<string, mixed> $sourceRow
+     * @param array<string, mixed> $targetRow
+     * @param array<string, mixed> $field
+     */
+    private function firstNonEmpty(array $sourceRow, array $targetRow, array $field): mixed
+    {
+        $columns = array_values(array_filter(array_map(
+            static fn (string $column): string => trim($column),
+            explode(',', (string) ($field['source_column'] ?? '')),
+        ), static fn (string $column): bool => $column !== ''));
+
+        foreach ($columns as $column) {
+            $value = array_key_exists($column, $targetRow) ? $targetRow[$column] : ($sourceRow[$column] ?? null);
+
+            if ($value === null) {
+                continue;
+            }
+
+            if (is_string($value) && trim($value) === '') {
+                continue;
+            }
+
+            return $value;
+        }
+
+        return null;
     }
 
     /**
@@ -1225,11 +1265,11 @@ final class MappingExecutor
     {
         return preg_replace_callback('/{{\s*([A-Za-z0-9_]+)\s*}}/', static function (array $matches) use ($sourceRow, $targetRow): string {
             $name = (string) $matches[1];
-            if (array_key_exists($name, $sourceRow)) {
-                return (string) $sourceRow[$name];
-            }
             if (array_key_exists($name, $targetRow)) {
                 return (string) $targetRow[$name];
+            }
+            if (array_key_exists($name, $sourceRow)) {
+                return (string) $sourceRow[$name];
             }
 
             return '';

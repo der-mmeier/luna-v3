@@ -165,6 +165,8 @@ foreach ($fields ?? [] as $field) {
                         <option value="<?= htmlspecialchars($columnName, ENT_QUOTES, 'UTF-8') ?>"<?= $selected($columnName, $previewValues['source_column'] ?? '') ?>><?= htmlspecialchars($columnName, ENT_QUOTES, 'UTF-8') ?></option>
                     <?php endforeach; ?>
                 </select>
+                <div class="form-text">Für <code>first_non_empty</code> hier mehrere Source Columns in Reihenfolge eintragen.</div>
+                <input class="form-control mt-2" name="source_columns" value="<?= htmlspecialchars((string) ($previewValues['source_columns'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" placeholder="old_name,customfield_asf_model">
             </div>
             <div class="col-md-4">
                 <label class="form-label">Transform Type</label>

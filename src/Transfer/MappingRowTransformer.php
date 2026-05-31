@@ -22,7 +22,7 @@ final class MappingRowTransformer
             $targetColumn = (string) $field['target_column'];
             $type = (string) $field['transform_type'];
 
-            if ($this->fieldResolver !== null && in_array($type, ['source_column', 'static_value', 'lookup_value', 'key_value_map_by_prefix'], true)) {
+            if ($this->fieldResolver !== null && in_array($type, ['source_column', 'static_value', 'first_non_empty', 'lookup_value', 'key_value_map_by_prefix'], true)) {
                 $target[$targetColumn] = $this->fieldResolver->resolve($sourceRow, $target, $field, $result);
                 continue;
             }
@@ -30,6 +30,7 @@ final class MappingRowTransformer
             $target[$targetColumn] = match ($type) {
                 'direct' => $sourceRow[(string) $field['source_column']] ?? null,
                 'static' => $field['default_value'],
+                'first_non_empty' => $this->firstNonEmpty($sourceRow, $target, $field),
                 'enum_map' => $this->enumMap($sourceRow, $field, $result),
                 'json_path' => $this->jsonPath($sourceRow, $field),
                 'concat' => $this->concat($sourceRow, $field, $result),
@@ -88,5 +89,29 @@ final class MappingRowTransformer
         $result->addWarning('concat wird in 0.9.0 nur minimal als Entwurf unterstützt.');
         $sourceColumn = (string) ($field['source_column'] ?? '');
         return (string) ($sourceRow[$sourceColumn] ?? '');
+    }
+
+    private function firstNonEmpty(array $sourceRow, array $targetRow, array $field): mixed
+    {
+        $columns = array_values(array_filter(array_map(
+            static fn (string $column): string => trim($column),
+            explode(',', (string) ($field['source_column'] ?? '')),
+        ), static fn (string $column): bool => $column !== ''));
+
+        foreach ($columns as $column) {
+            $value = array_key_exists($column, $targetRow) ? $targetRow[$column] : ($sourceRow[$column] ?? null);
+
+            if ($value === null) {
+                continue;
+            }
+
+            if (is_string($value) && trim($value) === '') {
+                continue;
+            }
+
+            return $value;
+        }
+
+        return null;
     }
 }

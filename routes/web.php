@@ -94,9 +94,10 @@ if (! function_exists('mappingFieldValues')) {
     function mappingFieldValues(Request $request): array
     {
         $targetColumn = trim((string) $request->post('target_column', ''));
+        $sourceColumns = trim((string) $request->post('source_columns', ''));
 
         return [
-            'source_column' => (string) $request->post('source_column', ''),
+            'source_column' => $sourceColumns !== '' ? $sourceColumns : (string) $request->post('source_column', ''),
             'source_json_path' => (string) $request->post('source_json_path', ''),
             'target_column' => $targetColumn,
             'transform_type' => (string) $request->post('transform_type', 'direct'),
@@ -258,6 +259,7 @@ if (! function_exists('mappingPreviewValues')) {
             'source_filter_value' => (string) ($values['source_filter_value'] ?? ($mapping['source_filter_value'] ?? '0')),
             'target_column' => trim((string) ($values['target_column'] ?? '')),
             'transform_type' => (string) ($values['transform_type'] ?? 'lookup_value'),
+            'source_columns' => (string) ($values['source_columns'] ?? ''),
             'lookup_connection_id' => (int) ($values['lookup_connection_id'] ?? 0),
             'lookup_table' => (string) ($values['lookup_table'] ?? ''),
             'lookup_key_column' => (string) ($values['lookup_key_column'] ?? ''),
@@ -1561,6 +1563,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'source_filter_value' => $request->query('source_filter_value', '0'),
             'target_column' => $request->query('target_column', ''),
             'transform_type' => $request->query('transform_type', 'lookup_value'),
+            'source_columns' => $request->query('source_columns', ''),
             'lookup_connection_id' => $request->query('lookup_connection_id', 0),
             'lookup_table' => $request->query('lookup_table', ''),
             'lookup_key_column' => $request->query('lookup_key_column', ''),

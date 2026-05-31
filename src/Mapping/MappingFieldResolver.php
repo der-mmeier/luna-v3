@@ -24,6 +24,7 @@ final class MappingFieldResolver
         return match ((string) ($field['transform_type'] ?? 'source_column')) {
             'source_column', 'direct' => $this->sourceColumn($sourceRow, $field),
             'static_value', 'static' => $field['default_value'] ?? null,
+            'first_non_empty' => $this->firstNonEmpty($sourceRow, $transferRow, $field),
             'lookup_value' => $this->lookupValue($sourceRow, $transferRow, $field, $result),
             'key_value_map_by_prefix' => $this->keyValueMapByPrefix($sourceRow, $transferRow, $field, $result),
             default => null,
@@ -42,37 +43,43 @@ final class MappingFieldResolver
 
         $requests = [];
 
-        foreach ($fields as $field) {
-            if (($field['transform_type'] ?? '') !== 'key_value_map_by_prefix') {
-                continue;
-            }
+        foreach ($sourceRows as $sourceRow) {
+            $transferRow = [];
 
-            $template = (string) ($field['lookup_key_template'] ?? '');
-            $prefixes = [];
+            foreach ($fields as $field) {
+                $targetColumn = (string) ($field['target_column'] ?? '');
+                $transformType = (string) ($field['transform_type'] ?? 'source_column');
 
-            foreach ($sourceRows as $sourceRow) {
-                $rendered = $this->templateRenderer->render($template, $sourceRow, []);
+                if ($transformType === 'key_value_map_by_prefix') {
+                    $rendered = $this->templateRenderer->render((string) ($field['lookup_key_template'] ?? ''), $sourceRow, $transferRow);
 
-                if (! $rendered->isValid() || $rendered->value === '') {
+                    if (! $rendered->isValid() || $rendered->value === '') {
+                        continue;
+                    }
+
+                    $groupKey = $this->prefixWarmupGroupKey($field);
+                    $requests[$groupKey]['field'] = $field;
+                    $requests[$groupKey]['prefixes'][$rendered->value] = $rendered->value;
                     continue;
                 }
 
-                $prefixes[$rendered->value] = $rendered->value;
-            }
+                if ($targetColumn === '' || ! in_array($transformType, ['source_column', 'direct', 'static_value', 'static', 'first_non_empty'], true)) {
+                    continue;
+                }
 
-            if ($prefixes === []) {
-                continue;
+                $transferRow[$targetColumn] = $this->resolve($sourceRow, $transferRow, $field, $result);
             }
-
-            $requests[] = [
-                'field' => $field,
-                'prefixes' => array_values($prefixes),
-            ];
         }
 
         if ($requests === []) {
             return;
         }
+
+        $requests = array_map(static function (array $request): array {
+            $request['prefixes'] = array_values($request['prefixes']);
+
+            return $request;
+        }, array_values($requests));
 
         $diagnostics = $this->lookupProvider->warmUpPrefixLookups($requests);
 
@@ -89,6 +96,60 @@ final class MappingFieldResolver
     private function sourceColumn(array $sourceRow, array $field): mixed
     {
         return $sourceRow[(string) ($field['source_column'] ?? '')] ?? null;
+    }
+
+    /**
+     * @param array<string, mixed> $sourceRow
+     * @param array<string, mixed> $transferRow
+     * @param array<string, mixed> $field
+     */
+    private function firstNonEmpty(array $sourceRow, array $transferRow, array $field): mixed
+    {
+        foreach ($this->sourceColumns($field) as $column) {
+            $value = array_key_exists($column, $transferRow) ? $transferRow[$column] : ($sourceRow[$column] ?? null);
+
+            if ($value === null) {
+                continue;
+            }
+
+            if (is_string($value) && trim($value) === '') {
+                continue;
+            }
+
+            return $value;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $field
+     *
+     * @return list<string>
+     */
+    private function sourceColumns(array $field): array
+    {
+        $sourceColumn = (string) ($field['source_column'] ?? '');
+
+        return array_values(array_filter(array_map(
+            static fn (string $column): string => trim($column),
+            explode(',', $sourceColumn),
+        ), static fn (string $column): bool => $column !== ''));
+    }
+
+    /**
+     * @param array<string, mixed> $field
+     */
+    private function prefixWarmupGroupKey(array $field): string
+    {
+        return implode('|', [
+            (string) ($field['lookup_connection_id'] ?? ''),
+            (string) ($field['lookup_table'] ?? ''),
+            (string) ($field['lookup_key_column'] ?? ''),
+            (string) ($field['lookup_value_column'] ?? ''),
+            (string) ($field['target_column'] ?? ''),
+            (string) ($field['lookup_key_template'] ?? ''),
+        ]);
     }
 
     /**

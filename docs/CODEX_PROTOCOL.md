@@ -827,3 +827,28 @@ Endpoint Runtime Exporte können über die Endpoint-Detailseite per POST gestart
 ### Ergänzung: ZIP-Archiv und Download
 
 Admin-Endpoint-Exporte erzeugen nach dem Ordnerexport automatisch ein ZIP-Archiv neben dem Endpoint-Ordner, z. B. `storage/asfinstocks/exports/endpoints/asfinstocks-isr_prices-runtime.zip`. Die Endpoint-Detailseite bietet einen berechneten Download-Link über `/admin/endpoints/{id}/export/download`; die Route akzeptiert keine freien Dateipfade. Der CLI-Befehl unterstützt `--zip` für denselben Archivschritt. `EndpointExportArchiveService` nimmt Runtime-Dateien, API-Datei, Config, `.env.example`, Manifest und `.htaccess` auf, schließt aber echte `.env`, alte ZIPs, Logs, temporäre Dateien, VCS-/IDE-Ordner, `node_modules` und `vendor` aus.
+
+---
+
+## 2026-05-31 - 1.6.0 Canonical Stock Model Transform
+
+### Aufgabe
+
+ISR-Sondermodelle sollen ohne Datenbankänderung und ohne ISR-Hardcoding einen lagerkompatiblen Modellschlüssel berechnen können: `stock_model = old_name`, wenn `old_name` gefüllt ist, sonst `customfield_asf_model`.
+
+### Geänderte Dateien
+
+- src/Mapping/TransformType.php
+- src/Mapping/MappingFieldResolver.php
+- src/Transfer/MappingRowTransformer.php
+- src/Export/EndpointRuntimeExporter.php
+- resources/views/admin/mappings/fields.php
+- routes/web.php
+- tests/Unit/LookupMappingResolverTest.php
+- tests/Unit/EndpointRuntimeExporterTest.php
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+Der neue Transform `first_non_empty` liest eine kommaseparierte `source_column`-Liste in Reihenfolge und gibt den ersten nicht-leeren Wert zurück; `NULL`, leere Strings und Whitespace gelten als leer. Berechnete Output Fields stehen nachfolgenden Lookup-Key- und Prefix-Templates über den bestehenden Transfer-Row-Kontext zur Verfügung. Das Prefix-Warmup berechnet einfache vorgelagerte Felder wie `stock_model`, bevor Prefixe gesammelt werden, damit gebatchte Prefix-Lookups erhalten bleiben. Die exportierte Runtime unterstützt denselben Transform und dieselbe Template-Reihenfolge.

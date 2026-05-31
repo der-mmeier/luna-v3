@@ -24,6 +24,12 @@ Nicht Ziel ist:
 Der relevante Produktkern bis einschließlich 1.7.0 sind **exportierbare Endpunkte**.  
 Alles andere bleibt nachgeordnet.
 
+Der operative Fokus ist:
+
+```text
+Mapping → JSON Endpoint → Export Runtime → ZIP → Deployment → Consumer
+```
+
 ---
 
 ## Zielbild bis 1.7.0
@@ -584,7 +590,7 @@ Bis einschließlich 1.7.0 zählt nur, dass exportierbare Endpunkte stabil, siche
 
 Priorität:
 
-1. isr_prices fachlich korrekt
+1. `isr_prices` fachlich korrekt
 2. exportierbare Runtime stabil
 3. ZIP und Deployment reproduzierbar
 4. keine Secrets im Export

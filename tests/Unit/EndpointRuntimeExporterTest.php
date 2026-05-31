@@ -39,8 +39,9 @@ final class EndpointRuntimeExporterTest extends TestCase
 
         $config = require $target . '/config/endpoint.isr_prices.php';
         self::assertSame('ISR Prices Export', $config['mapping']['name']);
-        self::assertCount(4, $config['fields']);
-        self::assertSame('key_value_map_by_prefix', $config['fields'][3]['transform_type']);
+        self::assertCount(5, $config['fields']);
+        self::assertSame('first_non_empty', $config['fields'][3]['transform_type']);
+        self::assertSame('key_value_map_by_prefix', $config['fields'][4]['transform_type']);
         self::assertSame('numeric_greater_than', $config['source_filters'][0]['operator']);
         self::assertArrayHasKey(1, $config['connections']);
         self::assertSame('LUNA_CONN_PIMCORE_OBJECTS_DATABASE', $config['connections'][1]['database_env']);
@@ -274,6 +275,7 @@ final class EndpointRuntimeExporterTest extends TestCase
         self::assertSame(1, $payload['count']);
         self::assertSame('W001', $payload['items'][0]['model']);
         self::assertSame(115, $payload['items'][0]['price']);
+        self::assertSame('W001', $payload['items'][0]['stock_model']);
         self::assertSame(['48' => 47, '50' => 34], $payload['items'][0]['dr_quantities']);
         self::assertJson($json);
 
@@ -336,7 +338,8 @@ final class EndpointRuntimeExporterTest extends TestCase
         $pdo->exec("INSERT INTO luna_mapping_fields (id, mapping_set_id, source_column, target_column, transform_type, lookup_connection_id, lookup_table, lookup_key_column, lookup_value_column, lookup_key_template, missing_behavior, sort_order) VALUES (1, 33, 'model', 'model', 'direct', NULL, NULL, NULL, NULL, NULL, 'nullable', 0)");
         $pdo->exec("INSERT INTO luna_mapping_fields (id, mapping_set_id, source_column, target_column, transform_type, lookup_connection_id, lookup_table, lookup_key_column, lookup_value_column, lookup_key_template, missing_behavior, sort_order) VALUES (2, 33, 'priceGroup', 'price_group', 'direct', NULL, NULL, NULL, NULL, NULL, 'nullable', 1)");
         $pdo->exec("INSERT INTO luna_mapping_fields (id, mapping_set_id, source_column, target_column, transform_type, lookup_connection_id, lookup_table, lookup_key_column, lookup_value_column, lookup_key_template, missing_behavior, sort_order) VALUES (3, 33, 'priceGroup', 'price', 'lookup_value', 2, 'zweipunkt_setting', 'name', 'value', 'price_{{priceGroup}}', 'nullable', 2)");
-        $pdo->exec("INSERT INTO luna_mapping_fields (id, mapping_set_id, source_column, target_column, transform_type, lookup_connection_id, lookup_table, lookup_key_column, lookup_value_column, lookup_key_template, missing_behavior, sort_order) VALUES (4, 33, 'model', 'dr_quantities', 'key_value_map_by_prefix', 3, 'products', 'product_code', 'quantity', '{{model}}D', 'nullable', 3)");
+        $pdo->exec("INSERT INTO luna_mapping_fields (id, mapping_set_id, source_column, target_column, transform_type, lookup_connection_id, lookup_table, lookup_key_column, lookup_value_column, lookup_key_template, missing_behavior, sort_order) VALUES (4, 33, 'old_name,model', 'stock_model', 'first_non_empty', NULL, NULL, NULL, NULL, NULL, 'nullable', 3)");
+        $pdo->exec("INSERT INTO luna_mapping_fields (id, mapping_set_id, source_column, target_column, transform_type, lookup_connection_id, lookup_table, lookup_key_column, lookup_value_column, lookup_key_template, missing_behavior, sort_order) VALUES (5, 33, 'stock_model', 'dr_quantities', 'key_value_map_by_prefix', 3, 'products', 'product_code', 'quantity', '{{stock_model}}D', 'nullable', 4)");
 
         $encryption = new EncryptionService(new Config());
         $secretStatement = $pdo->prepare('INSERT INTO luna_connection_secrets (connection_profile_id, secret_key, secret_value_encrypted) VALUES (:connection_profile_id, :secret_key, :secret_value_encrypted)');
@@ -363,11 +366,11 @@ final class EndpointRuntimeExporterTest extends TestCase
         $pdo = new PDO('sqlite:' . $path);
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-        $pdo->exec('CREATE TABLE object_query_1 (model TEXT, priceGroup TEXT)');
+        $pdo->exec('CREATE TABLE object_query_1 (model TEXT, old_name TEXT, priceGroup TEXT)');
         $pdo->exec('CREATE TABLE zweipunkt_setting (name TEXT, value TEXT)');
         $pdo->exec('CREATE TABLE products (product_code TEXT, quantity TEXT)');
-        $pdo->exec("INSERT INTO object_query_1 (model, priceGroup) VALUES ('W001', '6')");
-        $pdo->exec("INSERT INTO object_query_1 (model, priceGroup) VALUES ('TR001', NULL)");
+        $pdo->exec("INSERT INTO object_query_1 (model, old_name, priceGroup) VALUES ('W001', '', '6')");
+        $pdo->exec("INSERT INTO object_query_1 (model, old_name, priceGroup) VALUES ('TR001', '', NULL)");
         $pdo->exec("INSERT INTO zweipunkt_setting (name, value) VALUES ('price_6', '115')");
         $pdo->exec("INSERT INTO products (product_code, quantity) VALUES ('W001D48', '47')");
         $pdo->exec("INSERT INTO products (product_code, quantity) VALUES ('W001D50', '34')");

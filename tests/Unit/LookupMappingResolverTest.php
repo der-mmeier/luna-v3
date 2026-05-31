@@ -8,6 +8,7 @@ use Luna\Mapping\LookupKeyTemplateRenderer;
 use Luna\Mapping\LookupResult;
 use Luna\Mapping\LookupValueProvider;
 use Luna\Mapping\MappingFieldResolver;
+use Luna\Mapping\PrefixLookupWarmupProvider;
 use Luna\Transfer\MappingExecutionResult;
 use Luna\Transfer\MappingRowTransformer;
 use PHPUnit\Framework\TestCase;
@@ -237,6 +238,108 @@ final class LookupMappingResolverTest extends TestCase
         self::assertSame('{}', json_encode($value));
     }
 
+    public function testFirstNonEmptyUsesOldNameWhenFilled(): void
+    {
+        $result = new MappingExecutionResult(true);
+        $transformer = new MappingRowTransformer(null, $this->resolver());
+
+        $row = $transformer->transform([
+            'old_name' => 'DR01',
+            'customfield_asf_model' => 'DR001',
+        ], [
+            $this->firstNonEmptyField('stock_model'),
+        ], $result);
+
+        self::assertSame(['stock_model' => 'DR01'], $row);
+    }
+
+    public function testFirstNonEmptyUsesFallbackColumnWhenOldNameIsEmpty(): void
+    {
+        $result = new MappingExecutionResult(true);
+        $transformer = new MappingRowTransformer(null, $this->resolver());
+
+        $row = $transformer->transform([
+            'old_name' => '',
+            'customfield_asf_model' => 'W001',
+        ], [
+            $this->firstNonEmptyField('stock_model'),
+        ], $result);
+
+        self::assertSame(['stock_model' => 'W001'], $row);
+    }
+
+    public function testFirstNonEmptyTreatsWhitespaceAsEmpty(): void
+    {
+        $result = new MappingExecutionResult(true);
+        $transformer = new MappingRowTransformer(null, $this->resolver());
+
+        $row = $transformer->transform([
+            'old_name' => '   ',
+            'customfield_asf_model' => 'W001',
+        ], [
+            $this->firstNonEmptyField('stock_model'),
+        ], $result);
+
+        self::assertSame(['stock_model' => 'W001'], $row);
+    }
+
+    public function testPrefixTemplateCanUseComputedStockModel(): void
+    {
+        $provider = new ArrayLookupProvider([], [
+            '13:DR01D' => ['DR01D48' => '17'],
+        ]);
+        $result = new MappingExecutionResult(true);
+        $transformer = new MappingRowTransformer(null, $this->resolver($provider));
+
+        $row = $transformer->transform([
+            'customfield_asf_model' => 'DR001',
+            'old_name' => 'DR01',
+        ], [
+            $this->firstNonEmptyField('stock_model'),
+            $this->prefixMapField('dr_quantities', 13, '{{stock_model}}D'),
+        ], $result);
+
+        self::assertSame('DR01', $row['stock_model']);
+        self::assertSame(['48' => 17], $row['dr_quantities']);
+    }
+
+    public function testComputedStockModelFallsBackToModelForPrefixLookup(): void
+    {
+        $provider = new ArrayLookupProvider([], [
+            '13:W001D' => ['W001D48' => '47'],
+        ]);
+        $result = new MappingExecutionResult(true);
+        $transformer = new MappingRowTransformer(null, $this->resolver($provider));
+
+        $row = $transformer->transform([
+            'customfield_asf_model' => 'W001',
+            'old_name' => null,
+        ], [
+            $this->firstNonEmptyField('stock_model'),
+            $this->prefixMapField('dr_quantities', 13, '{{stock_model}}D'),
+        ], $result);
+
+        self::assertSame('W001', $row['stock_model']);
+        self::assertSame(['48' => 47], $row['dr_quantities']);
+    }
+
+    public function testPrefixWarmupCanUseComputedStockModel(): void
+    {
+        $provider = new WarmupRecordingLookupProvider();
+        $result = new MappingExecutionResult(true);
+        $resolver = $this->resolver($provider);
+
+        $resolver->warmUpPrefixLookups([
+            ['customfield_asf_model' => 'DR001', 'old_name' => 'DR01'],
+            ['customfield_asf_model' => 'W001', 'old_name' => ' '],
+        ], [
+            $this->firstNonEmptyField('stock_model'),
+            $this->prefixMapField('dr_quantities', 13, '{{stock_model}}D'),
+        ], $result);
+
+        self::assertSame(['DR01D', 'W001D'], $provider->prefixes);
+    }
+
     public function testDryRunSummaryContainsJsonCompatibleTransferPreviewAndNoSecrets(): void
     {
         $provider = new ArrayLookupProvider(['11:price_group_2' => 499.00]);
@@ -301,6 +404,18 @@ final class LookupMappingResolverTest extends TestCase
             'missing_behavior' => 'error',
         ];
     }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function firstNonEmptyField(string $targetColumn): array
+    {
+        return [
+            'target_column' => $targetColumn,
+            'transform_type' => 'first_non_empty',
+            'source_column' => 'old_name,customfield_asf_model',
+        ];
+    }
 }
 
 final class ArrayLookupProvider implements LookupValueProvider
@@ -340,5 +455,32 @@ final class ArrayLookupProvider implements LookupValueProvider
         }
 
         return LookupResult::found($map);
+    }
+}
+
+final class WarmupRecordingLookupProvider implements LookupValueProvider, PrefixLookupWarmupProvider
+{
+    /** @var list<string> */
+    public array $prefixes = [];
+
+    public function lookup(array $field, string $key): LookupResult
+    {
+        return LookupResult::error('lookup_key_not_found');
+    }
+
+    public function lookupByPrefix(array $field, string $prefix): LookupResult
+    {
+        return LookupResult::found((object) []);
+    }
+
+    public function warmUpPrefixLookups(array $requests): array
+    {
+        foreach ($requests as $request) {
+            foreach ($request['prefixes'] as $prefix) {
+                $this->prefixes[] = $prefix;
+            }
+        }
+
+        return ['prefix_lookup_prefixes' => count($this->prefixes)];
     }
 }

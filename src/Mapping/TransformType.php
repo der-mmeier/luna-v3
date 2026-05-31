@@ -11,6 +11,7 @@ final class TransformType
         'static' => 'Statischer Wert',
         'source_column' => 'Source Column',
         'static_value' => 'Static Value',
+        'first_non_empty' => 'Erster nicht leerer Wert',
         'lookup_value' => 'Lookup Value',
         'key_value_map_by_prefix' => 'Key-Value Map per Prefix',
         'enum_map' => 'Value Mapping',
@@ -43,6 +44,7 @@ final class TransformType
         return [
             'source_column' => self::LABELS['source_column'],
             'static_value' => self::LABELS['static_value'],
+            'first_non_empty' => self::LABELS['first_non_empty'],
             'lookup_value' => self::LABELS['lookup_value'],
             'key_value_map_by_prefix' => self::LABELS['key_value_map_by_prefix'],
             'enum_map' => self::LABELS['enum_map'],
