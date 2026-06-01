@@ -585,14 +585,27 @@ Luna kann den konkreten ISR-Endpoint kontrolliert erzeugen, exportieren und betr
 
 # Strategische Leitlinie ab 1.6.0
 
-Luna wird nicht beliebig weiter vergrößert.  
-Bis einschließlich 1.7.0 zählt nur, dass exportierbare Endpunkte stabil, sicher und reproduzierbar funktionieren.
+Luna wird ab Version `1.6.0` nicht beliebig weiter vergrößert.
 
-Priorität:
+Bis einschließlich `1.7.0` liegt der Fokus ausschließlich darauf, dass exportierbare Endpunkte stabil, sicher und reproduzierbar funktionieren.
 
-1. `isr_prices` fachlich korrekt
-2. exportierbare Runtime stabil
-3. ZIP und Deployment reproduzierbar
-4. keine Secrets im Export
-5. Betrieb nachvollziehbar
-6. keine unnötige neue Architektur
+## Prioritäten bis 1.7.0
+
+1. `isr_prices` fachlich korrekt umsetzen
+2. Exportierbare Runtime stabilisieren
+3. ZIP-Export und Deployment reproduzierbar machen
+4. Sicherstellen, dass keine Secrets im Export enthalten sind
+5. Betrieb nachvollziehbar machen
+6. Keine unnötige neue Architektur einführen
+
+## Konsequenz
+
+Neue Architekturbausteine, abstrakte Modul-Systeme oder generische Plattform-Adapter werden bis einschließlich `1.7.0` zurückgestellt.
+
+Stattdessen wird der bestehende Stand konsolidiert und so erweitert, dass konkrete produktive Export-Endpunkte zuverlässig betrieben werden können.
+
+## Zielbild
+
+Luna soll in dieser Phase beweisen, dass ein fachlich definierter Endpunkt wie `isr_prices` vollständig, prüfbar und reproduzierbar exportiert werden kann.
+
+Erst danach wird entschieden, ob und wie weitere Integrationsmodule, Plattform-Schemas oder Adapter-Abstraktionen eingeführt werden.
