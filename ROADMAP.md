@@ -604,6 +604,23 @@ Neue Architekturbausteine, abstrakte Modul-Systeme oder generische Plattform-Ada
 
 Stattdessen wird der bestehende Stand konsolidiert und so erweitert, dass konkrete produktive Export-Endpunkte zuverlässig betrieben werden können.
 
+## Nicht-Ziele bis 1.7.0
+
+Bis einschließlich `1.7.0` werden nicht verfolgt:
+
+- generische Modul-Systeme
+- abstrakte Plattform-Adapter
+- größere Architekturumbauten
+- öffentliche Luna-Workbench
+- öffentliche Mapping-Administration
+- neue Exportpipeline neben der bestehenden Endpoint Export Runtime
+- allgemeine Multi-Tenant-Plattform
+- komplexe Transformationssprache
+- Scheduler als Voraussetzung für den ISR-Endpoint
+- OpenAPI-/Swagger-Ausbau als Voraussetzung für den ISR-Endpoint
+
+Diese Themen bleiben zurückgestellt, solange `isr_prices` noch nicht produktionsnah, sicher und reproduzierbar exportiert und konsumiert wird.
+
 ## Zielbild
 
 Luna soll in dieser Phase beweisen, dass ein fachlich definierter Endpunkt wie `isr_prices` vollständig, prüfbar und reproduzierbar exportiert werden kann.
