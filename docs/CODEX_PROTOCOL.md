@@ -852,3 +852,29 @@ ISR-Sondermodelle sollen ohne Datenbankänderung und ohne ISR-Hardcoding einen l
 ### Ergebnis
 
 Der neue Transform `first_non_empty` liest eine kommaseparierte `source_column`-Liste in Reihenfolge und gibt den ersten nicht-leeren Wert zurück; `NULL`, leere Strings und Whitespace gelten als leer. Berechnete Output Fields stehen nachfolgenden Lookup-Key- und Prefix-Templates über den bestehenden Transfer-Row-Kontext zur Verfügung. Das Prefix-Warmup berechnet einfache vorgelagerte Felder wie `stock_model`, bevor Prefixe gesammelt werden, damit gebatchte Prefix-Lookups erhalten bleiben. Die exportierte Runtime unterstützt denselben Transform und dieselbe Template-Reihenfolge.
+
+---
+
+## 2026-06-02 - 1.6.0 Integration Module Foundation
+
+### Aufgabe
+
+Eine minimale Grundlage schaffen, damit ein fachlich definierter Export-Endpunkt wie `isr_prices` als eigenständiges, reproduzierbares Export-Modul beschrieben und geprüft werden kann. Keine generischen Shopware-/WooCommerce-/Afterbuy-Adapter und kein großes Plugin-System.
+
+### Geänderte Dateien
+
+- bin/luna
+- src/Core/Application.php
+- src/Export/EndpointExportArchiveService.php
+- src/Integration/ExportManifest.php
+- src/Integration/ExportModuleInterface.php
+- src/Integration/ExportModuleRegistry.php
+- src/Integration/ExportRuntimeBuilder.php
+- src/Integration/Modules/IsrPricesExportModule.php
+- tests/Unit/IntegrationExportModuleTest.php
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+`isr_prices` ist als erstes Export-Modul registriert. Das Modul beschreibt Zweck, Version, Endpoint-Key, Runtime-Dateien, ausgeschlossene Dateien, Dateien/Werte, die niemals exportiert werden dürfen, und eine Secret-Policy mit `exports_secrets = false`. Der CLI-Befehl `php bin/luna integration:export isr_prices --dry-run` gibt ein nachvollziehbares Manifest aus; `--zip` markiert im Dry-Run den geplanten Archivschritt. Reale Modul-Exporte nutzen weiterhin die bestehende Endpoint Export Runtime und schreiben zusätzlich `module.isr_prices.manifest.json`. Die ZIP-Erzeugung sortiert die Dateiliste vor dem Schreiben und schließt lokale `.env.*`-Dateien außer `.env.example` aus.

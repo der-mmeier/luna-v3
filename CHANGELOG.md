@@ -10,6 +10,7 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- Minimale Integration-Module-Grundlage für exportierbare Endpunkte ergänzt; `isr_prices` ist als erstes Export-Modul mit Manifest, Runtime-Dateiliste, Ausschlussliste und Secret-Policy registriert.
 - Endpoint Export Runtime 1.5.0 mit CLI-Befehl `endpoint:export`, deploybarem Runtime-Paket, API-Datei, Runtime-Bootstrap, env-basierter Connection-Konfiguration, `.env.example` und Export-Manifest.
 - Endpoint Export Runtime kann mit `--local-env` optional eine lokale `.env` mit entschlüsselten Runtime-Secrets für Testexports schreiben; Standardexporte bleiben secretfrei und erzeugen nur `.env.example`.
 - Endpoint Runtime Exporte können über die Admin-Endpoint-Detailseite gestartet werden und nutzen standardmäßig `storage/{workspace_slug}/exports/endpoints/{endpoint_key}/`.

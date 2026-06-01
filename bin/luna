@@ -9,6 +9,7 @@ use Luna\Database\MigrationRunner;
 use Luna\Database\SystemDatabase;
 use Luna\Export\EndpointExportArchiveService;
 use Luna\Export\EndpointRuntimeExporter;
+use Luna\Integration\ExportRuntimeBuilder;
 use Luna\Jobs\JobRunner;
 use Luna\Repository\ConnectionProfileRepository;
 use Luna\Repository\JobRunRepository;
@@ -40,7 +41,7 @@ function exitCodeForRun(array $run): int
 }
 
 if ($command === null) {
-    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|endpoint:export>\n");
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|endpoint:export|integration:export>\n");
     exit(2);
 }
 
@@ -225,6 +226,34 @@ try {
             echo "Wrote local .env with runtime secrets.\n";
         }
         echo "Manifest: manifest.json\n";
+        exit(0);
+    }
+
+    if ($command === 'integration:export') {
+        $moduleName = isset($argv[2]) ? (string) $argv[2] : '';
+        $target = null;
+        $force = in_array('--force', $argv, true);
+        $dryRun = in_array('--dry-run', $argv, true);
+        $zip = in_array('--zip', $argv, true);
+
+        foreach ($argv as $argument) {
+            if (str_starts_with($argument, '--target=')) {
+                $target = substr($argument, strlen('--target='));
+            }
+        }
+
+        if ($moduleName === '') {
+            fwrite(STDERR, "Usage: php bin/luna integration:export <module-name> [--target=<directory>] [--force] [--dry-run] [--zip]\n");
+            exit(2);
+        }
+
+        /** @var ExportRuntimeBuilder $builder */
+        $builder = $app->services()->get(ExportRuntimeBuilder::class);
+        $result = $dryRun
+            ? $builder->dryRun($moduleName, $zip)
+            : $builder->export($moduleName, $target, $force, $zip);
+
+        echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
         exit(0);
     }
 
