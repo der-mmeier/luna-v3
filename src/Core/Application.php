@@ -20,6 +20,9 @@ use Luna\Database\SystemDatabase;
 use Luna\Http\Response;
 use Luna\Export\EndpointExportArchiveService;
 use Luna\Export\EndpointRuntimeExporter;
+use Luna\Integration\ExportModuleRegistry;
+use Luna\Integration\ExportRuntimeBuilder;
+use Luna\Integration\Modules\IsrPricesExportModule;
 use Luna\Jobs\JobRunner;
 use Luna\Mapping\MappingValidator;
 use Luna\Mapping\MappingFieldResolver;
@@ -205,6 +208,15 @@ final class Application
             $this->paths->basePath(),
         ));
         $this->services->set(EndpointExportArchiveService::class, new EndpointExportArchiveService());
+        $this->services->set(IsrPricesExportModule::class, new IsrPricesExportModule());
+        $this->services->set(ExportModuleRegistry::class, new ExportModuleRegistry([
+            $this->services->get(IsrPricesExportModule::class),
+        ]));
+        $this->services->set(ExportRuntimeBuilder::class, new ExportRuntimeBuilder(
+            $this->services->get(ExportModuleRegistry::class),
+            $this->services->get(EndpointRuntimeExporter::class),
+            $this->services->get(EndpointExportArchiveService::class),
+        ));
 
         $this->services->set('paths', $this->paths);
         $this->services->set('config', $this->config);
@@ -237,5 +249,7 @@ final class Application
         $this->services->set('api.endpoint_runtime', $this->services->get(EndpointRuntime::class));
         $this->services->set('export.endpoint_runtime', $this->services->get(EndpointRuntimeExporter::class));
         $this->services->set('export.endpoint_archive', $this->services->get(EndpointExportArchiveService::class));
+        $this->services->set('integration.export_modules', $this->services->get(ExportModuleRegistry::class));
+        $this->services->set('integration.export_runtime_builder', $this->services->get(ExportRuntimeBuilder::class));
     }
 }

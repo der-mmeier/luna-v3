@@ -57,15 +57,18 @@ final class EndpointExportArchiveService
                 continue;
             }
 
-            $zip->addFile($file->getPathname(), $relativePath);
-            $files[] = $relativePath;
+            $files[$relativePath] = $file->getPathname();
+        }
+
+        ksort($files);
+
+        foreach ($files as $relativePath => $path) {
+            $zip->addFile($path, $relativePath);
         }
 
         $zip->close();
 
-        sort($files);
-
-        return $files;
+        return array_keys($files);
     }
 
     private function excluded(string $relativePath): bool
@@ -73,7 +76,7 @@ final class EndpointExportArchiveService
         $normalized = str_replace('\\', '/', $relativePath);
         $basename = basename($normalized);
 
-        if ($basename === '.env' || str_ends_with($basename, '.zip')) {
+        if (($basename === '.env' || (str_starts_with($basename, '.env.') && $basename !== '.env.example')) || str_ends_with($basename, '.zip')) {
             return true;
         }
 
