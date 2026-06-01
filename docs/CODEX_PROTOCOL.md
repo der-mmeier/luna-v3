@@ -882,3 +882,34 @@ Eine minimale Grundlage schaffen, damit ein fachlich definierter Export-Endpunkt
 ### Ergänzung: fachliche Gegenprüfung
 
 Der Integration-Export-Dry-Run zeigt jetzt zusätzlich `included_files`, `excluded_files`, `validation` und `warnings`. Die Validierung prüft Modulname, Modulmanifest, Vollständigkeit der Runtime-Dateien, aktive Secret-Policy, verbotene Dateien wie `.env`, `.git`, `.idea` und `.phpunit.cache`, lokale absolute Pfade und nicht-leere Secret-Zuweisungen. Echte Exporte schreiben das Validierungsergebnis in `module.isr_prices.manifest.json`. PHPUnit vergleicht den internen JSON-Envelope für die ISR-Fixture mit dem Payload der exportierten Runtime, damit der exportierte Stand fachlich gegen den bestehenden Endpoint-Payload abgesichert ist. Für Produktivdaten bleibt die manuelle Gegenprüfung über Endpoint-Abruf dokumentiert, weil externe Datenquellen nicht in Unit-Tests genutzt werden.
+
+---
+
+## 2026-06-02 - 1.7.0 isr_prices Deployment Runtime
+
+### Ziel
+
+`isr_prices` als reproduzierbares Deployment-Paket mit Manifest, Checksums, Deploy-Doku, Healthcheck und secretfreiem Export absichern.
+
+### Geaenderte Dateien
+
+- src/Integration/ExportRuntimeBuilder.php
+- src/Integration/Modules/IsrPricesExportModule.php
+- src/Export/EndpointRuntimeExporter.php
+- src/Export/EndpointExportArchiveService.php
+- tests/Unit/IntegrationExportModuleTest.php
+- tests/Unit/EndpointRuntimeExporterTest.php
+- CHANGELOG.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+Integration-Export erzeugt `README_DEPLOY.md`, `config/config.example.php`, `CHECKSUMS.txt` und ein 1.7.0-Manifest mit `source_commit`, Secret-Policy, Checksums und Deployment-Metadaten. Die exportierte Runtime stellt `?health=1` bereit und gibt Production-Fehler als generisches JSON ohne Stacktraces, lokale Pfade oder Secrets aus.
+
+### Offene Punkte
+
+Keine. Deployment auf Zielsystem und echte Produktivdaten-Gegenpruefung bleiben Betriebsaufgaben.
+
+### Commit-Hash
+
+Noch nicht committed.

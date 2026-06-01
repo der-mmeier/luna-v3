@@ -18,7 +18,7 @@ final class EndpointRuntimeExporter
         private readonly ConnectionProfileRepository $connections,
         private readonly WorkspaceRepository $workspaces,
         private readonly string $basePath,
-        private readonly string $lunaVersion = '1.5.0',
+        private readonly string $lunaVersion = '1.7.0',
     ) {
     }
 
@@ -296,6 +296,10 @@ final class EndpointRuntimeExporter
                 'cache_enabled' => ((int) ($endpoint['cache_enabled'] ?? 0)) === 1,
                 'cache_ttl_seconds' => empty($endpoint['cache_ttl_seconds']) ? null : (int) $endpoint['cache_ttl_seconds'],
             ],
+            'runtime' => [
+                'module' => $endpointKey,
+                'version' => $this->lunaVersion,
+            ],
             'mapping' => [
                 'id' => (int) ($mapping['id'] ?? 0),
                 'name' => (string) ($mapping['name'] ?? ''),
@@ -530,7 +534,7 @@ final class EndpointRuntimeExporter
 
     private function apiFile(string $endpointKey): string
     {
-        return "<?php\n\ndeclare(strict_types=1);\n\nrequire __DIR__ . '/../runtime/bootstrap.php';\n\nreturn \\LunaExportRuntime\\EndpointRunner::handle('" . addslashes($endpointKey) . "');\n";
+        return "<?php\n\ndeclare(strict_types=1);\n\nrequire __DIR__ . '/../runtime/bootstrap.php';\n\nif ((string) (\$_GET['health'] ?? '') === '1') {\n    return \\LunaExportRuntime\\EndpointRunner::health('" . addslashes($endpointKey) . "');\n}\n\nreturn \\LunaExportRuntime\\EndpointRunner::handle('" . addslashes($endpointKey) . "');\n";
     }
 
     private function rootHtaccess(): string
@@ -559,6 +563,13 @@ require __DIR__ . '/MappingExecutor.php';
 require __DIR__ . '/EndpointRunner.php';
 
 \LunaExportRuntime\EnvLoader::load(dirname(__DIR__) . '/.env');
+
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
+
+set_error_handler(static function (int $severity, string $message, string $file, int $line): bool {
+    throw new \ErrorException('Runtime error.', 0, $severity, $file, $line);
+});
 
 set_exception_handler(static function (\Throwable $exception): void {
     \LunaExportRuntime\JsonResponseFactory::send(
@@ -756,6 +767,41 @@ use Throwable;
 
 final class EndpointRunner
 {
+    public static function health(string $endpointKey): array
+    {
+        $endpointKey = trim($endpointKey, '/');
+        $configFile = dirname(__DIR__) . '/config/endpoint.' . $endpointKey . '.php';
+        $requiredFiles = [
+            dirname(__DIR__) . '/runtime/bootstrap.php',
+            dirname(__DIR__) . '/runtime/EndpointRunner.php',
+            dirname(__DIR__) . '/runtime/MappingExecutor.php',
+            $configFile,
+        ];
+
+        foreach ($requiredFiles as $file) {
+            if (! is_file($file)) {
+                return JsonResponseFactory::send(JsonResponseFactory::error('healthcheck_failed', 'Runtime healthcheck failed.'), 500);
+            }
+        }
+
+        try {
+            $config = require $configFile;
+            if (! is_array($config)) {
+                return JsonResponseFactory::send(JsonResponseFactory::error('healthcheck_failed', 'Runtime healthcheck failed.'), 500);
+            }
+
+            return JsonResponseFactory::send([
+                'success' => true,
+                'generated_at' => date(DATE_ATOM),
+                'module' => (string) ($config['runtime']['module'] ?? $endpointKey),
+                'version' => (string) ($config['runtime']['version'] ?? 'unknown'),
+                'status' => 'ok',
+            ]);
+        } catch (Throwable) {
+            return JsonResponseFactory::send(JsonResponseFactory::error('healthcheck_failed', 'Runtime healthcheck failed.'), 500);
+        }
+    }
+
     public static function handle(string $endpointKey): array
     {
         $endpointKey = trim($endpointKey, '/');

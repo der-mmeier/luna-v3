@@ -21,17 +21,22 @@ final class IntegrationExportModuleTest extends TestCase
         $json = json_encode($manifest, JSON_THROW_ON_ERROR);
 
         self::assertSame('isr_prices', $manifest['module']);
-        self::assertSame('1.6.0', $manifest['version']);
+        self::assertSame('1.7.0', $manifest['version']);
         self::assertSame('2026-06-02T12:00:00+02:00', $manifest['generated_at']);
         self::assertContains('api/isr_prices.php', $manifest['runtime_files']);
         self::assertContains('runtime/MappingExecutor.php', $manifest['runtime_files']);
         self::assertContains('config/endpoint.isr_prices.php', $manifest['runtime_files']);
+        self::assertContains('config/config.example.php', $manifest['runtime_files']);
         self::assertContains('module.isr_prices.manifest.json', $manifest['runtime_files']);
+        self::assertContains('CHECKSUMS.txt', $manifest['runtime_files']);
+        self::assertContains('README_DEPLOY.md', $manifest['runtime_files']);
         self::assertContains('.env', $manifest['excluded_files']);
         self::assertContains('.env.*', $manifest['excluded_files']);
+        self::assertContains('.phpunit.cache/', $manifest['excluded_files']);
         self::assertContains('APP_KEY', $manifest['never_export']);
         self::assertFalse($manifest['secret_policy']['exports_secrets']);
         self::assertContains('password', $manifest['secret_policy']['forbidden_patterns']);
+        self::assertContains('passwd', $manifest['secret_policy']['forbidden_patterns']);
         self::assertStringNotContainsString('mysql://', $json);
         self::assertStringNotContainsString('C:\\', $json);
     }
@@ -60,12 +65,19 @@ final class IntegrationExportModuleTest extends TestCase
         self::assertSame('isr_prices', $result['module']);
         self::assertSame('isr_prices', $result['endpoint_key']);
         self::assertSame('isr_prices', $result['manifest']['module']);
+        self::assertSame('1.7.0', $result['manifest']['version']);
+        self::assertArrayHasKey('source_commit', $result['manifest']);
+        self::assertSame('api/isr_prices.php', $result['manifest']['deployment']['entrypoint']);
+        self::assertSame('api/isr_prices.php?health=1', $result['manifest']['deployment']['healthcheck']);
         self::assertContains('.env', $result['manifest']['excluded_files']);
         self::assertContains('api/isr_prices.php', $result['included_files']);
+        self::assertContains('README_DEPLOY.md', $result['included_files']);
         self::assertContains('.env.*', $result['excluded_files']);
         self::assertSame('planned', $result['validation']['status']);
         self::assertTrue($result['validation']['module_name_valid']);
         self::assertTrue($result['validation']['secret_policy_active']);
+        self::assertArrayHasKey('source_commit', $result['validation']);
+        self::assertTrue($result['validation']['checksums_present']);
         self::assertTrue($result['validation']['payload_comparison']['automated_in_tests']);
         self::assertSame([], $result['warnings']);
     }
@@ -90,6 +102,8 @@ final class IntegrationExportModuleTest extends TestCase
         file_put_contents($directory . '/.env', 'APP_KEY=test-placeholder');
         mkdir($directory . '/.phpunit.cache', 0775, true);
         file_put_contents($directory . '/.phpunit.cache/test-results', '{}');
+        mkdir($directory . '/cache', 0775, true);
+        file_put_contents($directory . '/cache/item.cache', 'cache');
         file_put_contents($directory . '/runtime/local-path.php', 'C:\\Users\\Saito\\PhpstormProjects\\luna-v3');
 
         $builder = new ExportRuntimeBuilder(
@@ -107,6 +121,7 @@ final class IntegrationExportModuleTest extends TestCase
         self::assertTrue($validation['secret_policy_active']);
         self::assertContains('.env', $validation['forbidden_files_present']);
         self::assertContains('.phpunit.cache/test-results', $validation['forbidden_files_present']);
+        self::assertContains('cache/item.cache', $validation['forbidden_files_present']);
         self::assertContains('runtime/local-path.php', $validation['local_absolute_paths_found']);
         self::assertContains('.env', $validation['secret_value_findings']);
         self::assertContains('forbidden_files_present', $validation['warnings']);
@@ -128,6 +143,10 @@ final class IntegrationExportModuleTest extends TestCase
         file_put_contents($directory . '/.env.example', 'APP_KEY=');
         file_put_contents($directory . '/debug.log', 'log');
         file_put_contents($directory . '/old.zip', 'zip');
+        mkdir($directory . '/.phpunit.cache', 0775, true);
+        file_put_contents($directory . '/.phpunit.cache/test-results', '{}');
+        mkdir($directory . '/cache', 0775, true);
+        file_put_contents($directory . '/cache/item.cache', 'cache');
 
         $archivePath = dirname($directory) . '/isr_prices-runtime.zip';
         $files = (new EndpointExportArchiveService())->createArchive($directory, $archivePath, true);
@@ -145,6 +164,8 @@ final class IntegrationExportModuleTest extends TestCase
         self::assertFalse($zip->locateName('.env.local'));
         self::assertFalse($zip->locateName('debug.log'));
         self::assertFalse($zip->locateName('old.zip'));
+        self::assertFalse($zip->locateName('.phpunit.cache/test-results'));
+        self::assertFalse($zip->locateName('cache/item.cache'));
         $zip->close();
     }
 

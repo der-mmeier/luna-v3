@@ -23,7 +23,7 @@ final class ExportRuntimeBuilder
     public function dryRun(string $moduleName, bool $withZip = false): array
     {
         $module = $this->modules->get($moduleName);
-        $manifest = $module->manifest()->toArray();
+        $manifest = $this->deploymentManifest($module, []);
         $validation = $this->plannedValidation($module, $manifest);
 
         return [
@@ -55,12 +55,17 @@ final class ExportRuntimeBuilder
             throw new RuntimeException('Endpoint export target was not created.');
         }
 
-        $moduleManifest = $module->manifest()->toArray();
+        $this->writeDeploymentFiles($targetPath, $module);
+        $checksums = $this->checksums($targetPath);
+        $this->writeChecksums($targetPath, $checksums);
+        $moduleManifest = $this->deploymentManifest($module, $checksums);
         $moduleManifest['endpoint_export'] = $this->publicEndpointManifest($endpointManifest);
         $moduleManifest['status'] = 'exported';
+        $this->writeRootManifest($targetPath, $moduleManifest);
         $this->writeModuleManifest($targetPath, $module, $moduleManifest);
         $validation = $this->validateExportDirectory($module, $targetPath);
         $moduleManifest['validation'] = $validation;
+        $this->writeRootManifest($targetPath, $moduleManifest);
         $this->writeModuleManifest($targetPath, $module, $moduleManifest);
 
         $archivePath = null;
@@ -106,6 +111,8 @@ final class ExportRuntimeBuilder
             'runtime_files_complete' => true,
             'forbidden_files_present' => [],
             'secret_policy_active' => ($manifest['secret_policy']['exports_secrets'] ?? true) === false,
+            'source_commit' => (string) ($manifest['source_commit'] ?? 'unknown'),
+            'checksums_present' => is_array($manifest['checksums'] ?? null),
             'local_absolute_paths_found' => [],
             'secret_value_findings' => [],
             'payload_comparison' => [
@@ -130,6 +137,7 @@ final class ExportRuntimeBuilder
         $manifest = is_file($manifestPath) ? json_decode((string) file_get_contents($manifestPath), true) : null;
         $missingRuntimeFiles = array_values(array_diff($module->runtimeFiles(), $files));
         $forbiddenFiles = array_values(array_filter($files, fn (string $file): bool => $this->isForbiddenFile($file)));
+        $checksumsPath = $targetDirectory . DIRECTORY_SEPARATOR . 'CHECKSUMS.txt';
         $absolutePathFindings = [];
         $secretValueFindings = [];
 
@@ -141,7 +149,7 @@ final class ExportRuntimeBuilder
                 $absolutePathFindings[] = $file;
             }
 
-            if (preg_match('/(?:APP_KEY|PASSWORD|SECRET|TOKEN|API_KEY|APIKEY|PRIVATE_KEY)\s*=\s*[^\\s]+/i', $contents) === 1) {
+            if (preg_match('/^\s*[A-Z0-9_]*(?:APP_KEY|PASSWORD|PASSWD|SECRET|TOKEN|API_KEY|APIKEY|PRIVATE_KEY)[A-Z0-9_]*\s*=\s*[^\\s]+/m', $contents) === 1) {
                 if ($file !== '.env.example') {
                     $secretValueFindings[] = $file;
                 }
@@ -170,6 +178,8 @@ final class ExportRuntimeBuilder
             'missing_runtime_files' => $missingRuntimeFiles,
             'forbidden_files_present' => $forbiddenFiles,
             'secret_policy_active' => is_array($manifest) && ($manifest['secret_policy']['exports_secrets'] ?? true) === false,
+            'source_commit' => is_array($manifest) ? (string) ($manifest['source_commit'] ?? 'unknown') : 'unknown',
+            'checksums_present' => is_file($checksumsPath) && is_array($manifest) && is_array($manifest['checksums'] ?? null) && $manifest['checksums'] !== [],
             'local_absolute_paths_found' => array_values(array_unique($absolutePathFindings)),
             'secret_value_findings' => array_values(array_unique($secretValueFindings)),
             'included_files' => $files,
@@ -198,7 +208,7 @@ final class ExportRuntimeBuilder
                 continue;
             }
 
-            $path = str_replace('\\', '/', $file->getPathname());
+            $path = str_replace('\\', '/', realpath($file->getPathname()) ?: $file->getPathname());
             $files[] = ltrim(substr($path, strlen($base)), '/');
         }
 
@@ -225,8 +235,146 @@ final class ExportRuntimeBuilder
         return str_ends_with($normalized, '.log')
             || str_contains($normalized, '/logs/')
             || str_contains($normalized, '/cache/')
+            || str_starts_with($normalized, 'cache/')
+            || str_contains($normalized, '/.cache/')
             || str_contains($normalized, '/tmp/')
             || str_contains($normalized, '/temp/');
+    }
+
+    /**
+     * @param array<string, string> $checksums
+     *
+     * @return array<string, mixed>
+     */
+    private function deploymentManifest(ExportModuleInterface $module, array $checksums): array
+    {
+        $manifest = $module->manifest()->toArray();
+        $manifest['source_commit'] = $this->sourceCommit();
+        $manifest['checksums'] = $checksums;
+        $manifest['deployment'] = [
+            'requires_config' => true,
+            'entrypoint' => 'api/' . $module->endpointKey() . '.php',
+            'healthcheck' => 'api/' . $module->endpointKey() . '.php?health=1',
+            'config_example' => 'config/config.example.php',
+            'env_example' => '.env.example',
+        ];
+
+        return $manifest;
+    }
+
+    private function writeDeploymentFiles(string $targetPath, ExportModuleInterface $module): void
+    {
+        $this->writeFile($targetPath, 'config/config.example.php', $this->configExample($module));
+        $this->writeFile($targetPath, 'README_DEPLOY.md', $this->deploymentReadme($module));
+    }
+
+    private function configExample(ExportModuleInterface $module): string
+    {
+        return "<?php\n\ndeclare(strict_types=1);\n\nreturn [\n"
+            . "    'app_env' => 'production',\n"
+            . "    'debug' => false,\n"
+            . "    'module' => '" . addslashes($module->name()) . "',\n"
+            . "    'endpoint' => '" . addslashes($module->endpointKey()) . "',\n"
+            . "    'config_source' => '.env',\n"
+            . "    'healthcheck' => 'api/" . addslashes($module->endpointKey()) . ".php?health=1',\n"
+            . "    'notes' => 'Copy .env.example to .env on the target system and fill values there.',\n"
+            . "];\n";
+    }
+
+    private function deploymentReadme(ExportModuleInterface $module): string
+    {
+        $endpoint = $module->endpointKey();
+
+        return <<<MARKDOWN
+# {$module->name()} Deployment
+
+Dieses Paket enthaelt die exportierte Runtime fuer den Endpoint `{$endpoint}`.
+
+## Schritte
+
+1. ZIP auf dem Zielsystem entpacken.
+2. Webserver so konfigurieren, dass `api/{$endpoint}.php` erreichbar ist.
+3. `.env.example` nach `.env` kopieren und die Zielsystem-Werte eintragen.
+4. Secrets nur auf dem Zielsystem in `.env` oder Server-Umgebungsvariablen setzen.
+5. Healthcheck aufrufen: `api/{$endpoint}.php?health=1`.
+6. Endpoint aufrufen: `api/{$endpoint}.php`.
+7. Server-Logs pruefen, falls der Endpoint kein erfolgreiches JSON liefert.
+8. Secret-Scan gegen das entpackte Paket ausfuehren.
+
+## Gegenpruefung
+
+- `manifest.json` pruefen.
+- `CHECKSUMS.txt` pruefen.
+- Sicherstellen, dass keine `.env`, `.git`, `.idea`, `.phpunit.cache`, Log- oder Cache-Dateien enthalten sind.
+- Treffer in dokumentierten Secret-Policies sind erlaubt. Echte Secret-Werte duerfen nicht enthalten sein.
+
+MARKDOWN;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function checksums(string $targetDirectory): array
+    {
+        $checksums = [];
+
+        foreach ($this->relativeFiles($targetDirectory) as $file) {
+            if ($this->isForbiddenFile($file) || in_array($file, ['CHECKSUMS.txt', 'manifest.json'], true) || (str_starts_with($file, 'module.') && str_ends_with($file, '.manifest.json'))) {
+                continue;
+            }
+
+            $path = $targetDirectory . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $file);
+            $hash = is_file($path) ? hash_file('sha256', $path) : false;
+            if ($hash === false) {
+                continue;
+            }
+            $checksums[$file] = $hash;
+        }
+
+        ksort($checksums);
+
+        return $checksums;
+    }
+
+    /**
+     * @param array<string, string> $checksums
+     */
+    private function writeChecksums(string $targetPath, array $checksums): void
+    {
+        $lines = [];
+        foreach ($checksums as $file => $hash) {
+            $lines[] = $hash . '  ' . $file;
+        }
+
+        $this->writeFile($targetPath, 'CHECKSUMS.txt', implode("\n", $lines) . "\n");
+    }
+
+    private function sourceCommit(): string
+    {
+        $git = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '.git';
+        $headPath = $git . DIRECTORY_SEPARATOR . 'HEAD';
+        if (! is_file($headPath)) {
+            return 'unknown';
+        }
+
+        $head = trim((string) file_get_contents($headPath));
+        if (preg_match('/^[a-f0-9]{40}$/i', $head) === 1) {
+            return $head;
+        }
+
+        if (! str_starts_with($head, 'ref: ')) {
+            return 'unknown';
+        }
+
+        $ref = trim(substr($head, 5));
+        $refPath = $git . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $ref);
+        if (is_file($refPath)) {
+            $commit = trim((string) file_get_contents($refPath));
+
+            return preg_match('/^[a-f0-9]{40}$/i', $commit) === 1 ? $commit : 'unknown';
+        }
+
+        return 'unknown';
     }
 
     /**
@@ -252,5 +400,32 @@ final class ExportRuntimeBuilder
         if (file_put_contents($path, $json . "\n") === false) {
             throw new RuntimeException('Module manifest could not be written.');
         }
+    }
+
+    /**
+     * @param array<string, mixed> $manifest
+     */
+    private function writeRootManifest(string $targetPath, array $manifest): void
+    {
+        $json = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+
+        if (file_put_contents(rtrim($targetPath, "\\/") . DIRECTORY_SEPARATOR . 'manifest.json', $json . "\n") === false) {
+            throw new RuntimeException('Deployment manifest could not be written.');
+        }
+    }
+
+    private function writeFile(string $targetDirectory, string $relativePath, string $contents): string
+    {
+        $path = rtrim($targetDirectory, "\\/") . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativePath);
+        $directory = dirname($path);
+        if (! is_dir($directory) && ! mkdir($directory, 0775, true) && ! is_dir($directory)) {
+            throw new RuntimeException('Export directory could not be created.');
+        }
+
+        if (file_put_contents($path, $contents) === false) {
+            throw new RuntimeException('Export file could not be written.');
+        }
+
+        return $relativePath;
     }
 }
