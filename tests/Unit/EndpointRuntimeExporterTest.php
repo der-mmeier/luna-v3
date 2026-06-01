@@ -8,6 +8,7 @@ use Luna\Config\Config;
 use Luna\Database\DatabaseConfig;
 use Luna\Database\PdoConnectionFactory;
 use Luna\Database\SystemDatabase;
+use Luna\Api\EndpointJsonResponseFactory;
 use Luna\Export\EndpointExportArchiveService;
 use Luna\Export\EndpointRuntimeExporter;
 use Luna\Repository\ConnectionProfileRepository;
@@ -294,6 +295,43 @@ final class EndpointRuntimeExporterTest extends TestCase
         $missing = \LunaExportRuntime\EndpointRunner::handle('missing');
         ob_end_clean();
         self::assertSame('endpoint_not_found', $missing['error']['code']);
+    }
+
+    #[RunInSeparateProcess]
+    public function testExportedIsrPricesRuntimeMatchesInternalEndpointPayloadShape(): void
+    {
+        $target = $this->tempDirectory();
+        $database = $this->runtimeDatabase();
+        $this->exporter()->export('isr_prices', $target, true);
+        file_put_contents($target . '/.env', implode("\n", [
+            'APP_ENV=production',
+            'APP_DEBUG=false',
+            'LUNA_ENDPOINT_ISR_PRICES_SECRET=expected-secret',
+            'LUNA_CONN_PIMCORE_OBJECTS_DATABASE=' . $database,
+            'LUNA_CONN_PIMCORE_SETTINGS_DATABASE=' . $database,
+            'LUNA_CONN_SCHMUCKLAGER_DATABASE=' . $database,
+            '',
+        ]));
+
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['HTTP_X_LUNA_ENDPOINT_SECRET'] = 'expected-secret';
+        ob_start();
+        $exported = require $target . '/api/isr_prices.php';
+        ob_end_clean();
+
+        $expectedItems = [[
+            'model' => 'W001',
+            'price_group' => '6',
+            'price' => 115,
+            'stock_model' => 'W001',
+            'dr_quantities' => ['48' => 47, '50' => 34],
+        ]];
+        $internal = json_decode((new EndpointJsonResponseFactory())->success($expectedItems)->body(), true);
+
+        self::assertIsArray($internal);
+        self::assertSame($internal['success'], $exported['success']);
+        self::assertSame($internal['count'], $exported['count']);
+        self::assertSame($internal['items'], $exported['items']);
     }
 
     private function exporter(?string $basePath = null): EndpointRuntimeExporter

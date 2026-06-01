@@ -61,6 +61,55 @@ final class IntegrationExportModuleTest extends TestCase
         self::assertSame('isr_prices', $result['endpoint_key']);
         self::assertSame('isr_prices', $result['manifest']['module']);
         self::assertContains('.env', $result['manifest']['excluded_files']);
+        self::assertContains('api/isr_prices.php', $result['included_files']);
+        self::assertContains('.env.*', $result['excluded_files']);
+        self::assertSame('planned', $result['validation']['status']);
+        self::assertTrue($result['validation']['module_name_valid']);
+        self::assertTrue($result['validation']['secret_policy_active']);
+        self::assertTrue($result['validation']['payload_comparison']['automated_in_tests']);
+        self::assertSame([], $result['warnings']);
+    }
+
+    public function testValidateExportDirectoryRejectsForbiddenFilesAndSecretValues(): void
+    {
+        $module = new IsrPricesExportModule();
+        $directory = $this->tempDirectory();
+        foreach (['api', 'runtime', 'config'] as $subdirectory) {
+            mkdir($directory . '/' . $subdirectory, 0775, true);
+        }
+        foreach ($module->runtimeFiles() as $file) {
+            $path = $directory . '/' . $file;
+            $parent = dirname($path);
+            if (! is_dir($parent)) {
+                mkdir($parent, 0775, true);
+            }
+            file_put_contents($path, $file === 'module.isr_prices.manifest.json'
+                ? json_encode($module->manifest(new DateTimeImmutable('2026-06-02T12:00:00+02:00'))->toArray(), JSON_THROW_ON_ERROR)
+                : 'runtime-file');
+        }
+        file_put_contents($directory . '/.env', 'APP_KEY=test-placeholder');
+        mkdir($directory . '/.phpunit.cache', 0775, true);
+        file_put_contents($directory . '/.phpunit.cache/test-results', '{}');
+        file_put_contents($directory . '/runtime/local-path.php', 'C:\\Users\\Saito\\PhpstormProjects\\luna-v3');
+
+        $builder = new ExportRuntimeBuilder(
+            new ExportModuleRegistry([$module]),
+            (new \ReflectionClass(\Luna\Export\EndpointRuntimeExporter::class))->newInstanceWithoutConstructor(),
+            new EndpointExportArchiveService(),
+        );
+
+        $validation = $builder->validate('isr_prices', $directory);
+
+        self::assertSame('warning', $validation['status']);
+        self::assertTrue($validation['module_name_valid']);
+        self::assertTrue($validation['manifest_present']);
+        self::assertTrue($validation['runtime_files_complete']);
+        self::assertTrue($validation['secret_policy_active']);
+        self::assertContains('.env', $validation['forbidden_files_present']);
+        self::assertContains('.phpunit.cache/test-results', $validation['forbidden_files_present']);
+        self::assertContains('runtime/local-path.php', $validation['local_absolute_paths_found']);
+        self::assertContains('.env', $validation['secret_value_findings']);
+        self::assertContains('forbidden_files_present', $validation['warnings']);
     }
 
     public function testArchiveServiceCreatesDeterministicZipWithoutLocalSecrets(): void
