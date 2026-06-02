@@ -116,6 +116,39 @@ Wenn bewusst ein sichtbarer UI-Text ohne Umlaut bleibt, muss der Grund genannt w
 
 ---
 
+## 2026-06-02 â€” 1.8.0 Dataset Sources Foundation
+
+### Ziel
+
+Vorhandene Mapping-/Endpoint-Ergebnisse als interne Dataset Sources sichtbar machen, ohne Transfer-, Writer- oder Zielsystemlogik zu bauen.
+
+### Prompt/Aufgabe
+
+`1.8.0` soll eine minimale Dataset Registry bereitstellen, Output-Felder und Source Filter aus bestehenden Endpoints/Mappings ableiten und eine begrenzte Preview über den bestehenden Mapping-Dry-Run ermöglichen.
+
+### Geänderte Dateien
+
+- `src/Dataset/DatasetRegistry.php`
+- `src/Core/Application.php`
+- `routes/web.php`
+- `resources/views/layouts/admin.php`
+- `resources/views/admin/datasets/index.php`
+- `resources/views/admin/datasets/show.php`
+- `bin/luna`
+- `tests/Unit/DatasetRegistryTest.php`
+- `CHANGELOG.md`
+- `docs/CODEX_PROTOCOL.md`
+
+### Ergebnis
+
+Dataset Sources werden aus vorhandenen Endpoint-/Mapping-Konfigurationen abgeleitet. Die Admin-UI zeigt Datasets, Output-Felder, Source Filter und Preview-Zeilen. Die CLI bietet `dataset:list` und `dataset:preview`.
+
+### Offene Punkte
+
+Keine Transfer-Schreiblogik in `1.8.0`; Single-Table-Transfers bleiben für `1.9.0` geplant.
+
+---
+
 ---
 
 ## 2026-05-16 — Initiale Codex-Struktur
