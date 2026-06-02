@@ -145,6 +145,27 @@ final class DatasetRegistry
     /**
      * @return list<array<string, mixed>>
      */
+    public function rows(string $name, ?int $limit = null): array
+    {
+        $dataset = $this->find($name);
+        if ($dataset === null) {
+            return [];
+        }
+
+        $execution = ($this->mappingExecutor)((int) $dataset['mapping_set_id'], true, $limit);
+        if (! $execution instanceof MappingExecutionResult) {
+            return [];
+        }
+
+        $executionSummary = $execution->toSummaryArray();
+        $rows = $executionSummary['output_rows'] ?? [];
+
+        return is_array($rows) ? array_values(array_filter($rows, 'is_array')) : [];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
     private function fieldsForMapping(int $mappingId): array
     {
         return array_map(static fn (array $field): array => [

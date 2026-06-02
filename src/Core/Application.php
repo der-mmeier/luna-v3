@@ -32,6 +32,7 @@ use Luna\Reports\ReportEngine;
 use Luna\Reports\ReportMailer;
 use Luna\Repository\AuditLogRepository;
 use Luna\Repository\ConnectionProfileRepository;
+use Luna\Repository\DatasetTransferRepository;
 use Luna\Repository\EndpointRepository;
 use Luna\Repository\JobRepository;
 use Luna\Repository\JobRunRepository;
@@ -40,9 +41,11 @@ use Luna\Repository\ReportRepository;
 use Luna\Repository\SchemaMetadataRepository;
 use Luna\Repository\WorkspaceRepository;
 use Luna\Security\EncryptionService;
+use Luna\Transfer\DatasetTransferRunner;
 use Luna\Transfer\MappingExecutor;
 use Luna\Transfer\MappingRowTransformer;
 use Luna\Transfer\MappingSourceRowProvider;
+use Luna\Transfer\SingleTableTransferWriter;
 use Luna\Transfer\TargetWriter;
 use Luna\View\ViewRenderer;
 
@@ -120,6 +123,7 @@ final class Application
             $this->services->get(EncryptionService::class),
         ));
         $this->services->set(MappingRepository::class, new MappingRepository($systemDatabase));
+        $this->services->set(DatasetTransferRepository::class, new DatasetTransferRepository($systemDatabase));
         $this->services->set(AuditLogRepository::class, new AuditLogRepository($systemDatabase));
         $this->services->set(JobRepository::class, new JobRepository($systemDatabase));
         $this->services->set(JobRunRepository::class, new JobRunRepository($systemDatabase));
@@ -223,6 +227,14 @@ final class Application
             $this->services->get(MappingRepository::class),
             fn (int $mappingSetId, bool $dryRun, ?int $limit): mixed => $this->services->get(MappingExecutor::class)->execute($mappingSetId, $dryRun, $limit),
         ));
+        $this->services->set(SingleTableTransferWriter::class, new SingleTableTransferWriter());
+        $this->services->set(DatasetTransferRunner::class, new DatasetTransferRunner(
+            $this->services->get(DatasetTransferRepository::class),
+            $this->services->get(DatasetRegistry::class),
+            $this->services->get(ConnectionProfileRepository::class),
+            $this->services->get(SingleTableTransferWriter::class),
+            $externalPdoFactory,
+        ));
 
         $this->services->set('paths', $this->paths);
         $this->services->set('config', $this->config);
@@ -237,12 +249,14 @@ final class Application
         $this->services->set('repository.connections', $this->services->get(ConnectionProfileRepository::class));
         $this->services->set('repository.schema_metadata', $this->services->get(SchemaMetadataRepository::class));
         $this->services->set('repository.mappings', $this->services->get(MappingRepository::class));
+        $this->services->set('repository.dataset_transfers', $this->services->get(DatasetTransferRepository::class));
         $this->services->set('repository.audit_log', $this->services->get(AuditLogRepository::class));
         $this->services->set('repository.jobs', $this->services->get(JobRepository::class));
         $this->services->set('repository.job_runs', $this->services->get(JobRunRepository::class));
         $this->services->set('repository.reports', $this->services->get(ReportRepository::class));
         $this->services->set('repository.endpoints', $this->services->get(EndpointRepository::class));
         $this->services->set('dataset.registry', $this->services->get(DatasetRegistry::class));
+        $this->services->set('dataset.transfer_runner', $this->services->get(DatasetTransferRunner::class));
         $this->services->set('mapping.validator', $this->services->get(MappingValidator::class));
         $this->services->set('mapping.executor', $this->services->get(MappingExecutor::class));
         $this->services->set('transfer.mapping_executor', $this->services->get(MappingExecutor::class));
