@@ -770,8 +770,26 @@ if (! function_exists('datasetTransferFieldValues')) {
     function datasetTransferFieldValues(Request $request): array
     {
         return [
+            'group_id' => $request->post('group_id'),
             'dataset_field' => (string) $request->post('dataset_field', ''),
             'target_column' => (string) $request->post('target_column', ''),
+            'sort_order' => (int) $request->post('sort_order', 0),
+        ];
+    }
+}
+
+if (! function_exists('datasetTransferGroupValues')) {
+    function datasetTransferGroupValues(Request $request): array
+    {
+        return [
+            'name' => (string) $request->post('name', ''),
+            'group_type' => (string) $request->post('group_type', 'root'),
+            'source_path' => (string) $request->post('source_path', '$'),
+            'target_table' => (string) $request->post('target_table', ''),
+            'operation_type' => (string) $request->post('operation_type', 'upsert'),
+            'upsert_key' => (string) $request->post('upsert_key', ''),
+            'parent_link_source' => (string) $request->post('parent_link_source', ''),
+            'parent_link_target' => (string) $request->post('parent_link_target', ''),
             'sort_order' => (int) $request->post('sort_order', 0),
         ];
     }
@@ -799,6 +817,18 @@ if (! function_exists('datasetTransferErrors')) {
         }
 
         return $runner->validate($values, $fields);
+    }
+}
+
+if (! function_exists('datasetTransferGroupsWithFields')) {
+    function datasetTransferGroupsWithFields(DatasetTransferRepository $transfers, int $transferId): array
+    {
+        $groups = $transfers->groupsForTransfer($transferId);
+        foreach ($groups as $index => $group) {
+            $groups[$index]['fields'] = $transfers->fieldsForGroup((int) $group['id']);
+        }
+
+        return $groups;
     }
 }
 
@@ -2064,6 +2094,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'active' => 'transfers',
             'transfer' => $transfer,
             'fields' => $datasetTransfers()->fieldsForTransfer($id),
+            'groups' => datasetTransferGroupsWithFields($datasetTransfers(), $id),
             'workspaces' => safeList($workspaces),
             'connections' => safeList($connections),
             'datasets' => $datasets()->all(),
@@ -2090,6 +2121,7 @@ return static function (RouteCollection $routes, Application $app): void {
                 'active' => 'transfers',
                 'transfer' => $values + ['id' => $id],
                 'fields' => $fields,
+                'groups' => datasetTransferGroupsWithFields($datasetTransfers(), $id),
                 'workspaces' => safeList($workspaces),
                 'connections' => safeList($connections),
                 'datasets' => $datasets()->all(),
@@ -2137,6 +2169,52 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
     }, 'admin.transfers.fields.delete', 'web');
 
+    $routes->post('/admin/transfers/{id}/groups', static function (Request $request) use ($datasetTransfers): Response {
+        $id = (int) $request->route('id');
+        if ($datasetTransfers()->find($id) === null) {
+            return Response::notFound();
+        }
+
+        $datasetTransfers()->addGroup($id, datasetTransferGroupValues($request));
+
+        return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
+    }, 'admin.transfers.groups.store', 'web');
+
+    $routes->post('/admin/transfers/{id}/groups/{groupId}', static function (Request $request) use ($datasetTransfers): Response {
+        $id = (int) $request->route('id');
+        if ($datasetTransfers()->find($id) === null) {
+            return Response::notFound();
+        }
+
+        $datasetTransfers()->updateGroup((int) $request->route('groupId'), datasetTransferGroupValues($request));
+
+        return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
+    }, 'admin.transfers.groups.update', 'web');
+
+    $routes->post('/admin/transfers/{id}/groups/{groupId}/delete', static function (Request $request) use ($datasetTransfers): Response {
+        $id = (int) $request->route('id');
+        if ($datasetTransfers()->find($id) === null) {
+            return Response::notFound();
+        }
+
+        $datasetTransfers()->deleteGroup((int) $request->route('groupId'));
+
+        return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
+    }, 'admin.transfers.groups.delete', 'web');
+
+    $routes->post('/admin/transfers/{id}/groups/{groupId}/fields', static function (Request $request) use ($datasetTransfers): Response {
+        $id = (int) $request->route('id');
+        if ($datasetTransfers()->find($id) === null) {
+            return Response::notFound();
+        }
+
+        $values = datasetTransferFieldValues($request);
+        $values['group_id'] = (int) $request->route('groupId');
+        $datasetTransfers()->addField($id, $values);
+
+        return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
+    }, 'admin.transfers.groups.fields.store', 'web');
+
     $routes->post('/admin/transfers/{id}/dry-run', static function (Request $request) use ($admin, $workspaces, $connections, $datasets, $datasetTransfers, $datasetTransferRunner): Response {
         $id = (int) $request->route('id');
         $transfer = $datasetTransfers()->find($id);
@@ -2151,6 +2229,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'active' => 'transfers',
             'transfer' => $transfer,
             'fields' => $datasetTransfers()->fieldsForTransfer($id),
+            'groups' => datasetTransferGroupsWithFields($datasetTransfers(), $id),
             'workspaces' => safeList($workspaces),
             'connections' => safeList($connections),
             'datasets' => $datasets()->all(),
@@ -2178,6 +2257,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'active' => 'transfers',
             'transfer' => $transfer,
             'fields' => $datasetTransfers()->fieldsForTransfer($id),
+            'groups' => datasetTransferGroupsWithFields($datasetTransfers(), $id),
             'workspaces' => safeList($workspaces),
             'connections' => safeList($connections),
             'datasets' => $datasets()->all(),

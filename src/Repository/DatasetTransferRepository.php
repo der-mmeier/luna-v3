@@ -94,11 +94,92 @@ final class DatasetTransferRepository
     public function fieldsForTransfer(int $transferId): array
     {
         $statement = $this->pdo()->prepare(
-            'SELECT * FROM luna_dataset_transfer_fields WHERE transfer_id = :id ORDER BY sort_order, id',
+            'SELECT * FROM luna_dataset_transfer_fields WHERE transfer_id = :id AND (group_id IS NULL OR group_id = 0) ORDER BY sort_order, id',
         );
         $statement->execute(['id' => $transferId]);
 
         return $statement->fetchAll();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function groupsForTransfer(int $transferId): array
+    {
+        if (! $this->columnExists('luna_dataset_transfer_fields', 'group_id')) {
+            return [];
+        }
+
+        $statement = $this->pdo()->prepare(
+            'SELECT * FROM luna_dataset_transfer_groups WHERE transfer_id = :id ORDER BY sort_order, id',
+        );
+        $statement->execute(['id' => $transferId]);
+
+        return $statement->fetchAll();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function fieldsForGroup(int $groupId): array
+    {
+        if (! $this->columnExists('luna_dataset_transfer_fields', 'group_id')) {
+            return [];
+        }
+
+        $statement = $this->pdo()->prepare(
+            'SELECT * FROM luna_dataset_transfer_fields WHERE group_id = :id ORDER BY sort_order, id',
+        );
+        $statement->execute(['id' => $groupId]);
+
+        return $statement->fetchAll();
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public function addGroup(int $transferId, array $data): int
+    {
+        $payload = $this->groupPayload($data);
+        $payload['transfer_id'] = $transferId;
+        $statement = $this->pdo()->prepare(
+            'INSERT INTO luna_dataset_transfer_groups
+             (transfer_id, name, group_type, source_path, target_table, operation_type, upsert_key, parent_link_source, parent_link_target, sort_order, created_at, updated_at)
+             VALUES (:transfer_id, :name, :group_type, :source_path, :target_table, :operation_type, :upsert_key, :parent_link_source, :parent_link_target, :sort_order, NOW(), NOW())',
+        );
+        $statement->execute($payload);
+
+        return (int) $this->pdo()->lastInsertId();
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public function updateGroup(int $groupId, array $data): void
+    {
+        $payload = $this->groupPayload($data);
+        $payload['id'] = $groupId;
+        $statement = $this->pdo()->prepare(
+            'UPDATE luna_dataset_transfer_groups
+             SET name = :name,
+                 group_type = :group_type,
+                 source_path = :source_path,
+                 target_table = :target_table,
+                 operation_type = :operation_type,
+                 upsert_key = :upsert_key,
+                 parent_link_source = :parent_link_source,
+                 parent_link_target = :parent_link_target,
+                 sort_order = :sort_order,
+                 updated_at = NOW()
+             WHERE id = :id',
+        );
+        $statement->execute($payload);
+    }
+
+    public function deleteGroup(int $groupId): void
+    {
+        $statement = $this->pdo()->prepare('DELETE FROM luna_dataset_transfer_groups WHERE id = :id');
+        $statement->execute(['id' => $groupId]);
     }
 
     /**
@@ -108,11 +189,18 @@ final class DatasetTransferRepository
     {
         $payload = $this->fieldPayload($data);
         $payload['transfer_id'] = $transferId;
-        $statement = $this->pdo()->prepare(
-            'INSERT INTO luna_dataset_transfer_fields
-             (transfer_id, dataset_field, target_column, sort_order, created_at, updated_at)
-             VALUES (:transfer_id, :dataset_field, :target_column, :sort_order, NOW(), NOW())',
-        );
+        $hasGroupId = $this->columnExists('luna_dataset_transfer_fields', 'group_id');
+        $sql = $hasGroupId
+            ? 'INSERT INTO luna_dataset_transfer_fields
+               (transfer_id, group_id, dataset_field, target_column, sort_order, created_at, updated_at)
+               VALUES (:transfer_id, :group_id, :dataset_field, :target_column, :sort_order, NOW(), NOW())'
+            : 'INSERT INTO luna_dataset_transfer_fields
+               (transfer_id, dataset_field, target_column, sort_order, created_at, updated_at)
+               VALUES (:transfer_id, :dataset_field, :target_column, :sort_order, NOW(), NOW())';
+        if (! $hasGroupId) {
+            unset($payload['group_id']);
+        }
+        $statement = $this->pdo()->prepare($sql);
         $statement->execute($payload);
 
         return (int) $this->pdo()->lastInsertId();
@@ -124,6 +212,7 @@ final class DatasetTransferRepository
     public function updateField(int $fieldId, array $data): void
     {
         $payload = $this->fieldPayload($data);
+        unset($payload['group_id']);
         $payload['id'] = $fieldId;
         $statement = $this->pdo()->prepare(
             'UPDATE luna_dataset_transfer_fields
@@ -174,10 +263,45 @@ final class DatasetTransferRepository
     private function fieldPayload(array $data): array
     {
         return [
+            'group_id' => empty($data['group_id']) ? null : (int) $data['group_id'],
             'dataset_field' => trim((string) ($data['dataset_field'] ?? '')),
             'target_column' => trim((string) ($data['target_column'] ?? '')),
             'sort_order' => (int) ($data['sort_order'] ?? 0),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     *
+     * @return array<string, mixed>
+     */
+    private function groupPayload(array $data): array
+    {
+        $groupType = (string) ($data['group_type'] ?? 'root');
+        $operation = (string) ($data['operation_type'] ?? 'upsert');
+
+        return [
+            'name' => trim((string) ($data['name'] ?? '')),
+            'group_type' => in_array($groupType, ['root', 'child'], true) ? $groupType : 'root',
+            'source_path' => trim((string) ($data['source_path'] ?? '$')) ?: '$',
+            'target_table' => trim((string) ($data['target_table'] ?? '')),
+            'operation_type' => in_array($operation, ['insert', 'update', 'upsert'], true) ? $operation : 'upsert',
+            'upsert_key' => trim((string) ($data['upsert_key'] ?? '')) ?: null,
+            'parent_link_source' => trim((string) ($data['parent_link_source'] ?? '')) ?: null,
+            'parent_link_target' => trim((string) ($data['parent_link_target'] ?? '')) ?: null,
+            'sort_order' => (int) ($data['sort_order'] ?? 0),
+        ];
+    }
+
+    private function columnExists(string $table, string $column): bool
+    {
+        try {
+            $this->pdo()->query(sprintf('SELECT %s FROM %s WHERE 1 = 0', $column, $table));
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     private function pdo(): PDO

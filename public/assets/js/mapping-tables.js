@@ -300,6 +300,117 @@
         reload();
     }
 
+    function setupTransferGroupColumns() {
+        var connection = document.querySelector('[data-role="target-connection"]');
+        var groups = document.querySelectorAll('[data-role="transfer-group"]');
+
+        if (!connection || groups.length === 0) {
+            return;
+        }
+
+        function setupGroup(group) {
+            var table = group.querySelector('[data-role="transfer-group-target-table"]');
+            var columns = group.querySelectorAll('[data-role="transfer-group-target-column"]');
+
+            if (!table || columns.length === 0) {
+                return;
+            }
+
+            function fillColumns() {
+                var connectionId = connection.value || '';
+                var tableName = table.value || '';
+
+                if (!connectionId || !tableName) {
+                    Array.prototype.forEach.call(columns, function (select) {
+                        var currentValue = select.getAttribute('data-current') || select.value || '';
+                        fillColumnSelect(select, [], currentValue);
+                        select.disabled = true;
+                    });
+                    return;
+                }
+
+                Array.prototype.forEach.call(columns, function (select) {
+                    select.disabled = true;
+                });
+
+                fetch('/admin/api/connection-table-columns?connection_id=' + encodeURIComponent(connectionId) + '&table=' + encodeURIComponent(tableName), {
+                    headers: {'Accept': 'application/json'}
+                })
+                    .then(function (response) { return response.json(); })
+                    .then(function (payload) {
+                        if (!payload.success) {
+                            throw new Error(payload.message || 'Spalten konnten nicht geladen werden.');
+                        }
+
+                        var loadedColumns = Array.isArray(payload.columns) ? payload.columns : [];
+                        Array.prototype.forEach.call(columns, function (select) {
+                            var currentValue = select.getAttribute('data-current') || select.value || '';
+                            fillColumnSelect(select, loadedColumns, currentValue);
+                        });
+                    })
+                    .catch(function () {
+                        Array.prototype.forEach.call(columns, function (select) {
+                            var currentValue = select.getAttribute('data-current') || select.value || '';
+                            fillColumnSelect(select, [], currentValue);
+                        });
+                    })
+                    .finally(function () {
+                        Array.prototype.forEach.call(columns, function (select) {
+                            select.disabled = false;
+                        });
+                    });
+            }
+
+            function fillTables() {
+                var connectionId = connection.value || '';
+                var currentValue = table.getAttribute('data-current') || table.value || '';
+
+                if (!connectionId) {
+                    fillSelect(table, [], currentValue, '');
+                    fillColumns();
+                    return;
+                }
+
+                table.disabled = true;
+                fetch('/admin/api/connection-tables?connection_id=' + encodeURIComponent(connectionId), {
+                    headers: {'Accept': 'application/json'}
+                })
+                    .then(function (response) { return response.json(); })
+                    .then(function (payload) {
+                        if (!payload.success) {
+                            throw new Error(payload.message || 'Tabellen konnten nicht geladen werden.');
+                        }
+
+                        fillSelect(table, Array.isArray(payload.tables) ? payload.tables : [], currentValue, '');
+                    })
+                    .catch(function () {
+                        fillSelect(table, [], currentValue, '');
+                    })
+                    .finally(function () {
+                        table.disabled = false;
+                        fillColumns();
+                    });
+            }
+
+            table.addEventListener('change', function () {
+                table.setAttribute('data-current', table.value || '');
+                fillColumns();
+            });
+            table.addEventListener('blur', fillColumns);
+            connection.addEventListener('change', fillTables);
+
+            Array.prototype.forEach.call(columns, function (select) {
+                select.addEventListener('change', function () {
+                    select.setAttribute('data-current', select.value || '');
+                });
+            });
+
+            fillTables();
+        }
+
+        Array.prototype.forEach.call(groups, setupGroup);
+    }
+
     function setupEndpointMappingFilter() {
         var workspace = document.querySelector('select[name="workspace_id"]');
         var mapping = document.querySelector('[data-role="endpoint-mapping-select"]');
@@ -330,5 +441,6 @@
     pairs.forEach(setup);
     setupLookupColumns();
     setupTransferTargetColumns();
+    setupTransferGroupColumns();
     setupEndpointMappingFilter();
 })();
