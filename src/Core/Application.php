@@ -17,6 +17,7 @@ use Luna\Database\DatabaseConfig;
 use Luna\Database\MigrationRunner;
 use Luna\Database\PdoConnectionFactory;
 use Luna\Database\SystemDatabase;
+use Luna\Dataset\DatasetRegistry;
 use Luna\Http\Response;
 use Luna\Export\EndpointExportArchiveService;
 use Luna\Export\EndpointRuntimeExporter;
@@ -217,6 +218,11 @@ final class Application
             $this->services->get(EndpointRuntimeExporter::class),
             $this->services->get(EndpointExportArchiveService::class),
         ));
+        $this->services->set(DatasetRegistry::class, new DatasetRegistry(
+            $this->services->get(EndpointRepository::class),
+            $this->services->get(MappingRepository::class),
+            fn (int $mappingSetId, bool $dryRun, ?int $limit): mixed => $this->services->get(MappingExecutor::class)->execute($mappingSetId, $dryRun, $limit),
+        ));
 
         $this->services->set('paths', $this->paths);
         $this->services->set('config', $this->config);
@@ -236,6 +242,7 @@ final class Application
         $this->services->set('repository.job_runs', $this->services->get(JobRunRepository::class));
         $this->services->set('repository.reports', $this->services->get(ReportRepository::class));
         $this->services->set('repository.endpoints', $this->services->get(EndpointRepository::class));
+        $this->services->set('dataset.registry', $this->services->get(DatasetRegistry::class));
         $this->services->set('mapping.validator', $this->services->get(MappingValidator::class));
         $this->services->set('mapping.executor', $this->services->get(MappingExecutor::class));
         $this->services->set('transfer.mapping_executor', $this->services->get(MappingExecutor::class));

@@ -7,6 +7,7 @@ use Luna\Connections\ConnectionTester;
 use Luna\Connections\ExternalDatabaseConfig;
 use Luna\Database\MigrationRunner;
 use Luna\Database\SystemDatabase;
+use Luna\Dataset\DatasetRegistry;
 use Luna\Export\EndpointExportArchiveService;
 use Luna\Export\EndpointRuntimeExporter;
 use Luna\Integration\ExportRuntimeBuilder;
@@ -41,7 +42,7 @@ function exitCodeForRun(array $run): int
 }
 
 if ($command === null) {
-    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|endpoint:export|integration:export>\n");
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|endpoint:export|integration:export>\n");
     exit(2);
 }
 
@@ -186,6 +187,33 @@ try {
         }
         printRunSummary('Mapping transfer run', $run);
         exit(exitCodeForRun($run));
+    }
+
+    if ($command === 'dataset:list') {
+        /** @var DatasetRegistry $registry */
+        $registry = $app->services()->get(DatasetRegistry::class);
+
+        foreach ($registry->all() as $dataset) {
+            echo (string) $dataset['name'] . "\t" . (string) $dataset['source_type'] . "\t" . (string) ($dataset['mapping_name'] ?? '') . "\n";
+        }
+
+        exit(0);
+    }
+
+    if ($command === 'dataset:preview') {
+        $datasetName = isset($argv[2]) ? (string) $argv[2] : '';
+
+        if ($datasetName === '') {
+            fwrite(STDERR, "Usage: php bin/luna dataset:preview <dataset-name>\n");
+            exit(2);
+        }
+
+        /** @var DatasetRegistry $registry */
+        $registry = $app->services()->get(DatasetRegistry::class);
+        $preview = $registry->preview($datasetName, 10);
+
+        echo json_encode($preview, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
+        exit(($preview['summary']['error_count'] ?? 0) > 0 ? 1 : 0);
     }
 
     if ($command === 'endpoint:export') {

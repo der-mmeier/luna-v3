@@ -10,6 +10,7 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- Dataset Sources 1.8.0 vorbereitet: `DatasetRegistry` leitet Datasets aus bestehenden Endpoints und JSON-Endpoint-Mappings ab, zeigt Output-Felder, Source Filter und eine limitierte Preview ohne Schreiblogik; Admin-UI und CLI-Diagnose `dataset:list` / `dataset:preview` ergänzt.
 - Deployment-Runtime 1.7.0 fuer `isr_prices` ergaenzt: Integration-Export erzeugt `README_DEPLOY.md`, `config/config.example.php`, `CHECKSUMS.txt`, Manifest mit `source_commit`, Secret-Policy, Deployment-Metadaten und einen sicheren Healthcheck ueber `?health=1`.
 - Minimale Integration-Module-Grundlage für exportierbare Endpunkte ergänzt; `isr_prices` ist als erstes Export-Modul mit Manifest, Runtime-Dateiliste, Ausschlussliste und Secret-Policy registriert.
 - Fachliche Gegenprüfung für das `isr_prices` Export-Modul ergänzt: Dry-Run und Exportvalidierung zeigen enthaltene Dateien, Ausschlüsse, Secret-Policy, verbotene Dateien, lokale Pfadfunde und Secret-Zuweisungsfunde; PHPUnit vergleicht den internen Endpoint-Payload mit der exportierten Runtime-Fixture.

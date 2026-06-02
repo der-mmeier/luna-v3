@@ -7,6 +7,7 @@ use Luna\Connections\ConnectionTester;
 use Luna\Connections\ExternalDatabaseConfig;
 use Luna\Connections\ExternalPdoConnectionFactory;
 use Luna\Core\Application;
+use Luna\Dataset\DatasetRegistry;
 use Luna\Export\EndpointExportArchiveService;
 use Luna\Export\EndpointRuntimeExporter;
 use Luna\Http\Request;
@@ -907,6 +908,7 @@ return static function (RouteCollection $routes, Application $app): void {
     $runs = static fn (): JobRunRepository => $app->services()->get('repository.job_runs');
     $reports = static fn (): ReportRepository => $app->services()->get('repository.reports');
     $endpoints = static fn (): EndpointRepository => $app->services()->get('repository.endpoints');
+    $datasets = static fn (): DatasetRegistry => $app->services()->get(DatasetRegistry::class);
     $endpointExporter = static fn (): EndpointRuntimeExporter => $app->services()->get(EndpointRuntimeExporter::class);
     $endpointArchive = static fn (): EndpointExportArchiveService => $app->services()->get(EndpointExportArchiveService::class);
     $sourceRows = static fn (): MappingSourceRowProvider => $app->services()->get(MappingSourceRowProvider::class);
@@ -1941,6 +1943,50 @@ return static function (RouteCollection $routes, Application $app): void {
         $runId = (int) $request->route('runId');
         return $admin('admin/jobs/run', ['title' => 'Job Run', 'active' => 'jobs', 'run' => $runs()->findRun($runId), 'logs' => $runs()->logsForRun($runId)]);
     }, 'admin.jobs.run_show', 'web');
+
+    $routes->get('/admin/datasets', static function () use ($admin, $datasets): Response {
+        try {
+            $items = $datasets()->all();
+            $error = null;
+        } catch (Throwable) {
+            $items = [];
+            $error = 'Datasets konnten nicht geladen werden.';
+        }
+
+        return $admin('admin/datasets/index', [
+            'title' => 'Datasets',
+            'active' => 'datasets',
+            'datasets' => $items,
+            'error' => $error,
+        ]);
+    }, 'admin.datasets', 'web');
+
+    $routes->get('/admin/datasets/{name}', static function (Request $request) use ($admin, $datasets): Response {
+        $name = (string) $request->route('name');
+        $dataset = $datasets()->find($name);
+
+        if ($dataset === null) {
+            return Response::notFound();
+        }
+
+        try {
+            $preview = $datasets()->preview($name, 10);
+            $error = null;
+        } catch (Throwable) {
+            $preview = ['rows' => [], 'summary' => ['error_count' => 1, 'errors' => ['Dataset Preview konnte nicht erzeugt werden.']]];
+            $error = 'Dataset Preview konnte nicht erzeugt werden.';
+        }
+
+        return $admin('admin/datasets/show', [
+            'title' => 'Dataset',
+            'active' => 'datasets',
+            'dataset' => $dataset,
+            'fields' => $datasets()->fields($name),
+            'sourceFilters' => $datasets()->sourceFilters($name),
+            'preview' => $preview,
+            'error' => $error,
+        ]);
+    }, 'admin.datasets.show', 'web');
 
     $routes->get('/admin/reports', static fn (): Response => $admin('admin/reports/index', [
         'title' => 'Reports',
