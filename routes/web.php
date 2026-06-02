@@ -2115,6 +2115,17 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
     }, 'admin.transfers.fields.store', 'web');
 
+    $routes->post('/admin/transfers/{id}/fields/{fieldId}', static function (Request $request) use ($datasetTransfers): Response {
+        $id = (int) $request->route('id');
+        if ($datasetTransfers()->find($id) === null) {
+            return Response::notFound();
+        }
+
+        $datasetTransfers()->updateField((int) $request->route('fieldId'), datasetTransferFieldValues($request));
+
+        return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
+    }, 'admin.transfers.fields.update', 'web');
+
     $routes->post('/admin/transfers/{id}/fields/{fieldId}/delete', static function (Request $request) use ($datasetTransfers): Response {
         $id = (int) $request->route('id');
         if ($datasetTransfers()->find($id) === null) {

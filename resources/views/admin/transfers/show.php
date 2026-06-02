@@ -10,6 +10,7 @@
 /** @var array<int, string> $errors */
 
 $previewOperations = is_array($result['preview_operations'] ?? null) ? $result['preview_operations'] : [];
+$datasetFieldNames = array_map(static fn (array $datasetField): string => (string) ($datasetField['name'] ?? ''), $datasetFields ?? []);
 ?>
 <div class="d-flex justify-content-between align-items-start mb-4">
     <div>
@@ -66,7 +67,7 @@ $previewOperations = is_array($result['preview_operations'] ?? null) ? $result['
         </div>
         <div class="col-md-4">
             <label class="form-label">Target Connection</label>
-            <select class="form-select" name="target_connection_id" required>
+            <select class="form-select" name="target_connection_id" data-role="target-connection" required>
                 <option value="">Bitte wählen</option>
                 <?php foreach ($connections ?? [] as $connection): ?>
                     <option value="<?= (int) $connection['id'] ?>" <?= (int) ($transfer['target_connection_id'] ?? 0) === (int) $connection['id'] ? 'selected' : '' ?>><?= htmlspecialchars((string) $connection['name'], ENT_QUOTES, 'UTF-8') ?></option>
@@ -75,7 +76,14 @@ $previewOperations = is_array($result['preview_operations'] ?? null) ? $result['
         </div>
         <div class="col-md-6">
             <label class="form-label">Target Table</label>
-            <input class="form-control" name="target_table" value="<?= htmlspecialchars((string) ($transfer['target_table'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" required>
+            <select class="form-select" name="target_table" data-role="target-table" data-current="<?= htmlspecialchars((string) ($transfer['target_table'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" required>
+                <?php if (! empty($transfer['target_table'])): ?>
+                    <option value="<?= htmlspecialchars((string) $transfer['target_table'], ENT_QUOTES, 'UTF-8') ?>" selected><?= htmlspecialchars((string) $transfer['target_table'], ENT_QUOTES, 'UTF-8') ?></option>
+                <?php else: ?>
+                    <option value="">Bitte wählen</option>
+                <?php endif; ?>
+            </select>
+            <div class="form-text" data-role="target-table-status"></div>
         </div>
         <div class="col-md-6">
             <label class="form-label">Upsert Key</label>
@@ -105,12 +113,35 @@ $previewOperations = is_array($result['preview_operations'] ?? null) ? $result['
             </thead>
             <tbody>
             <?php foreach ($fields ?? [] as $field): ?>
+                <?php $formId = 'transfer-field-' . (int) $field['id']; ?>
                 <tr>
-                    <td><code><?= (int) ($field['sort_order'] ?? 0) ?></code></td>
-                    <td><code><?= htmlspecialchars((string) ($field['dataset_field'] ?? ''), ENT_QUOTES, 'UTF-8') ?></code></td>
-                    <td><code><?= htmlspecialchars((string) ($field['target_column'] ?? ''), ENT_QUOTES, 'UTF-8') ?></code></td>
                     <td>
-                        <form method="post" action="/admin/transfers/<?= (int) $transfer['id'] ?>/fields/<?= (int) $field['id'] ?>/delete" onsubmit="return confirm('Diese Feldzuordnung wirklich löschen?');">
+                        <input class="form-control form-control-sm" type="number" name="sort_order" value="<?= (int) ($field['sort_order'] ?? 0) ?>" form="<?= $formId ?>">
+                    </td>
+                    <td>
+                        <select class="form-select form-select-sm" name="dataset_field" form="<?= $formId ?>" required>
+                            <?php foreach ($datasetFields ?? [] as $datasetField): ?>
+                                <option value="<?= htmlspecialchars((string) $datasetField['name'], ENT_QUOTES, 'UTF-8') ?>" <?= (string) ($field['dataset_field'] ?? '') === (string) $datasetField['name'] ? 'selected' : '' ?>><?= htmlspecialchars((string) $datasetField['name'], ENT_QUOTES, 'UTF-8') ?></option>
+                            <?php endforeach; ?>
+                            <?php if (! in_array((string) ($field['dataset_field'] ?? ''), $datasetFieldNames, true)): ?>
+                                <option value="<?= htmlspecialchars((string) ($field['dataset_field'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" selected><?= htmlspecialchars((string) ($field['dataset_field'] ?? ''), ENT_QUOTES, 'UTF-8') ?> (gespeichert)</option>
+                            <?php endif; ?>
+                        </select>
+                    </td>
+                    <td>
+                        <select class="form-select form-select-sm" name="target_column" data-role="transfer-target-column" data-current="<?= htmlspecialchars((string) ($field['target_column'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" form="<?= $formId ?>" required>
+                            <?php if (! empty($field['target_column'])): ?>
+                                <option value="<?= htmlspecialchars((string) $field['target_column'], ENT_QUOTES, 'UTF-8') ?>" selected><?= htmlspecialchars((string) $field['target_column'], ENT_QUOTES, 'UTF-8') ?></option>
+                            <?php else: ?>
+                                <option value="">Bitte wählen</option>
+                            <?php endif; ?>
+                        </select>
+                    </td>
+                    <td>
+                        <form id="<?= $formId ?>" method="post" action="/admin/transfers/<?= (int) $transfer['id'] ?>/fields/<?= (int) $field['id'] ?>" class="d-inline">
+                            <button class="btn btn-sm btn-outline-primary" type="submit">Speichern</button>
+                        </form>
+                        <form method="post" action="/admin/transfers/<?= (int) $transfer['id'] ?>/fields/<?= (int) $field['id'] ?>/delete" class="d-inline" onsubmit="return confirm('Diese Feldzuordnung wirklich löschen?');">
                             <button class="btn btn-sm btn-outline-danger" type="submit">Löschen</button>
                         </form>
                     </td>
@@ -135,7 +166,10 @@ $previewOperations = is_array($result['preview_operations'] ?? null) ? $result['
             </div>
             <div class="col-md-4">
                 <label class="form-label">Zielspalte</label>
-                <input class="form-control" name="target_column" required>
+                <select class="form-select" name="target_column" data-role="transfer-target-column" data-current="" required>
+                    <option value="">Bitte wählen</option>
+                </select>
+                <div class="form-text">Die Optionen werden aus der gewählten Target Table geladen.</div>
             </div>
             <div class="col-md-2">
                 <label class="form-label">Sortierung</label>

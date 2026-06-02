@@ -64,7 +64,7 @@
         </div>
         <div class="col-md-4">
             <label class="form-label">Target Connection</label>
-            <select class="form-select" name="target_connection_id" required>
+            <select class="form-select" name="target_connection_id" data-role="target-connection" required>
                 <option value="">Bitte wählen</option>
                 <?php foreach ($connections ?? [] as $connection): ?>
                     <option value="<?= (int) $connection['id'] ?>" <?= (int) ($values['target_connection_id'] ?? 0) === (int) $connection['id'] ? 'selected' : '' ?>><?= htmlspecialchars((string) $connection['name'], ENT_QUOTES, 'UTF-8') ?></option>
@@ -73,7 +73,14 @@
         </div>
         <div class="col-md-6">
             <label class="form-label">Target Table</label>
-            <input class="form-control" name="target_table" value="<?= htmlspecialchars((string) ($values['target_table'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" required>
+            <select class="form-select" name="target_table" data-role="target-table" data-current="<?= htmlspecialchars((string) ($values['target_table'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" required>
+                <?php if (! empty($values['target_table'])): ?>
+                    <option value="<?= htmlspecialchars((string) $values['target_table'], ENT_QUOTES, 'UTF-8') ?>" selected><?= htmlspecialchars((string) $values['target_table'], ENT_QUOTES, 'UTF-8') ?></option>
+                <?php else: ?>
+                    <option value="">Bitte wählen</option>
+                <?php endif; ?>
+            </select>
+            <div class="form-text" data-role="target-table-status"></div>
         </div>
         <div class="col-md-6">
             <label class="form-label">Upsert Key</label>
