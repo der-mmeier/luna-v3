@@ -50,7 +50,7 @@ final class EndpointExportArchiveService
                 continue;
             }
 
-            $path = str_replace('\\', '/', $file->getPathname());
+            $path = str_replace('\\', '/', realpath($file->getPathname()) ?: $file->getPathname());
             $relativePath = ltrim(substr($path, strlen($base)), '/');
 
             if ($this->excluded($relativePath)) {
@@ -80,19 +80,21 @@ final class EndpointExportArchiveService
             return true;
         }
 
-        foreach (['.git', '.idea', 'node_modules', 'vendor'] as $segment) {
+        foreach (['.git', '.idea', '.phpunit.cache', 'node_modules', 'vendor'] as $segment) {
             if ($normalized === $segment || str_starts_with($normalized, $segment . '/')) {
                 return true;
             }
         }
 
-        if (str_contains($normalized, '/.git/') || str_contains($normalized, '/.idea/') || str_contains($normalized, '/node_modules/') || str_contains($normalized, '/vendor/')) {
+        if (str_contains($normalized, '/.git/') || str_contains($normalized, '/.idea/') || str_contains($normalized, '/.phpunit.cache/') || str_contains($normalized, '/node_modules/') || str_contains($normalized, '/vendor/')) {
             return true;
         }
 
         return str_contains($normalized, '/tmp/')
             || str_contains($normalized, '/temp/')
             || str_contains($normalized, '/logs/')
+            || str_contains($normalized, '/cache/')
+            || str_starts_with($normalized, 'cache/')
             || str_ends_with($normalized, '.tmp')
             || str_ends_with($normalized, '.log');
     }

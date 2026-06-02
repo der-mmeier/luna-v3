@@ -11,6 +11,9 @@ use Luna\Database\SystemDatabase;
 use Luna\Api\EndpointJsonResponseFactory;
 use Luna\Export\EndpointExportArchiveService;
 use Luna\Export\EndpointRuntimeExporter;
+use Luna\Integration\ExportModuleRegistry;
+use Luna\Integration\ExportRuntimeBuilder;
+use Luna\Integration\Modules\IsrPricesExportModule;
 use Luna\Repository\ConnectionProfileRepository;
 use Luna\Repository\EndpointRepository;
 use Luna\Repository\MappingRepository;
@@ -217,6 +220,55 @@ final class EndpointRuntimeExporterTest extends TestCase
         self::assertStringContainsString(EndpointExportArchiveService::class, $cli);
     }
 
+    public function testIntegrationExportCreatesDeploymentManifestChecksumsAndReadme(): void
+    {
+        $target = $this->tempDirectory();
+        $builder = new ExportRuntimeBuilder(
+            new ExportModuleRegistry([new IsrPricesExportModule()]),
+            $this->exporter(),
+            new EndpointExportArchiveService(),
+        );
+
+        $result = $builder->export('isr_prices', $target, true, false);
+
+        self::assertSame('exported', $result['status']);
+        self::assertFileExists($target . '/manifest.json');
+        self::assertFileExists($target . '/module.isr_prices.manifest.json');
+        self::assertFileExists($target . '/CHECKSUMS.txt');
+        self::assertFileExists($target . '/README_DEPLOY.md');
+        self::assertFileExists($target . '/config/config.example.php');
+
+        $manifest = json_decode((string) file_get_contents($target . '/manifest.json'), true);
+        self::assertIsArray($manifest);
+        self::assertSame('isr_prices', $manifest['module']);
+        self::assertSame('1.7.0', $manifest['version']);
+        self::assertArrayHasKey('source_commit', $manifest);
+        self::assertNotSame('', $manifest['source_commit']);
+        self::assertFalse($manifest['secret_policy']['exports_secrets']);
+        self::assertContains('passwd', $manifest['secret_policy']['forbidden_patterns']);
+        self::assertSame('api/isr_prices.php', $manifest['deployment']['entrypoint']);
+        self::assertSame('api/isr_prices.php?health=1', $manifest['deployment']['healthcheck']);
+        self::assertIsArray($manifest['checksums']);
+        self::assertNotSame([], $manifest['checksums']);
+
+        $checksumFiles = array_keys($manifest['checksums']);
+        $sortedChecksumFiles = $checksumFiles;
+        sort($sortedChecksumFiles);
+        self::assertSame($sortedChecksumFiles, $checksumFiles);
+        self::assertContains('api/isr_prices.php', $checksumFiles);
+        self::assertContains('runtime/bootstrap.php', $checksumFiles);
+        self::assertContains('config/config.example.php', $checksumFiles);
+        self::assertContains('README_DEPLOY.md', $checksumFiles);
+        self::assertNotContains('.env', $checksumFiles);
+        self::assertNotContains('manifest.json', $checksumFiles);
+
+        $exported = $this->readExport($target);
+        self::assertStringContainsString('api/isr_prices.php?health=1', $exported);
+        self::assertStringNotContainsString('local-endpoint-secret', $exported);
+        self::assertStringNotContainsString('objects-password', $exported);
+        self::assertStringNotContainsString('C:\\Users\\', $exported);
+    }
+
     public function testGitignoreProtectsLocalExportEnvFiles(): void
     {
         $gitignore = (string) file_get_contents(dirname(__DIR__, 2) . '/.gitignore');
@@ -295,6 +347,29 @@ final class EndpointRuntimeExporterTest extends TestCase
         $missing = \LunaExportRuntime\EndpointRunner::handle('missing');
         ob_end_clean();
         self::assertSame('endpoint_not_found', $missing['error']['code']);
+    }
+
+    #[RunInSeparateProcess]
+    public function testExportedRuntimeHealthcheckReturnsSafeJson(): void
+    {
+        $target = $this->tempDirectory();
+        $this->exporter()->export('isr_prices', $target, true);
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_GET['health'] = '1';
+
+        ob_start();
+        $health = require $target . '/api/isr_prices.php';
+        $json = (string) ob_get_clean();
+
+        self::assertIsArray($health);
+        self::assertSame(true, $health['success']);
+        self::assertSame('isr_prices', $health['module']);
+        self::assertSame('1.7.0', $health['version']);
+        self::assertSame('ok', $health['status']);
+        self::assertJson($json);
+        self::assertStringNotContainsString('Stack trace', $json);
+        self::assertStringNotContainsString('local-endpoint-secret', $json);
+        self::assertStringNotContainsString('C:\\Users\\', $json);
     }
 
     #[RunInSeparateProcess]

@@ -27,7 +27,7 @@ final class IsrPricesExportModule implements ExportModuleInterface
 
     public function version(): string
     {
-        return '1.6.0';
+        return '1.7.0';
     }
 
     public function runtimeFiles(): array
@@ -42,11 +42,14 @@ final class IsrPricesExportModule implements ExportModuleInterface
             'runtime/EndpointRunner.php',
             'runtime/.htaccess',
             'config/endpoint.isr_prices.php',
+            'config/config.example.php',
             'config/.htaccess',
             '.env.example',
             '.htaccess',
             'manifest.json',
             'module.isr_prices.manifest.json',
+            'CHECKSUMS.txt',
+            'README_DEPLOY.md',
         ];
     }
 
@@ -61,6 +64,7 @@ final class IsrPricesExportModule implements ExportModuleInterface
             '*.tmp',
             '.git/',
             '.idea/',
+            '.phpunit.cache/',
             'node_modules/',
             'vendor/',
             'logs/',
@@ -77,6 +81,7 @@ final class IsrPricesExportModule implements ExportModuleInterface
             '.env.*',
             'APP_KEY',
             'password',
+            'passwd',
             'secret',
             'token',
             'api_key',
@@ -97,6 +102,7 @@ final class IsrPricesExportModule implements ExportModuleInterface
                 '.env',
                 'APP_KEY',
                 'password',
+                'passwd',
                 'secret',
                 'token',
                 'api_key',

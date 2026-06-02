@@ -95,12 +95,13 @@ if (! function_exists('mappingFieldValues')) {
     {
         $targetColumn = trim((string) $request->post('target_column', ''));
         $sourceColumns = trim((string) $request->post('source_columns', ''));
+        $transformType = (string) $request->post('transform_type', 'direct');
 
         return [
-            'source_column' => $sourceColumns !== '' ? $sourceColumns : (string) $request->post('source_column', ''),
+            'source_column' => $transformType === 'first_non_empty' && $sourceColumns !== '' ? $sourceColumns : (string) $request->post('source_column', ''),
             'source_json_path' => (string) $request->post('source_json_path', ''),
             'target_column' => $targetColumn,
-            'transform_type' => (string) $request->post('transform_type', 'direct'),
+            'transform_type' => $transformType,
             'default_value' => (string) $request->post('default_value', ''),
             'lookup_connection_id' => $request->post('lookup_connection_id'),
             'lookup_table' => (string) $request->post('lookup_table', ''),
@@ -238,6 +239,86 @@ if (! function_exists('mappingFieldsData')) {
         }
 
         return $data;
+    }
+}
+
+if (! function_exists('endpointMappingSummary')) {
+    function endpointMappingSummary(?array $endpoint, Closure $mappings, Closure $connections): array
+    {
+        $mappingId = (int) ($endpoint['mapping_set_id'] ?? 0);
+        if ($mappingId <= 0) {
+            return [
+                'mapping' => null,
+                'filters' => [],
+                'fields' => [],
+                'message' => 'Für diesen Endpoint ist kein Mapping ausgewählt.',
+            ];
+        }
+
+        try {
+            $mapping = $mappings()->find($mappingId);
+            if ($mapping === null) {
+                return [
+                    'mapping' => null,
+                    'filters' => [],
+                    'fields' => [],
+                    'message' => 'Das ausgewählte Mapping wurde nicht gefunden.',
+                ];
+            }
+
+            $connectionNames = [];
+            foreach ($connections()->all() as $connection) {
+                $connectionNames[(int) $connection['id']] = (string) $connection['name'];
+            }
+
+            $operatorLabels = mappingSourceFilterOperatorLabels();
+            $filters = array_map(static function (array $filter) use ($operatorLabels): array {
+                $operator = (string) ($filter['operator'] ?? '');
+
+                return [
+                    'source_column' => (string) ($filter['source_column'] ?? ''),
+                    'operator' => $operator,
+                    'operator_label' => $operatorLabels[$operator] ?? $operator,
+                    'filter_value' => (string) ($filter['filter_value'] ?? ''),
+                    'sort_order' => (int) ($filter['sort_order'] ?? 0),
+                ];
+            }, $mappings()->sourceFiltersForSet($mappingId));
+
+            $fields = [];
+            foreach ($mappings()->fieldsForSet($mappingId) as $field) {
+                $lookupConnectionId = (int) ($field['lookup_connection_id'] ?? 0);
+                $fields[] = [
+                    'id' => (int) $field['id'],
+                    'sort_order' => (int) ($field['sort_order'] ?? 0),
+                    'source_column' => (string) ($field['source_column'] ?? ''),
+                    'target_column' => (string) ($field['target_column'] ?? ''),
+                    'transform_type' => (string) ($field['transform_type'] ?? ''),
+                    'transform_label' => TransformType::label((string) ($field['transform_type'] ?? '')),
+                    'default_value' => (string) ($field['default_value'] ?? ''),
+                    'lookup_connection' => $lookupConnectionId > 0 ? ($connectionNames[$lookupConnectionId] ?? ('#' . $lookupConnectionId)) : '',
+                    'lookup_table' => (string) ($field['lookup_table'] ?? ''),
+                    'lookup_key_column' => (string) ($field['lookup_key_column'] ?? ''),
+                    'lookup_value_column' => (string) ($field['lookup_value_column'] ?? ''),
+                    'lookup_key_template' => (string) ($field['lookup_key_template'] ?? ''),
+                    'missing_behavior' => (string) ($field['missing_behavior'] ?? ''),
+                    'value_rules' => $mappings()->valueRulesForField((int) $field['id']),
+                ];
+            }
+
+            return [
+                'mapping' => $mapping,
+                'filters' => $filters,
+                'fields' => $fields,
+                'message' => null,
+            ];
+        } catch (Throwable) {
+            return [
+                'mapping' => null,
+                'filters' => [],
+                'fields' => [],
+                'message' => 'Mapping-Zusammenfassung konnte nicht geladen werden.',
+            ];
+        }
     }
 }
 
@@ -1671,6 +1752,30 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/mappings/' . $id . '/fields']);
     }, 'admin.mappings.fields.update', 'web');
 
+    $routes->post('/admin/mappings/{id}/fields/{fieldId}/sort-order', static function (Request $request) use ($mappings, $audit): Response {
+        $id = (int) $request->route('id');
+        $fieldId = (int) $request->route('fieldId');
+        $set = $mappings()->find($id);
+        $field = $mappings()->findField($fieldId);
+
+        if ($set === null || $field === null || (int) ($field['mapping_set_id'] ?? 0) !== $id) {
+            return Response::notFound();
+        }
+
+        $sortOrder = (int) $request->post('sort_order', 0);
+        $mappings()->updateFieldSortOrder($fieldId, $sortOrder);
+        $audit()->log(
+            isset($set['workspace_id']) ? (int) $set['workspace_id'] : null,
+            'mapping_field.sort_order_updated',
+            'mapping_field',
+            (string) $fieldId,
+            'Mapping Field Sortierung aktualisiert.',
+            ['mapping_set_id' => $id, 'sort_order' => $sortOrder],
+        );
+
+        return new Response('', 302, ['Location' => '/admin/mappings/' . $id . '/fields']);
+    }, 'admin.mappings.fields.sort_order', 'web');
+
     $routes->post('/admin/mappings/{id}/fields/{fieldId}/delete', static function (Request $request) use ($mappings, $audit): Response {
         $id = (int) $request->route('id');
         $fieldId = (int) $request->route('fieldId');
@@ -1895,7 +2000,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/endpoints/' . $id]);
     }, 'admin.endpoints.store', 'web');
 
-    $routes->get('/admin/endpoints/{id}', static function (Request $request) use ($admin, $endpoints, $endpointExporter, $workspaces, $mappings, $jobs): Response {
+    $routes->get('/admin/endpoints/{id}', static function (Request $request) use ($admin, $endpoints, $endpointExporter, $workspaces, $mappings, $connections, $jobs): Response {
         $id = (int) $request->route('id');
         $endpoint = $endpoints()->find($id);
         $config = $endpoint === null ? [] : (json_decode((string) ($endpoint['config_json'] ?? '{}'), true) ?: []);
@@ -1910,11 +2015,12 @@ return static function (RouteCollection $routes, Application $app): void {
             'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
             'hasSecret' => $endpoint !== null && $endpoints()->hasSecret((int) $endpoint['id']),
             'exportStatus' => $endpoint !== null ? $endpointExporter()->exportStatusForEndpoint((int) $endpoint['id']) : null,
+            'mappingSummary' => endpointMappingSummary($endpoint, $mappings, $connections),
             'alert' => null,
         ]);
     }, 'admin.endpoints.show', 'web');
 
-    $routes->post('/admin/endpoints/{id}', static function (Request $request) use ($admin, $endpoints, $audit, $workspaces, $mappings, $jobs): Response {
+    $routes->post('/admin/endpoints/{id}', static function (Request $request) use ($admin, $endpoints, $audit, $workspaces, $mappings, $connections, $jobs): Response {
         $id = (int) $request->route('id');
         $existing = $endpoints()->find($id);
         if ($existing === null) {
@@ -1934,6 +2040,8 @@ return static function (RouteCollection $routes, Application $app): void {
                 'jobs' => safeList($jobs),
                 'staticResponse' => (string) $values['static_response'],
                 'hasSecret' => $endpoints()->hasSecret($id),
+                'exportStatus' => null,
+                'mappingSummary' => endpointMappingSummary($values + ['id' => $id], $mappings, $connections),
                 'alert' => ['type' => 'danger', 'message' => implode(' ', $errors)],
             ]);
         }
@@ -1947,7 +2055,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/endpoints/' . $id]);
     }, 'admin.endpoints.update', 'web');
 
-    $routes->post('/admin/endpoints/{id}/export', static function (Request $request) use ($admin, $endpoints, $endpointExporter, $endpointArchive, $audit, $workspaces, $mappings, $jobs): Response {
+    $routes->post('/admin/endpoints/{id}/export', static function (Request $request) use ($admin, $endpoints, $endpointExporter, $endpointArchive, $audit, $workspaces, $mappings, $connections, $jobs): Response {
         $id = (int) $request->route('id');
         $endpoint = $endpoints()->find($id);
 
@@ -1982,6 +2090,7 @@ return static function (RouteCollection $routes, Application $app): void {
                 'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
                 'hasSecret' => $endpoints()->hasSecret($id),
                 'exportStatus' => $endpointExporter()->exportStatusForEndpoint($id),
+                'mappingSummary' => endpointMappingSummary($endpoints()->find($id) ?? $endpoint, $mappings, $connections),
                 'alert' => ['type' => $archiveMessage === '' ? 'success' : 'warning', 'message' => 'Endpoint Runtime wurde exportiert nach: ' . (string) ($manifest['target_path'] ?? '') . $archiveMessage],
             ]);
         } catch (Throwable) {
@@ -1997,6 +2106,7 @@ return static function (RouteCollection $routes, Application $app): void {
                 'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
                 'hasSecret' => $endpoints()->hasSecret($id),
                 'exportStatus' => $endpointExporter()->exportStatusForEndpoint($id),
+                'mappingSummary' => endpointMappingSummary($endpoint, $mappings, $connections),
                 'alert' => ['type' => 'danger', 'message' => 'Endpoint Runtime konnte nicht exportiert werden.'],
             ]);
         }

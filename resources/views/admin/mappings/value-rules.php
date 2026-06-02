@@ -29,6 +29,11 @@
         </div>
     </div>
 
+    <div class="alert alert-info">
+        Value Rules übersetzen exakte Quellwerte in Zielwerte, z. B. Status- oder Enum-Werte.
+        Für Prefix-, Regex- oder Modellcode-Normalisierung bitte einen Transform verwenden, z. B. <code>normalize_dr_model</code>.
+    </div>
+
     <?php if (($field['transform_type'] ?? '') !== 'enum_map'): ?>
         <div class="alert alert-info">Value Rules sind nur für Transform Type <code>enum_map</code> relevant.</div>
     <?php endif; ?>

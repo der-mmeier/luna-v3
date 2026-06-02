@@ -72,6 +72,7 @@ use Luna\Mapping\MappingValidationResult;
     <form class="card admin-card mb-4" method="post" action="/admin/mappings/<?= (int) $mapping['id'] ?>">
         <div class="card-body row g-3">
             <input type="hidden" name="workspace_id" value="<?= htmlspecialchars((string) ($mapping['workspace_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+            <input type="hidden" name="mapping_mode" value="<?= htmlspecialchars((string) ($mapping['mapping_mode'] ?? 'transfer'), ENT_QUOTES, 'UTF-8') ?>">
             <input type="hidden" name="source_connection_id" data-role="source-connection" value="<?= htmlspecialchars((string) ($mapping['source_connection_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
             <input type="hidden" name="target_connection_id" data-role="target-connection" value="<?= htmlspecialchars((string) ($mapping['target_connection_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
             <div class="col-md-4">
@@ -117,6 +118,7 @@ use Luna\Mapping\MappingValidationResult;
             <table class="table align-middle mb-0">
                 <thead>
                 <tr>
+                    <th>Sortierung</th>
                     <th>Primary Source</th>
                     <th>Transfer-Feld</th>
                     <th>Transform</th>
@@ -128,6 +130,7 @@ use Luna\Mapping\MappingValidationResult;
                 <tbody>
                 <?php foreach ($fields ?? [] as $field): ?>
                     <tr>
+                        <td><code><?= htmlspecialchars((string) ($field['sort_order'] ?? 0), ENT_QUOTES, 'UTF-8') ?></code></td>
                         <td><code><?= htmlspecialchars((string) ($field['source_column'] ?? $field['source_json_path'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></code></td>
                         <td><code><?= htmlspecialchars((string) $field['target_column'], ENT_QUOTES, 'UTF-8') ?></code></td>
                         <td><?= htmlspecialchars((string) $field['transform_type'], ENT_QUOTES, 'UTF-8') ?></td>
@@ -137,7 +140,7 @@ use Luna\Mapping\MappingValidationResult;
                     </tr>
                 <?php endforeach; ?>
                 <?php if (($fields ?? []) === []): ?>
-                    <tr><td colspan="6" class="text-body-secondary">Noch keine Feldzuordnungen angelegt.</td></tr>
+                    <tr><td colspan="7" class="text-body-secondary">Noch keine Feldzuordnungen angelegt.</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>

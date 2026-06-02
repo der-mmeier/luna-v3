@@ -382,7 +382,7 @@ foreach ($fields ?? [] as $field) {
     <div class="card admin-card">
         <div class="table-responsive">
             <table class="table align-middle mb-0">
-                <thead><tr><th>Primary Source</th><th>Ausgabe-Alias</th><th>Type</th><th>Aktionen</th></tr></thead>
+                <thead><tr><th>Sortierung</th><th>Primary Source</th><th>Ausgabe-Alias</th><th>Type</th><th>Aktionen</th></tr></thead>
                 <tbody>
                 <?php foreach ($fields ?? [] as $field): ?>
                     <?php
@@ -390,6 +390,12 @@ foreach ($fields ?? [] as $field) {
                     $isDuplicateTarget = $targetColumn !== '' && ($targetCounts[$targetColumn] ?? 0) > 1;
                     ?>
                     <tr class="<?= $isDuplicateTarget ? 'table-warning' : '' ?>">
+                        <td style="width: 10rem;">
+                            <form class="d-flex gap-2 align-items-center" method="post" action="/admin/mappings/<?= (int) $mapping['id'] ?>/fields/<?= (int) $field['id'] ?>/sort-order">
+                                <input class="form-control form-control-sm" type="number" name="sort_order" value="<?= htmlspecialchars((string) ($field['sort_order'] ?? 0), ENT_QUOTES, 'UTF-8') ?>" aria-label="Sortierung">
+                                <button class="btn btn-sm btn-outline-secondary" type="submit">Speichern</button>
+                            </form>
+                        </td>
                         <td><code><?= htmlspecialchars((string) ($field['source_column'] ?? $field['source_json_path'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></code></td>
                         <td>
                             <code><?= htmlspecialchars($targetColumn, ENT_QUOTES, 'UTF-8') ?></code>
