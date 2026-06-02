@@ -42,6 +42,31 @@ Externe Datenquellen werden nicht über `.env` konfiguriert. Sie werden später 
 6. Laufstatus, Fehler und Statistiken werden protokolliert.
 7. Optional erzeugt die Report Engine einen E-Mail-Report.
 
+## Layer-Modell ab 1.8.0
+
+Nach dem stabilen Export von `isr_prices_v2` wird Luna nicht direkt um Zielsystem-Adapter erweitert. Die nächsten Schichten werden getrennt geplant:
+
+```text
+Connections liefern Rohdaten.
+Mappings erzeugen Datasets.
+Endpoints veröffentlichen Datasets.
+Transfers konsumieren Datasets.
+Writers schreiben Transfer-Pläne.
+Jobs führen Transfers nachvollziehbar aus.
+```
+
+Ein Endpoint ist dabei kein Transfer. Er veröffentlicht ein geprüftes Dataset als JSON und schreibt nicht in Zielsysteme.
+
+Ein Transfer konsumiert ein Dataset und erzeugt daraus einen nachvollziehbaren Transfer Plan. Erst ein Writer schreibt diesen Plan in ein Zielsystem.
+
+Die konkrete Versionsplanung steht in `ROADMAP.md`:
+
+- `1.8.0` — Dataset Sources
+- `1.9.0` — Transfer Layer v1: Single Target Table
+- `2.0.0` — Transfer Layer v2: Parent/Child
+- `2.1.0` — Transferbetrieb
+- `2.2.0` — Zielsystem-Adapter
+
 ## Architekturgrenzen
 
 - Luna V3 verwaltet keine externen Datenbanken wie ein phpMyAdmin-Ersatz.

@@ -547,6 +547,332 @@ Logs dürfen nicht enthalten:
 
 ---
 
+## 1.7.1 — Layer Roadmap und Versionsplanung
+
+### Ziel
+
+`1.7.1` ist ein reiner Dokumentations- und Planungsschritt.
+
+`isr_prices_v2` wurde erfolgreich exportiert, produktionsnah deployed und läuft stabil. Damit ist bewiesen, dass exportierbare Endpunkte tragfähig sind.
+
+In `1.7.1` wird keine neue Runtime-Logik gebaut. Die nächste Ausbaustufe wird fachlich geschichtet und versioniert.
+
+### Strategische Grundregel
+
+```text
+Connections liefern Rohdaten.
+Mappings erzeugen Datasets.
+Endpoints veröffentlichen Datasets.
+Transfers konsumieren Datasets.
+Writers schreiben Transfer-Pläne.
+Jobs führen Transfers nachvollziehbar aus.
+```
+
+### Schichten
+
+#### 1. Connection
+
+Eine Connection ist der Zugriff auf ein reales System.
+
+Beispiele:
+
+- Pimcore-Datenbank
+- WordPress-/WooCommerce-Datenbank
+- Transferdatenbank
+- externe API
+
+Eine Connection liefert Rohdaten und kennt keine fachliche Zielstruktur.
+
+#### 2. Mapping / Projection
+
+Ein Mapping wandelt Rohdaten in ein fachliches JSON-Ergebnis.
+
+Beispiele:
+
+- `isr_prices_v2`
+- später `woocommerce_orders_v1`
+
+Mappings dürfen fachliche Normalisierung enthalten, zum Beispiel:
+
+- `first_non_empty`
+- `normalize_dr_model`
+- Value Rules für fachliche Wertnormalisierung
+- Lookup-Werte
+- berechnete Felder
+- Templates
+
+Mappings sollen nicht direkt in Zieltabellen schreiben.
+
+#### 3. Dataset
+
+Ein Dataset ist ein geprüftes Mapping-/Endpoint-Ergebnis.
+
+Beispiele:
+
+- `isr_prices_v2`
+- `woocommerce_orders_v1`
+
+Ein Dataset kann als JSON veröffentlicht werden oder später als Quelle für Transfers dienen.
+
+Wichtig: Ein Dataset ist keine echte Connection, sondern ein fachlich aufbereitetes Ergebnis.
+
+#### 4. Endpoint
+
+Ein Endpoint veröffentlicht ein Dataset als JSON.
+
+Ein Endpoint ist kein Transfer.
+
+Ein Endpoint beantwortet:
+
+```text
+Welche Daten ergeben sich aus Quelle, Filter, Mapping und Regeln?
+```
+
+Ein Endpoint schreibt nicht in Zielsysteme.
+
+#### 5. Dataset Source
+
+Eine Dataset Source macht ein bestehendes Dataset intern wieder als Quelle verfügbar.
+
+Ziel: Ein bereits geprüftes Endpoint-/Mapping-Ergebnis soll nicht erneut aus den Rohquellen nachgebaut werden müssen.
+
+Beispiel:
+
+```text
+woocommerce_orders_v1
+```
+
+kann später als Source für einen Transfer verwendet werden.
+
+Dabei sollen die Output-Felder des Datasets auswählbar werden, zum Beispiel:
+
+```text
+order_number
+customer_email
+total
+positions[].sku
+positions[].quantity
+```
+
+#### 6. Transfer Mapping
+
+Ein Transfer Mapping übersetzt ein Dataset in ein Zielmodell.
+
+Beispiele:
+
+```text
+woocommerce_orders_v1 -> transfer_orders
+woocommerce_orders_v1.positions[] -> transfer_order_positions
+```
+
+Ein Transfer Mapping darf zielsystembezogene Wertübersetzungen enthalten.
+
+Es soll nicht erneut WordPress- oder Pimcore-Rohdaten mappen müssen.
+
+#### 7. Transfer Plan
+
+Ein Transfer Plan beschreibt vor dem Schreiben, welche Operationen ausgeführt würden.
+
+Beispiele:
+
+- insert
+- update
+- upsert
+- Parent Row schreiben
+- Child Rows schreiben
+
+Der Transfer Plan ist die Grundlage für Dry-Run, Nachvollziehbarkeit und sichere Ausführung.
+
+#### 8. Writer
+
+Ein Writer schreibt einen fertigen Transfer Plan in ein Zielsystem.
+
+Der Writer soll keine Fachlogik kennen.
+
+Er soll nur schreiben:
+
+- insert
+- update
+- upsert
+- Transaktion
+- Rollback bei Fehlern
+
+#### 9. Job / Execution
+
+Jobs führen Transfers kontrolliert aus.
+
+Später relevant für:
+
+- Batch-Verarbeitung
+- Retry
+- Logs
+- Fehler je Datensatz
+- Wiederholbarkeit
+- letzter erfolgreicher Lauf
+
+### Abgrenzung
+
+Ein Endpoint ist kein Transfer.
+
+Ein Endpoint erzeugt und veröffentlicht ein Dataset.
+
+Ein Transfer konsumiert ein Dataset und schreibt es kontrolliert in ein Zielsystem.
+
+### Beispiel ISR
+
+```text
+Pimcore / Lager Connections
+  -> Mapping: isr_prices_v2
+  -> Dataset: isr_prices_v2
+  -> Endpoint: Production JSON Endpoint
+```
+
+Kein Transfer notwendig.
+
+### Beispiel WooCommerce Bestellung
+
+```text
+WordPress Connection
+  -> Mapping: woocommerce_orders_v1
+  -> Dataset: woocommerce_orders_v1
+  -> Transfer Mapping
+     -> transfer_orders
+     -> transfer_order_positions
+  -> Transfer Plan
+  -> Writer
+  -> Transferdatenbank
+```
+
+### Nicht-Ziele für 1.7.1
+
+Nicht umsetzen:
+
+- keine Codeänderungen
+- keine Runtime-Änderungen
+- keine UI-Änderungen
+- keine Migrationen
+- keine Dataset Registry implementieren
+- keine Transferlogik implementieren
+- keine Writer implementieren
+- keine WooCommerce-Integration implementieren
+- keine Afterbuy-Integration implementieren
+- keine Shopware-Adapter implementieren
+
+---
+
+# Roadmap ab 1.8.0
+
+Die fachliche Schichtdefinition ist in `docs/ARCHITECTURE.md` dokumentiert. Diese Roadmap beschreibt nur, welche Schicht in welcher Version umgesetzt werden soll.
+
+## 1.8.0 — Dataset Sources
+
+### Ziel
+
+Endpoint-/Mapping-Ergebnisse als interne Quellen verfügbar machen.
+
+### Umfang
+
+- Dataset Registry
+- Endpoint Result als Source Type
+- Output-Felder eines Datasets als auswählbare Source Fields
+- Preview eines Dataset Results
+- keine Schreiblogik
+- keine Parent-/Child-Transfers
+
+### Akzeptanz
+
+- Ein Dataset wie `isr_prices_v2` oder später `woocommerce_orders_v1` kann als Source ausgewählt werden.
+- Die Output-Felder sind sichtbar.
+- Ein Dry-Run kann auf Dataset-Basis vorbereitet werden.
+
+## 1.9.0 — Transfer Layer v1: Single Target Table
+
+### Ziel
+
+Ein Dataset in eine einzelne Ziel-Tabelle schreiben.
+
+### Umfang
+
+- Transfer Builder
+- Source Type: Dataset
+- Target Connection
+- Target Table
+- Field Mapping
+- Insert/Update/Upsert
+- Upsert Key
+- Dry-Run mit Write Plan
+- echter Run
+- Logs
+
+### Noch nicht enthalten
+
+- Parent-/Child-Transfers
+- Bestellpositionen in separaten Tabellen
+
+### Geeignet für
+
+- Produkte
+- Preise
+- Bestände
+- flache Statuslisten
+- einfache Stammdaten
+
+## 2.0.0 — Transfer Layer v2: Parent/Child
+
+### Ziel
+
+Ein Dataset mit Child Collections relational speichern.
+
+### Umfang
+
+- Root Mapping, z. B. `orders`
+- Child Mapping, z. B. `order_positions`
+- Parent Link
+- Upsert Keys je Target Group
+- Transaktion
+- Dry-Run zeigt Parent-/Child-Write-Plan
+
+### Geeignet für
+
+- WooCommerce-Bestellungen
+- Bestellpositionen
+- Rechnungen mit Positionen
+- Lieferungen mit Positionen
+
+## 2.1.0 — Transferbetrieb
+
+### Ziel
+
+Transfers im Betrieb kontrollieren.
+
+### Umfang
+
+- Job-Ausführung
+- Batching
+- Retry
+- Fehler je Datensatz
+- Transfer-Historie
+- letzter erfolgreicher Lauf
+- idempotente Wiederholung
+
+## 2.2.0 — Zielsystem-Adapter
+
+### Ziel
+
+Auf Basis stabiler Datasets und Transfers externe Zielsysteme anbinden.
+
+### Beispiele
+
+- Transferdatenbank -> Afterbuy
+- Transferdatenbank -> weitere Systeme
+- später API-Writer
+
+### Wichtige Abgrenzung
+
+Keine Zielsystem-Adapter bauen, bevor Dataset Sources und Transfer Layer stabil sind.
+
+---
+
 # MVP-Definition
 
 Der MVP ist nicht, dass Luna vollständig perfekt ist.
