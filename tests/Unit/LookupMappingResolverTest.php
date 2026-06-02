@@ -8,9 +8,11 @@ use Luna\Mapping\LookupKeyTemplateRenderer;
 use Luna\Mapping\LookupResult;
 use Luna\Mapping\LookupValueProvider;
 use Luna\Mapping\MappingFieldResolver;
+use Luna\Mapping\MappingValidator;
 use Luna\Mapping\PrefixLookupWarmupProvider;
 use Luna\Transfer\MappingExecutionResult;
 use Luna\Transfer\MappingRowTransformer;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class LookupMappingResolverTest extends TestCase
@@ -268,6 +270,73 @@ final class LookupMappingResolverTest extends TestCase
         self::assertSame(['stock_model' => 'W001'], $row);
     }
 
+    public function testFirstNonEmptyWritesFallbackValueToConfiguredOutputField(): void
+    {
+        $result = new MappingExecutionResult(true);
+        $transformer = new MappingRowTransformer(null, $this->resolver());
+
+        $row = $transformer->transform([
+            'old_name' => '',
+            'customfield_asf_model' => 'DR001',
+        ], [
+            $this->firstNonEmptyField('model'),
+        ], $result);
+
+        self::assertSame(['model' => 'DR001'], $row);
+    }
+
+    public function testFirstNonEmptyWritesOldNameToConfiguredOutputField(): void
+    {
+        $result = new MappingExecutionResult(true);
+        $transformer = new MappingRowTransformer(null, $this->resolver());
+
+        $row = $transformer->transform([
+            'old_name' => 'DR001D48',
+            'customfield_asf_model' => 'DR001D048',
+        ], [
+            $this->firstNonEmptyField('model'),
+        ], $result);
+
+        self::assertSame(['model' => 'DR001D48'], $row);
+    }
+
+    public function testFirstNonEmptyTreatsNullAsEmptyForOutputField(): void
+    {
+        $result = new MappingExecutionResult(true);
+        $transformer = new MappingRowTransformer(null, $this->resolver());
+
+        $row = $transformer->transform([
+            'old_name' => null,
+            'customfield_asf_model' => 'S001',
+        ], [
+            $this->firstNonEmptyField('model'),
+        ], $result);
+
+        self::assertSame(['model' => 'S001'], $row);
+    }
+
+    public function testValidatorParsesFirstNonEmptySourceColumnsIndividually(): void
+    {
+        $columns = MappingValidator::sourceColumnsForField([
+            'target_column' => 'model',
+            'transform_type' => 'first_non_empty',
+            'source_column' => 'old_name, customfield_asf_model',
+        ]);
+
+        self::assertSame(['old_name', 'customfield_asf_model'], $columns);
+    }
+
+    public function testValidatorKeepsNormalSourceColumnAsSingleColumn(): void
+    {
+        $columns = MappingValidator::sourceColumnsForField([
+            'target_column' => 'model',
+            'transform_type' => 'source_column',
+            'source_column' => 'old_name',
+        ]);
+
+        self::assertSame(['old_name'], $columns);
+    }
+
     public function testFirstNonEmptyTreatsWhitespaceAsEmpty(): void
     {
         $result = new MappingExecutionResult(true);
@@ -338,6 +407,97 @@ final class LookupMappingResolverTest extends TestCase
         ], $result);
 
         self::assertSame(['DR01D', 'W001D'], $provider->prefixes);
+    }
+
+    /**
+     * @param mixed $input
+     * @param mixed $expected
+     */
+    #[DataProvider('normalizeDrModelProvider')]
+    public function testNormalizeDrModelTransform(mixed $input, mixed $expected): void
+    {
+        $result = new MappingExecutionResult(true);
+        $transformer = new MappingRowTransformer(null, $this->resolver());
+
+        $row = $transformer->transform([
+            'customfield_asf_model' => $input,
+        ], [
+            $this->normalizeDrModelField('stock_lookup_model'),
+        ], $result);
+
+        self::assertSame(['stock_lookup_model' => $expected], $row);
+    }
+
+    public function testNormalizeDrModelDoesNotOverwriteModelField(): void
+    {
+        $result = new MappingExecutionResult(true);
+        $transformer = new MappingRowTransformer(null, $this->resolver());
+
+        $row = $transformer->transform([
+            'old_name' => '',
+            'customfield_asf_model' => 'DR001',
+        ], [
+            $this->firstNonEmptyField('model'),
+            $this->normalizeDrModelField('stock_lookup_model'),
+        ], $result);
+
+        self::assertSame('DR001', $row['model']);
+        self::assertSame('DR01', $row['stock_lookup_model']);
+    }
+
+    public function testPrefixTemplateCanUseNormalizedDrModel(): void
+    {
+        $provider = new ArrayLookupProvider([], [
+            '13:DR01D' => ['DR01D48' => '17'],
+        ]);
+        $result = new MappingExecutionResult(true);
+        $transformer = new MappingRowTransformer(null, $this->resolver($provider));
+
+        $row = $transformer->transform([
+            'customfield_asf_model' => 'DR001',
+        ], [
+            $this->normalizeDrModelField('stock_lookup_model'),
+            $this->prefixMapField('dr_quantities', 13, '{{stock_lookup_model}}D'),
+        ], $result);
+
+        self::assertSame('DR01', $row['stock_lookup_model']);
+        self::assertSame(['48' => 17], $row['dr_quantities']);
+    }
+
+    public function testPrefixWarmupCanUseNormalizedDrModel(): void
+    {
+        $provider = new WarmupRecordingLookupProvider();
+        $result = new MappingExecutionResult(true);
+        $resolver = $this->resolver($provider);
+
+        $resolver->warmUpPrefixLookups([
+            ['customfield_asf_model' => 'DR001'],
+            ['customfield_asf_model' => 'W001'],
+        ], [
+            $this->normalizeDrModelField('stock_lookup_model'),
+            $this->prefixMapField('dr_quantities', 13, '{{stock_lookup_model}}D'),
+        ], $result);
+
+        self::assertSame(['DR01D', 'W001D'], $provider->prefixes);
+    }
+
+    /**
+     * @return iterable<string, array{0: mixed, 1: mixed}>
+     */
+    public static function normalizeDrModelProvider(): iterable
+    {
+        yield 'DR001' => ['DR001', 'DR01'];
+        yield 'DR002' => ['DR002', 'DR02'];
+        yield 'DR010' => ['DR010', 'DR10'];
+        yield 'DR099' => ['DR099', 'DR99'];
+        yield 'DR001D48' => ['DR001D48', 'DR01D48'];
+        yield 'DR001H60' => ['DR001H60', 'DR01H60'];
+        yield 'S001' => ['S001', 'S001'];
+        yield 'DR01' => ['DR01', 'DR01'];
+        yield 'DR100' => ['DR100', 'DR100'];
+        yield 'empty' => ['', ''];
+        yield 'whitespace' => ['   ', ''];
+        yield 'null' => [null, null];
     }
 
     public function testDryRunSummaryContainsJsonCompatibleTransferPreviewAndNoSecrets(): void
@@ -414,6 +574,18 @@ final class LookupMappingResolverTest extends TestCase
             'target_column' => $targetColumn,
             'transform_type' => 'first_non_empty',
             'source_column' => 'old_name,customfield_asf_model',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function normalizeDrModelField(string $targetColumn): array
+    {
+        return [
+            'target_column' => $targetColumn,
+            'transform_type' => 'normalize_dr_model',
+            'source_column' => 'customfield_asf_model',
         ];
     }
 }

@@ -78,7 +78,21 @@ final class MappingValidator
                 $mappedTargets[$targetColumn] = true;
             }
 
-            if (! in_array($transformType, ['static', 'static_value', 'lookup_value', 'key_value_map_by_prefix', 'json_path'], true)) {
+            if ($transformType === 'first_non_empty') {
+                $firstNonEmptySourceColumns = self::sourceColumnsForField($field);
+                if ($firstNonEmptySourceColumns === []) {
+                    $result->addError(sprintf('Source Column für Transfer-Feld "%s" fehlt.', $targetColumn));
+                }
+                if ($sourceColumns !== []) {
+                    foreach ($firstNonEmptySourceColumns as $firstNonEmptySourceColumn) {
+                        if (! isset($sourceColumns[$firstNonEmptySourceColumn])) {
+                            $result->addError(sprintf('Source Column "%s" existiert nicht.', $firstNonEmptySourceColumn));
+                        }
+                    }
+                }
+            }
+
+            if (! in_array($transformType, ['static', 'static_value', 'lookup_value', 'key_value_map_by_prefix', 'json_path', 'first_non_empty'], true)) {
                 $sourceColumn = (string) ($field['source_column'] ?? '');
                 if ($sourceColumn === '') {
                     $result->addError(sprintf('Source Column für Transfer-Feld "%s" fehlt.', $targetColumn));
@@ -132,6 +146,27 @@ final class MappingValidator
         $result->addInfo(sprintf('%d Mapping Field(s) geprüft.', count($fields)));
 
         return $result;
+    }
+
+    /**
+     * @param array<string, mixed> $field
+     *
+     * @return list<string>
+     */
+    public static function sourceColumnsForField(array $field): array
+    {
+        $sourceColumn = (string) ($field['source_column'] ?? '');
+
+        if ((string) ($field['transform_type'] ?? '') !== 'first_non_empty') {
+            $sourceColumn = trim($sourceColumn);
+
+            return $sourceColumn === '' ? [] : [$sourceColumn];
+        }
+
+        return array_values(array_filter(array_map(
+            static fn (string $column): string => trim($column),
+            explode(',', $sourceColumn),
+        ), static fn (string $column): bool => $column !== ''));
     }
 
     private function connection(int $id, string $label, MappingValidationResult $result): ?array

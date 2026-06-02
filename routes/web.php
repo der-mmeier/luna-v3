@@ -95,12 +95,13 @@ if (! function_exists('mappingFieldValues')) {
     {
         $targetColumn = trim((string) $request->post('target_column', ''));
         $sourceColumns = trim((string) $request->post('source_columns', ''));
+        $transformType = (string) $request->post('transform_type', 'direct');
 
         return [
-            'source_column' => $sourceColumns !== '' ? $sourceColumns : (string) $request->post('source_column', ''),
+            'source_column' => $transformType === 'first_non_empty' && $sourceColumns !== '' ? $sourceColumns : (string) $request->post('source_column', ''),
             'source_json_path' => (string) $request->post('source_json_path', ''),
             'target_column' => $targetColumn,
-            'transform_type' => (string) $request->post('transform_type', 'direct'),
+            'transform_type' => $transformType,
             'default_value' => (string) $request->post('default_value', ''),
             'lookup_connection_id' => $request->post('lookup_connection_id'),
             'lookup_table' => (string) $request->post('lookup_table', ''),

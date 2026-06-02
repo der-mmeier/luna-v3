@@ -25,6 +25,7 @@ final class MappingFieldResolver
             'source_column', 'direct' => $this->sourceColumn($sourceRow, $field),
             'static_value', 'static' => $field['default_value'] ?? null,
             'first_non_empty' => $this->firstNonEmpty($sourceRow, $transferRow, $field),
+            'normalize_dr_model' => $this->normalizeDrModel($this->sourceColumn($sourceRow, $field)),
             'lookup_value' => $this->lookupValue($sourceRow, $transferRow, $field, $result),
             'key_value_map_by_prefix' => $this->keyValueMapByPrefix($sourceRow, $transferRow, $field, $result),
             default => null,
@@ -63,7 +64,7 @@ final class MappingFieldResolver
                     continue;
                 }
 
-                if ($targetColumn === '' || ! in_array($transformType, ['source_column', 'direct', 'static_value', 'static', 'first_non_empty'], true)) {
+                if ($targetColumn === '' || ! in_array($transformType, ['source_column', 'direct', 'static_value', 'static', 'first_non_empty', 'normalize_dr_model'], true)) {
                     continue;
                 }
 
@@ -120,6 +121,20 @@ final class MappingFieldResolver
         }
 
         return null;
+    }
+
+    private function normalizeDrModel(mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $text = trim((string) $value);
+        if ($text === '') {
+            return '';
+        }
+
+        return preg_replace('/^DR0([0-9]{2})(.*)$/', 'DR$1$2', $text) ?? $text;
     }
 
     /**

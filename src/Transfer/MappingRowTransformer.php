@@ -22,7 +22,7 @@ final class MappingRowTransformer
             $targetColumn = (string) $field['target_column'];
             $type = (string) $field['transform_type'];
 
-            if ($this->fieldResolver !== null && in_array($type, ['source_column', 'static_value', 'first_non_empty', 'lookup_value', 'key_value_map_by_prefix'], true)) {
+            if ($this->fieldResolver !== null && in_array($type, ['source_column', 'static_value', 'first_non_empty', 'normalize_dr_model', 'lookup_value', 'key_value_map_by_prefix'], true)) {
                 $target[$targetColumn] = $this->fieldResolver->resolve($sourceRow, $target, $field, $result);
                 continue;
             }
@@ -31,6 +31,7 @@ final class MappingRowTransformer
                 'direct' => $sourceRow[(string) $field['source_column']] ?? null,
                 'static' => $field['default_value'],
                 'first_non_empty' => $this->firstNonEmpty($sourceRow, $target, $field),
+                'normalize_dr_model' => $this->normalizeDrModel($sourceRow[(string) ($field['source_column'] ?? '')] ?? null),
                 'enum_map' => $this->enumMap($sourceRow, $field, $result),
                 'json_path' => $this->jsonPath($sourceRow, $field),
                 'concat' => $this->concat($sourceRow, $field, $result),
@@ -113,5 +114,19 @@ final class MappingRowTransformer
         }
 
         return null;
+    }
+
+    private function normalizeDrModel(mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $text = trim((string) $value);
+        if ($text === '') {
+            return '';
+        }
+
+        return preg_replace('/^DR0([0-9]{2})(.*)$/', 'DR$1$2', $text) ?? $text;
     }
 }
