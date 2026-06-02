@@ -762,6 +762,8 @@ Nicht umsetzen:
 
 # Roadmap ab 1.8.0
 
+Die fachliche Schichtdefinition ist in `docs/ARCHITECTURE.md` dokumentiert. Diese Roadmap beschreibt nur, welche Schicht in welcher Version umgesetzt werden soll.
+
 ## 1.8.0 — Dataset Sources
 
 ### Ziel
