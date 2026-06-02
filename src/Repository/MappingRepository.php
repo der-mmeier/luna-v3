@@ -251,6 +251,17 @@ final class MappingRepository
         $statement->execute($payload);
     }
 
+    public function updateFieldSortOrder(int $fieldId, int $sortOrder): void
+    {
+        $statement = $this->pdo()->prepare(
+            'UPDATE luna_mapping_fields SET sort_order = :sort_order WHERE id = :id',
+        );
+        $statement->execute([
+            'id' => $fieldId,
+            'sort_order' => $sortOrder,
+        ]);
+    }
+
     public function deleteField(int $fieldId): void
     {
         $statement = $this->pdo()->prepare('DELETE FROM luna_mapping_fields WHERE id = :id');
