@@ -19,6 +19,7 @@ use Luna\Mapping\TransformType;
 use Luna\Reports\ReportMailer;
 use Luna\Repository\AuditLogRepository;
 use Luna\Repository\ConnectionProfileRepository;
+use Luna\Repository\DatasetTransferRepository;
 use Luna\Repository\EndpointRepository;
 use Luna\Repository\JobRepository;
 use Luna\Repository\JobRunRepository;
@@ -30,6 +31,7 @@ use Luna\Routing\RouteCollection;
 use Luna\Schema\SampleDataReader;
 use Luna\Schema\SchemaInspector;
 use Luna\Schema\TableNameReader;
+use Luna\Transfer\DatasetTransferRunner;
 use Luna\Transfer\MappingSourceRowProvider;
 use Luna\View\ViewRenderer;
 
@@ -747,6 +749,59 @@ if (! function_exists('connectionTableColumnsJsonResponse')) {
     }
 }
 
+if (! function_exists('datasetTransferValues')) {
+    function datasetTransferValues(Request $request): array
+    {
+        return [
+            'workspace_id' => $request->post('workspace_id'),
+            'name' => (string) $request->post('name', ''),
+            'description' => (string) $request->post('description', ''),
+            'status' => (string) $request->post('status', 'draft'),
+            'source_dataset' => (string) $request->post('source_dataset', ''),
+            'target_connection_id' => $request->post('target_connection_id'),
+            'target_table' => (string) $request->post('target_table', ''),
+            'operation_type' => (string) $request->post('operation_type', 'upsert'),
+            'upsert_key' => (string) $request->post('upsert_key', ''),
+        ];
+    }
+}
+
+if (! function_exists('datasetTransferFieldValues')) {
+    function datasetTransferFieldValues(Request $request): array
+    {
+        return [
+            'dataset_field' => (string) $request->post('dataset_field', ''),
+            'target_column' => (string) $request->post('target_column', ''),
+            'sort_order' => (int) $request->post('sort_order', 0),
+        ];
+    }
+}
+
+if (! function_exists('datasetTransferErrors')) {
+    function datasetTransferErrors(array $values, array $fields, DatasetTransferRunner $runner): array
+    {
+        if ((string) ($values['status'] ?? 'draft') !== 'active' && $fields === []) {
+            $errors = [];
+            if (trim((string) ($values['name'] ?? '')) === '') {
+                $errors[] = 'Name ist erforderlich.';
+            }
+            if (trim((string) ($values['source_dataset'] ?? '')) === '') {
+                $errors[] = 'Source Dataset ist erforderlich.';
+            }
+            if (empty($values['target_connection_id'])) {
+                $errors[] = 'Target Connection ist für Transfers erforderlich.';
+            }
+            if (trim((string) ($values['target_table'] ?? '')) === '') {
+                $errors[] = 'Target Table ist für Transfers erforderlich.';
+            }
+
+            return $errors;
+        }
+
+        return $runner->validate($values, $fields);
+    }
+}
+
 if (! function_exists('jobValues')) {
     function jobValues(Request $request): array
     {
@@ -909,6 +964,8 @@ return static function (RouteCollection $routes, Application $app): void {
     $reports = static fn (): ReportRepository => $app->services()->get('repository.reports');
     $endpoints = static fn (): EndpointRepository => $app->services()->get('repository.endpoints');
     $datasets = static fn (): DatasetRegistry => $app->services()->get(DatasetRegistry::class);
+    $datasetTransfers = static fn (): DatasetTransferRepository => $app->services()->get(DatasetTransferRepository::class);
+    $datasetTransferRunner = static fn (): DatasetTransferRunner => $app->services()->get(DatasetTransferRunner::class);
     $endpointExporter = static fn (): EndpointRuntimeExporter => $app->services()->get(EndpointRuntimeExporter::class);
     $endpointArchive = static fn (): EndpointExportArchiveService => $app->services()->get(EndpointExportArchiveService::class);
     $sourceRows = static fn (): MappingSourceRowProvider => $app->services()->get(MappingSourceRowProvider::class);
@@ -1943,6 +2000,192 @@ return static function (RouteCollection $routes, Application $app): void {
         $runId = (int) $request->route('runId');
         return $admin('admin/jobs/run', ['title' => 'Job Run', 'active' => 'jobs', 'run' => $runs()->findRun($runId), 'logs' => $runs()->logsForRun($runId)]);
     }, 'admin.jobs.run_show', 'web');
+
+    $routes->get('/admin/transfers', static function () use ($admin, $datasetTransfers): Response {
+        try {
+            $items = $datasetTransfers()->all();
+            $error = null;
+        } catch (Throwable) {
+            $items = [];
+            $error = 'Transfers konnten nicht geladen werden.';
+        }
+
+        return $admin('admin/transfers/index', [
+            'title' => 'Transfers',
+            'active' => 'transfers',
+            'transfers' => $items,
+            'error' => $error,
+        ]);
+    }, 'admin.transfers', 'web');
+
+    $routes->get('/admin/transfers/create', static function () use ($admin, $workspaces, $connections, $datasets): Response {
+        return $admin('admin/transfers/create', [
+            'title' => 'Transfer anlegen',
+            'active' => 'transfers',
+            'workspaces' => safeList($workspaces),
+            'connections' => safeList($connections),
+            'datasets' => $datasets()->all(),
+            'values' => ['status' => 'draft', 'operation_type' => 'upsert'],
+            'errors' => [],
+        ]);
+    }, 'admin.transfers.create', 'web');
+
+    $routes->post('/admin/transfers', static function (Request $request) use ($admin, $workspaces, $connections, $datasets, $datasetTransfers, $datasetTransferRunner): Response {
+        $values = datasetTransferValues($request);
+        $errors = datasetTransferErrors($values, [], $datasetTransferRunner());
+
+        if ($errors !== []) {
+            return $admin('admin/transfers/create', [
+                'title' => 'Transfer anlegen',
+                'active' => 'transfers',
+                'workspaces' => safeList($workspaces),
+                'connections' => safeList($connections),
+                'datasets' => $datasets()->all(),
+                'values' => $values,
+                'errors' => $errors,
+            ]);
+        }
+
+        $id = $datasetTransfers()->create($values);
+
+        return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
+    }, 'admin.transfers.store', 'web');
+
+    $routes->get('/admin/transfers/{id}', static function (Request $request) use ($admin, $workspaces, $connections, $datasets, $datasetTransfers): Response {
+        $id = (int) $request->route('id');
+        $transfer = $datasetTransfers()->find($id);
+
+        if ($transfer === null) {
+            return Response::notFound();
+        }
+
+        return $admin('admin/transfers/show', [
+            'title' => 'Transfer',
+            'active' => 'transfers',
+            'transfer' => $transfer,
+            'fields' => $datasetTransfers()->fieldsForTransfer($id),
+            'workspaces' => safeList($workspaces),
+            'connections' => safeList($connections),
+            'datasets' => $datasets()->all(),
+            'datasetFields' => $datasets()->fields((string) $transfer['source_dataset']),
+            'result' => null,
+            'errors' => [],
+        ]);
+    }, 'admin.transfers.show', 'web');
+
+    $routes->post('/admin/transfers/{id}', static function (Request $request) use ($admin, $workspaces, $connections, $datasets, $datasetTransfers, $datasetTransferRunner): Response {
+        $id = (int) $request->route('id');
+        $transfer = $datasetTransfers()->find($id);
+        if ($transfer === null) {
+            return Response::notFound();
+        }
+
+        $values = datasetTransferValues($request);
+        $fields = $datasetTransfers()->fieldsForTransfer($id);
+        $errors = datasetTransferErrors($values, $fields, $datasetTransferRunner());
+
+        if ($errors !== []) {
+            return $admin('admin/transfers/show', [
+                'title' => 'Transfer',
+                'active' => 'transfers',
+                'transfer' => $values + ['id' => $id],
+                'fields' => $fields,
+                'workspaces' => safeList($workspaces),
+                'connections' => safeList($connections),
+                'datasets' => $datasets()->all(),
+                'datasetFields' => $datasets()->fields((string) $values['source_dataset']),
+                'result' => null,
+                'errors' => $errors,
+            ]);
+        }
+
+        $datasetTransfers()->update($id, $values);
+
+        return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
+    }, 'admin.transfers.update', 'web');
+
+    $routes->post('/admin/transfers/{id}/fields', static function (Request $request) use ($datasetTransfers): Response {
+        $id = (int) $request->route('id');
+        if ($datasetTransfers()->find($id) === null) {
+            return Response::notFound();
+        }
+
+        $datasetTransfers()->addField($id, datasetTransferFieldValues($request));
+
+        return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
+    }, 'admin.transfers.fields.store', 'web');
+
+    $routes->post('/admin/transfers/{id}/fields/{fieldId}', static function (Request $request) use ($datasetTransfers): Response {
+        $id = (int) $request->route('id');
+        if ($datasetTransfers()->find($id) === null) {
+            return Response::notFound();
+        }
+
+        $datasetTransfers()->updateField((int) $request->route('fieldId'), datasetTransferFieldValues($request));
+
+        return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
+    }, 'admin.transfers.fields.update', 'web');
+
+    $routes->post('/admin/transfers/{id}/fields/{fieldId}/delete', static function (Request $request) use ($datasetTransfers): Response {
+        $id = (int) $request->route('id');
+        if ($datasetTransfers()->find($id) === null) {
+            return Response::notFound();
+        }
+
+        $datasetTransfers()->deleteField((int) $request->route('fieldId'));
+
+        return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
+    }, 'admin.transfers.fields.delete', 'web');
+
+    $routes->post('/admin/transfers/{id}/dry-run', static function (Request $request) use ($admin, $workspaces, $connections, $datasets, $datasetTransfers, $datasetTransferRunner): Response {
+        $id = (int) $request->route('id');
+        $transfer = $datasetTransfers()->find($id);
+        if ($transfer === null) {
+            return Response::notFound();
+        }
+
+        $result = $datasetTransferRunner()->run($id, true, 25)->toArray();
+
+        return $admin('admin/transfers/show', [
+            'title' => 'Transfer',
+            'active' => 'transfers',
+            'transfer' => $transfer,
+            'fields' => $datasetTransfers()->fieldsForTransfer($id),
+            'workspaces' => safeList($workspaces),
+            'connections' => safeList($connections),
+            'datasets' => $datasets()->all(),
+            'datasetFields' => $datasets()->fields((string) $transfer['source_dataset']),
+            'result' => $result,
+            'errors' => [],
+        ]);
+    }, 'admin.transfers.dry_run', 'web');
+
+    $routes->post('/admin/transfers/{id}/run', static function (Request $request) use ($admin, $workspaces, $connections, $datasets, $datasetTransfers, $datasetTransferRunner): Response {
+        $id = (int) $request->route('id');
+        $transfer = $datasetTransfers()->find($id);
+        if ($transfer === null) {
+            return Response::notFound();
+        }
+
+        if ($request->post('confirm') !== 'run') {
+            return Response::text('Transfer confirmation missing.', 400);
+        }
+
+        $result = $datasetTransferRunner()->run($id, false)->toArray();
+
+        return $admin('admin/transfers/show', [
+            'title' => 'Transfer',
+            'active' => 'transfers',
+            'transfer' => $transfer,
+            'fields' => $datasetTransfers()->fieldsForTransfer($id),
+            'workspaces' => safeList($workspaces),
+            'connections' => safeList($connections),
+            'datasets' => $datasets()->all(),
+            'datasetFields' => $datasets()->fields((string) $transfer['source_dataset']),
+            'result' => $result,
+            'errors' => [],
+        ]);
+    }, 'admin.transfers.run', 'web');
 
     $routes->get('/admin/datasets', static function () use ($admin, $datasets): Response {
         try {

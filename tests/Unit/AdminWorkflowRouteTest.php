@@ -21,6 +21,17 @@ final class AdminWorkflowRouteTest extends TestCase
         self::assertSame(['id' => '5'], $route->parameters($request));
     }
 
+    public function testTransferFieldUpdateRouteIsRegistered(): void
+    {
+        $routes = $this->loadWebRoutes();
+        $request = new \Luna\Http\Request('POST', '/admin/transfers/7/fields/11');
+        $route = $routes->match($request);
+
+        self::assertNotNull($route);
+        self::assertSame('admin.transfers.fields.update', $route->name());
+        self::assertSame(['id' => '7', 'fieldId' => '11'], $route->parameters($request));
+    }
+
     public function testConnectionEditValuesCanChangeWorkspaceWithoutChangingPassword(): void
     {
         $this->loadWebRoutes();

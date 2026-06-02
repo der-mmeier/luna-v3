@@ -13,6 +13,7 @@ use Luna\Export\EndpointRuntimeExporter;
 use Luna\Integration\ExportRuntimeBuilder;
 use Luna\Jobs\JobRunner;
 use Luna\Repository\ConnectionProfileRepository;
+use Luna\Transfer\DatasetTransferRunner;
 use Luna\Repository\JobRunRepository;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -42,7 +43,7 @@ function exitCodeForRun(array $run): int
 }
 
 if ($command === null) {
-    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|endpoint:export|integration:export>\n");
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|endpoint:export|integration:export>\n");
     exit(2);
 }
 
@@ -214,6 +215,38 @@ try {
 
         echo json_encode($preview, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
         exit(($preview['summary']['error_count'] ?? 0) > 0 ? 1 : 0);
+    }
+
+    if ($command === 'transfer:dry-run') {
+        $transferId = isset($argv[2]) ? (int) $argv[2] : 0;
+
+        if ($transferId <= 0) {
+            fwrite(STDERR, "Usage: php bin/luna transfer:dry-run <transfer-id>\n");
+            exit(2);
+        }
+
+        /** @var DatasetTransferRunner $runner */
+        $runner = $app->services()->get(DatasetTransferRunner::class);
+        $result = $runner->run($transferId, true)->toArray();
+
+        echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
+        exit((int) ($result['error_count'] ?? 0) > 0 ? 1 : 0);
+    }
+
+    if ($command === 'transfer:run') {
+        $transferId = isset($argv[2]) ? (int) $argv[2] : 0;
+
+        if ($transferId <= 0 || ! in_array('--force', $argv, true)) {
+            fwrite(STDERR, "Usage: php bin/luna transfer:run <transfer-id> --force\n");
+            exit(2);
+        }
+
+        /** @var DatasetTransferRunner $runner */
+        $runner = $app->services()->get(DatasetTransferRunner::class);
+        $result = $runner->run($transferId, false)->toArray();
+
+        echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
+        exit((int) ($result['error_count'] ?? 0) > 0 ? 1 : 0);
     }
 
     if ($command === 'endpoint:export') {

@@ -17,6 +17,7 @@ $navItems = [
     'schema' => ['/admin/schema', 'Schema Explorer'],
     'mappings' => ['/admin/mappings', 'Mappings'],
     'datasets' => ['/admin/datasets', 'Datasets'],
+    'transfers' => ['/admin/transfers', 'Transfers'],
     'jobs' => ['/admin/jobs', 'Jobs'],
     'reports' => ['/admin/reports', 'Reports'],
     'endpoints' => ['/admin/endpoints', 'Endpoints'],

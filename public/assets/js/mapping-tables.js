@@ -234,6 +234,72 @@
         reload();
     }
 
+    function setupTransferTargetColumns() {
+        var connection = document.querySelector('[data-role="target-connection"]');
+        var table = document.querySelector('[data-role="target-table"]');
+        var columnSelects = document.querySelectorAll('[data-role="transfer-target-column"]');
+
+        if (!connection || !table || columnSelects.length === 0) {
+            return;
+        }
+
+        function reload() {
+            var connectionId = connection.value || '';
+            var tableName = table.value || '';
+
+            if (!connectionId || !tableName) {
+                Array.prototype.forEach.call(columnSelects, function (select) {
+                    var currentValue = select.getAttribute('data-current') || select.value || '';
+                    fillColumnSelect(select, [], currentValue);
+                    select.disabled = true;
+                });
+                return;
+            }
+
+            Array.prototype.forEach.call(columnSelects, function (select) {
+                select.disabled = true;
+            });
+
+            fetch('/admin/api/connection-table-columns?connection_id=' + encodeURIComponent(connectionId) + '&table=' + encodeURIComponent(tableName), {
+                headers: {'Accept': 'application/json'}
+            })
+                .then(function (response) { return response.json(); })
+                .then(function (payload) {
+                    if (!payload.success) {
+                        throw new Error(payload.message || 'Spalten konnten nicht geladen werden.');
+                    }
+
+                    var columns = Array.isArray(payload.columns) ? payload.columns : [];
+                    Array.prototype.forEach.call(columnSelects, function (select) {
+                        var currentValue = select.getAttribute('data-current') || select.value || '';
+                        fillColumnSelect(select, columns, currentValue);
+                    });
+                })
+                .catch(function () {
+                    Array.prototype.forEach.call(columnSelects, function (select) {
+                        var currentValue = select.getAttribute('data-current') || select.value || '';
+                        fillColumnSelect(select, [], currentValue);
+                    });
+                })
+                .finally(function () {
+                    Array.prototype.forEach.call(columnSelects, function (select) {
+                        select.disabled = false;
+                    });
+                });
+        }
+
+        connection.addEventListener('change', reload);
+        table.addEventListener('change', reload);
+        table.addEventListener('blur', reload);
+        Array.prototype.forEach.call(columnSelects, function (select) {
+            select.addEventListener('change', function () {
+                select.setAttribute('data-current', select.value || '');
+            });
+        });
+
+        reload();
+    }
+
     function setupEndpointMappingFilter() {
         var workspace = document.querySelector('select[name="workspace_id"]');
         var mapping = document.querySelector('[data-role="endpoint-mapping-select"]');
@@ -263,5 +329,6 @@
 
     pairs.forEach(setup);
     setupLookupColumns();
+    setupTransferTargetColumns();
     setupEndpointMappingFilter();
 })();
