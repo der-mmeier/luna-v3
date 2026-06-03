@@ -27,6 +27,7 @@ use Luna\Repository\MappingRepository;
 use Luna\Repository\ReportRepository;
 use Luna\Repository\SchemaMetadataRepository;
 use Luna\Repository\WorkspaceRepository;
+use Luna\Repository\WooCommerceIntegrationRepository;
 use Luna\Routing\RouteCollection;
 use Luna\Schema\SampleDataReader;
 use Luna\Schema\SchemaInspector;
@@ -34,6 +35,9 @@ use Luna\Schema\TableNameReader;
 use Luna\Transfer\DatasetTransferRunner;
 use Luna\Transfer\MappingSourceRowProvider;
 use Luna\View\ViewRenderer;
+use Luna\WooCommerce\WooCommerceHposValidator;
+use Luna\WooCommerce\WooCommerceTransferRunner;
+use Luna\WooCommerce\WooCommerceWebhookHandler;
 
 if (! function_exists('safeList')) {
     function safeList(Closure $repositoryFactory): array
@@ -429,6 +433,150 @@ if (! function_exists('mappingSourceFilterOperatorLabels')) {
     }
 }
 
+if (! function_exists('woocommerceConnectionValues')) {
+    function woocommerceConnectionValues(Request $request): array
+    {
+        return [
+            'workspace_id' => $request->post('workspace_id'),
+            'connection_id' => $request->post('connection_id'),
+            'name' => trim((string) $request->post('name', '')),
+        ];
+    }
+}
+
+if (! function_exists('woocommerceConnectionErrors')) {
+    function woocommerceConnectionErrors(array $values): array
+    {
+        $errors = [];
+        if ((string) ($values['name'] ?? '') === '') {
+            $errors[] = 'Name ist erforderlich.';
+        }
+        if (empty($values['connection_id'])) {
+            $errors[] = 'WooCommerce-Connection ist erforderlich.';
+        }
+
+        return $errors;
+    }
+}
+
+if (! function_exists('woocommerceWebhookValues')) {
+    function woocommerceWebhookValues(Request $request, array $connection): array
+    {
+        $topic = (string) $request->post('topic', 'order.updated');
+        if (! array_key_exists($topic, woocommerceWebhookTopicLabels())) {
+            $topic = 'order.updated';
+        }
+
+        $name = trim((string) $request->post('webhook_name', ''));
+        if ($name === '') {
+            $name = woocommerceWebhookDefaultNames()[$topic] ?? 'Luna Order Updated';
+        }
+
+        return [
+            'workspace_id' => $connection['workspace_id'] ?? null,
+            'woocommerce_connection_id' => (int) ($connection['id'] ?? 0),
+            'webhook_name' => $name,
+            'topic' => $topic,
+            'delivery_url' => trim((string) $request->post('delivery_url', '')),
+            'expected_status' => (string) $request->post('expected_status', 'active'),
+            'api_version' => 'WP REST API Integration v3',
+            'is_required' => $request->post('is_required') !== null,
+            'validation_status' => 'manual',
+            'validation_message' => 'Webhook wurde in Luna konfiguriert. Bitte in WooCommerce manuell prüfen.',
+        ];
+    }
+}
+
+if (! function_exists('woocommerceExpectedWebhooks')) {
+    function woocommerceExpectedWebhooks(string $deliveryUrl): array
+    {
+        return [
+            [
+                'name' => 'Luna Order Created',
+                'topic' => 'order.created',
+                'expected_status' => 'Active',
+                'delivery_url' => $deliveryUrl,
+                'api_version' => 'WP REST API Integration v3',
+                'required' => true,
+                'shop_check' => 'REST-Credentials fehlen',
+            ],
+            [
+                'name' => 'Luna Order Updated',
+                'topic' => 'order.updated',
+                'expected_status' => 'Active',
+                'delivery_url' => $deliveryUrl,
+                'api_version' => 'WP REST API Integration v3',
+                'required' => true,
+                'shop_check' => 'REST-Credentials fehlen',
+            ],
+            [
+                'name' => 'Luna Order Deleted',
+                'topic' => 'order.deleted',
+                'expected_status' => 'Active',
+                'delivery_url' => $deliveryUrl,
+                'api_version' => 'WP REST API Integration v3',
+                'required' => false,
+                'shop_check' => 'REST-Credentials fehlen',
+            ],
+        ];
+    }
+}
+
+if (! function_exists('woocommerceWebhookTopicLabels')) {
+    function woocommerceWebhookTopicLabels(): array
+    {
+        return [
+            'order.created' => 'Bestellung erstellt (order.created)',
+            'order.updated' => 'Bestellung aktualisiert (order.updated)',
+            'order.deleted' => 'Bestellung gelöscht (order.deleted)',
+        ];
+    }
+}
+
+if (! function_exists('woocommerceWebhookDefaultNames')) {
+    function woocommerceWebhookDefaultNames(): array
+    {
+        return [
+            'order.created' => 'Luna Order Created',
+            'order.updated' => 'Luna Order Updated',
+            'order.deleted' => 'Luna Order Deleted',
+        ];
+    }
+}
+
+if (! function_exists('woocommerceDeliveryUrlInfo')) {
+    function woocommerceDeliveryUrlInfo(Application $app, Request $request, array $connection): array
+    {
+        $baseUrl = '';
+        $source = 'request';
+        foreach (['APP_URL', 'LUNA_BASE_URL', 'PUBLIC_BASE_URL'] as $key) {
+            $configured = trim($app->config()->string($key, ''));
+            if ($configured !== '') {
+                $baseUrl = $configured;
+                $source = $key;
+                break;
+            }
+        }
+
+        if ($baseUrl === '') {
+            $scheme = $request->server('HTTPS') === 'on' ? 'https' : 'http';
+            $baseUrl = $scheme . '://' . (string) $request->server('HTTP_HOST', 'localhost');
+        }
+
+        $host = parse_url($baseUrl, PHP_URL_HOST);
+        $host = is_string($host) ? strtolower($host) : '';
+        $isLocalhost = in_array($host, ['localhost', '127.0.0.1', '::1'], true);
+        $deliveryUrl = rtrim($baseUrl, '/') . '/api/webhooks/woocommerce/' . (string) $connection['connection_token'];
+
+        return [
+            'base_url' => $baseUrl,
+            'source' => $source,
+            'delivery_url' => $deliveryUrl,
+            'is_localhost' => $isLocalhost,
+        ];
+    }
+}
+
 if (! function_exists('mappingSampleRows')) {
     function mappingSampleRows(PDO $pdo, string $tableName, array $values): array
     {
@@ -770,8 +918,26 @@ if (! function_exists('datasetTransferFieldValues')) {
     function datasetTransferFieldValues(Request $request): array
     {
         return [
+            'group_id' => $request->post('group_id'),
             'dataset_field' => (string) $request->post('dataset_field', ''),
             'target_column' => (string) $request->post('target_column', ''),
+            'sort_order' => (int) $request->post('sort_order', 0),
+        ];
+    }
+}
+
+if (! function_exists('datasetTransferGroupValues')) {
+    function datasetTransferGroupValues(Request $request): array
+    {
+        return [
+            'name' => (string) $request->post('name', ''),
+            'group_type' => (string) $request->post('group_type', 'root'),
+            'source_path' => (string) $request->post('source_path', '$'),
+            'target_table' => (string) $request->post('target_table', ''),
+            'operation_type' => (string) $request->post('operation_type', 'upsert'),
+            'upsert_key' => (string) $request->post('upsert_key', ''),
+            'parent_link_source' => (string) $request->post('parent_link_source', ''),
+            'parent_link_target' => (string) $request->post('parent_link_target', ''),
             'sort_order' => (int) $request->post('sort_order', 0),
         ];
     }
@@ -799,6 +965,18 @@ if (! function_exists('datasetTransferErrors')) {
         }
 
         return $runner->validate($values, $fields);
+    }
+}
+
+if (! function_exists('datasetTransferGroupsWithFields')) {
+    function datasetTransferGroupsWithFields(DatasetTransferRepository $transfers, int $transferId): array
+    {
+        $groups = $transfers->groupsForTransfer($transferId);
+        foreach ($groups as $index => $group) {
+            $groups[$index]['fields'] = $transfers->fieldsForGroup((int) $group['id']);
+        }
+
+        return $groups;
     }
 }
 
@@ -963,6 +1141,10 @@ return static function (RouteCollection $routes, Application $app): void {
     $runs = static fn (): JobRunRepository => $app->services()->get('repository.job_runs');
     $reports = static fn (): ReportRepository => $app->services()->get('repository.reports');
     $endpoints = static fn (): EndpointRepository => $app->services()->get('repository.endpoints');
+    $woocommerce = static fn (): WooCommerceIntegrationRepository => $app->services()->get(WooCommerceIntegrationRepository::class);
+    $woocommerceValidator = static fn (): WooCommerceHposValidator => $app->services()->get(WooCommerceHposValidator::class);
+    $woocommerceTransferRunner = static fn (): WooCommerceTransferRunner => $app->services()->get(WooCommerceTransferRunner::class);
+    $woocommerceWebhookHandler = static fn (): WooCommerceWebhookHandler => $app->services()->get(WooCommerceWebhookHandler::class);
     $datasets = static fn (): DatasetRegistry => $app->services()->get(DatasetRegistry::class);
     $datasetTransfers = static fn (): DatasetTransferRepository => $app->services()->get(DatasetTransferRepository::class);
     $datasetTransferRunner = static fn (): DatasetTransferRunner => $app->services()->get(DatasetTransferRunner::class);
@@ -2064,6 +2246,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'active' => 'transfers',
             'transfer' => $transfer,
             'fields' => $datasetTransfers()->fieldsForTransfer($id),
+            'groups' => datasetTransferGroupsWithFields($datasetTransfers(), $id),
             'workspaces' => safeList($workspaces),
             'connections' => safeList($connections),
             'datasets' => $datasets()->all(),
@@ -2090,6 +2273,7 @@ return static function (RouteCollection $routes, Application $app): void {
                 'active' => 'transfers',
                 'transfer' => $values + ['id' => $id],
                 'fields' => $fields,
+                'groups' => datasetTransferGroupsWithFields($datasetTransfers(), $id),
                 'workspaces' => safeList($workspaces),
                 'connections' => safeList($connections),
                 'datasets' => $datasets()->all(),
@@ -2137,6 +2321,52 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
     }, 'admin.transfers.fields.delete', 'web');
 
+    $routes->post('/admin/transfers/{id}/groups', static function (Request $request) use ($datasetTransfers): Response {
+        $id = (int) $request->route('id');
+        if ($datasetTransfers()->find($id) === null) {
+            return Response::notFound();
+        }
+
+        $datasetTransfers()->addGroup($id, datasetTransferGroupValues($request));
+
+        return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
+    }, 'admin.transfers.groups.store', 'web');
+
+    $routes->post('/admin/transfers/{id}/groups/{groupId}', static function (Request $request) use ($datasetTransfers): Response {
+        $id = (int) $request->route('id');
+        if ($datasetTransfers()->find($id) === null) {
+            return Response::notFound();
+        }
+
+        $datasetTransfers()->updateGroup((int) $request->route('groupId'), datasetTransferGroupValues($request));
+
+        return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
+    }, 'admin.transfers.groups.update', 'web');
+
+    $routes->post('/admin/transfers/{id}/groups/{groupId}/delete', static function (Request $request) use ($datasetTransfers): Response {
+        $id = (int) $request->route('id');
+        if ($datasetTransfers()->find($id) === null) {
+            return Response::notFound();
+        }
+
+        $datasetTransfers()->deleteGroup((int) $request->route('groupId'));
+
+        return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
+    }, 'admin.transfers.groups.delete', 'web');
+
+    $routes->post('/admin/transfers/{id}/groups/{groupId}/fields', static function (Request $request) use ($datasetTransfers): Response {
+        $id = (int) $request->route('id');
+        if ($datasetTransfers()->find($id) === null) {
+            return Response::notFound();
+        }
+
+        $values = datasetTransferFieldValues($request);
+        $values['group_id'] = (int) $request->route('groupId');
+        $datasetTransfers()->addField($id, $values);
+
+        return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
+    }, 'admin.transfers.groups.fields.store', 'web');
+
     $routes->post('/admin/transfers/{id}/dry-run', static function (Request $request) use ($admin, $workspaces, $connections, $datasets, $datasetTransfers, $datasetTransferRunner): Response {
         $id = (int) $request->route('id');
         $transfer = $datasetTransfers()->find($id);
@@ -2151,6 +2381,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'active' => 'transfers',
             'transfer' => $transfer,
             'fields' => $datasetTransfers()->fieldsForTransfer($id),
+            'groups' => datasetTransferGroupsWithFields($datasetTransfers(), $id),
             'workspaces' => safeList($workspaces),
             'connections' => safeList($connections),
             'datasets' => $datasets()->all(),
@@ -2178,6 +2409,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'active' => 'transfers',
             'transfer' => $transfer,
             'fields' => $datasetTransfers()->fieldsForTransfer($id),
+            'groups' => datasetTransferGroupsWithFields($datasetTransfers(), $id),
             'workspaces' => safeList($workspaces),
             'connections' => safeList($connections),
             'datasets' => $datasets()->all(),
@@ -2186,6 +2418,245 @@ return static function (RouteCollection $routes, Application $app): void {
             'errors' => [],
         ]);
     }, 'admin.transfers.run', 'web');
+
+    $routes->get('/admin/woocommerce', static fn (): Response => $admin('admin/woocommerce/index', [
+        'title' => 'WooCommerce - Anbindung',
+        'active' => 'woocommerce',
+        'items' => safeList(static fn (): WooCommerceIntegrationRepository => $woocommerce()),
+    ]), 'admin.woocommerce', 'web');
+
+    $routes->get('/admin/woocommerce/create', static fn (): Response => $admin('admin/woocommerce/create', [
+        'title' => 'WooCommerce-Anbindung anlegen',
+        'active' => 'woocommerce',
+        'workspaces' => safeList($workspaces),
+        'connections' => safeList($connections),
+        'values' => ['name' => '', 'workspace_id' => '', 'connection_id' => ''],
+        'errors' => [],
+    ]), 'admin.woocommerce.create', 'web');
+
+    $routes->post('/admin/woocommerce', static function (Request $request) use ($admin, $woocommerce, $workspaces, $connections): Response {
+        $values = woocommerceConnectionValues($request);
+        $errors = woocommerceConnectionErrors($values);
+
+        if ($errors !== []) {
+            return $admin('admin/woocommerce/create', [
+                'title' => 'WooCommerce-Anbindung anlegen',
+                'active' => 'woocommerce',
+                'workspaces' => safeList($workspaces),
+                'connections' => safeList($connections),
+                'values' => $values,
+                'errors' => $errors,
+            ]);
+        }
+
+        $id = $woocommerce()->createConnection($values);
+
+        return new Response('', 302, ['Location' => '/admin/woocommerce/' . $id]);
+    }, 'admin.woocommerce.store', 'web');
+
+    $routes->get('/admin/woocommerce/{id}', static function (Request $request) use ($admin, $app, $woocommerce): Response {
+        $id = (int) $request->route('id');
+        $connection = $woocommerce()->findConnection($id);
+        if ($connection === null) {
+            return Response::notFound();
+        }
+
+        $deliveryUrlInfo = woocommerceDeliveryUrlInfo($app, $request, $connection);
+
+        return $admin('admin/woocommerce/show', [
+            'title' => 'WooCommerce - Anbindung',
+            'active' => 'woocommerce',
+            'connection' => $connection,
+            'webhooks' => $woocommerce()->webhooksForConnection($id),
+            'queue' => $woocommerce()->transferQueueForConnection($id),
+            'runs' => $woocommerce()->recentRunsForConnection($id),
+            'webhookEvents' => $woocommerce()->recentWebhookEventsForConnection($id),
+            'expectedWebhooks' => woocommerceExpectedWebhooks((string) $deliveryUrlInfo['delivery_url']),
+            'deliveryUrlInfo' => $deliveryUrlInfo,
+            'topicLabels' => woocommerceWebhookTopicLabels(),
+            'defaultNames' => woocommerceWebhookDefaultNames(),
+            'validation' => null,
+            'alert' => null,
+        ]);
+    }, 'admin.woocommerce.show', 'web');
+
+    $routes->post('/admin/woocommerce/{id}/validate', static function (Request $request) use ($admin, $app, $woocommerce, $woocommerceValidator, $connections, $pdoFactory, $configFor): Response {
+        $id = (int) $request->route('id');
+        $connection = $woocommerce()->findConnection($id);
+        if ($connection === null) {
+            return Response::notFound();
+        }
+
+        $validation = null;
+        $alert = null;
+
+        try {
+            $profile = $connections()->find((int) $connection['connection_id']);
+            if ($profile === null) {
+                throw new RuntimeException('Connection wurde nicht gefunden.');
+            }
+
+            $pdo = $pdoFactory()->create($configFor($profile));
+            $validationResult = $woocommerceValidator()->validate($pdo);
+            $validation = $validationResult->toArray();
+            $woocommerce()->updateConnectionValidation($id, $validation);
+            $connection = $woocommerce()->findConnection($id) ?? $connection;
+            $alert = [
+                'type' => $validationResult->transferReady ? 'success' : 'warning',
+                'message' => $validationResult->transferReady ? 'WooCommerce-Validierung erfolgreich.' : 'WooCommerce-Validierung hat Blocker oder Warnungen gefunden.',
+            ];
+        } catch (Throwable) {
+            $alert = ['type' => 'danger', 'message' => 'WooCommerce-Validierung konnte nicht ausgeführt werden.'];
+        }
+
+        $deliveryUrlInfo = woocommerceDeliveryUrlInfo($app, $request, $connection);
+
+        return $admin('admin/woocommerce/show', [
+            'title' => 'WooCommerce - Anbindung',
+            'active' => 'woocommerce',
+            'connection' => $connection,
+            'webhooks' => $woocommerce()->webhooksForConnection($id),
+            'queue' => $woocommerce()->transferQueueForConnection($id),
+            'runs' => $woocommerce()->recentRunsForConnection($id),
+            'webhookEvents' => $woocommerce()->recentWebhookEventsForConnection($id),
+            'expectedWebhooks' => woocommerceExpectedWebhooks((string) $deliveryUrlInfo['delivery_url']),
+            'deliveryUrlInfo' => $deliveryUrlInfo,
+            'topicLabels' => woocommerceWebhookTopicLabels(),
+            'defaultNames' => woocommerceWebhookDefaultNames(),
+            'validation' => $validation,
+            'alert' => $alert,
+        ]);
+    }, 'admin.woocommerce.validate', 'web');
+
+    $routes->post('/admin/woocommerce/{id}/webhooks', static function (Request $request) use ($woocommerce): Response {
+        $id = (int) $request->route('id');
+        $connection = $woocommerce()->findConnection($id);
+        if ($connection === null) {
+            return Response::notFound();
+        }
+
+        $woocommerce()->createWebhookConfig(
+            woocommerceWebhookValues($request, $connection),
+            trim((string) $request->post('secret', '')),
+        );
+
+        return new Response('', 302, ['Location' => '/admin/woocommerce/' . $id]);
+    }, 'admin.woocommerce.webhooks.store', 'web');
+
+    $routes->post('/admin/woocommerce/{id}/webhooks/{webhookId}', static function (Request $request) use ($woocommerce): Response {
+        $id = (int) $request->route('id');
+        $connection = $woocommerce()->findConnection($id);
+        if ($connection === null) {
+            return Response::notFound();
+        }
+
+        $woocommerce()->updateWebhookConfig(
+            (int) $request->route('webhookId'),
+            woocommerceWebhookValues($request, $connection),
+            trim((string) $request->post('secret', '')),
+        );
+
+        return new Response('', 302, ['Location' => '/admin/woocommerce/' . $id]);
+    }, 'admin.woocommerce.webhooks.update', 'web');
+
+    $routes->post('/admin/woocommerce/{id}/initial-transfer', static function (Request $request) use ($admin, $app, $woocommerce): Response {
+        $id = (int) $request->route('id');
+        $connection = $woocommerce()->findConnection($id);
+        if ($connection === null) {
+            return Response::notFound();
+        }
+
+        $ready = ! empty($connection['hpos_enabled'])
+            && ! empty($connection['hpos_authoritative'])
+            && version_compare((string) ($connection['detected_woocommerce_version'] ?? '0'), '10.7.0', '>=');
+
+        $alert = ['type' => 'danger', 'message' => 'Initialer WooCommerce-Transfer wurde blockiert, weil die HPOS-Validierung nicht erfolgreich ist.'];
+        if ($ready) {
+            $queueId = $woocommerce()->queueTransfer([
+                'workspace_id' => $connection['workspace_id'] ?? null,
+                'woocommerce_connection_id' => (int) $connection['id'],
+                'source_order_id' => '*',
+                'topic' => 'initial_import',
+                'reason' => 'initial WooCommerce HPOS import',
+                'status' => 'pending',
+            ]);
+            $alert = ['type' => 'success', 'message' => 'Initialer WooCommerce-Transfer wurde vorgemerkt. Queue-ID: ' . $queueId . '. Status: pending.'];
+        }
+
+        $deliveryUrlInfo = woocommerceDeliveryUrlInfo($app, $request, $connection);
+
+        return $admin('admin/woocommerce/show', [
+            'title' => 'WooCommerce - Anbindung',
+            'active' => 'woocommerce',
+            'connection' => $connection,
+            'webhooks' => $woocommerce()->webhooksForConnection($id),
+            'queue' => $woocommerce()->transferQueueForConnection($id),
+            'runs' => $woocommerce()->recentRunsForConnection($id),
+            'webhookEvents' => $woocommerce()->recentWebhookEventsForConnection($id),
+            'expectedWebhooks' => woocommerceExpectedWebhooks((string) $deliveryUrlInfo['delivery_url']),
+            'deliveryUrlInfo' => $deliveryUrlInfo,
+            'topicLabels' => woocommerceWebhookTopicLabels(),
+            'defaultNames' => woocommerceWebhookDefaultNames(),
+            'validation' => null,
+            'alert' => $alert,
+        ]);
+    }, 'admin.woocommerce.initial_transfer', 'web');
+
+    $routes->post('/admin/woocommerce/{id}/queue/run', static function (Request $request) use ($admin, $app, $woocommerce, $woocommerceTransferRunner): Response {
+        $id = (int) $request->route('id');
+        $connection = $woocommerce()->findConnection($id);
+        if ($connection === null) {
+            return Response::notFound();
+        }
+
+        $result = $woocommerceTransferRunner()->run($id, null, 10, false);
+        $deliveryUrlInfo = woocommerceDeliveryUrlInfo($app, $request, $connection);
+
+        return $admin('admin/woocommerce/show', [
+            'title' => 'WooCommerce - Anbindung',
+            'active' => 'woocommerce',
+            'connection' => $woocommerce()->findConnection($id) ?? $connection,
+            'webhooks' => $woocommerce()->webhooksForConnection($id),
+            'queue' => $woocommerce()->transferQueueForConnection($id),
+            'runs' => $woocommerce()->recentRunsForConnection($id),
+            'webhookEvents' => $woocommerce()->recentWebhookEventsForConnection($id),
+            'expectedWebhooks' => woocommerceExpectedWebhooks((string) $deliveryUrlInfo['delivery_url']),
+            'deliveryUrlInfo' => $deliveryUrlInfo,
+            'topicLabels' => woocommerceWebhookTopicLabels(),
+            'defaultNames' => woocommerceWebhookDefaultNames(),
+            'validation' => null,
+            'alert' => ['type' => (int) $result['failed'] > 0 ? 'warning' : 'success', 'message' => 'WooCommerce-Transfers ausgeführt. Verarbeitet: ' . (int) $result['processed'] . ', erfolgreich: ' . (int) $result['success'] . ', fehlgeschlagen: ' . (int) $result['failed'] . '.'],
+        ]);
+    }, 'admin.woocommerce.queue.run', 'web');
+
+    $routes->post('/admin/woocommerce/{id}/queue/{queueId}/run', static function (Request $request) use ($admin, $app, $woocommerce, $woocommerceTransferRunner): Response {
+        $id = (int) $request->route('id');
+        $queueId = (int) $request->route('queueId');
+        $connection = $woocommerce()->findConnection($id);
+        if ($connection === null) {
+            return Response::notFound();
+        }
+
+        $retry = $request->post('retry') !== null;
+        $result = $woocommerceTransferRunner()->run($id, $queueId, 1, $retry);
+        $deliveryUrlInfo = woocommerceDeliveryUrlInfo($app, $request, $connection);
+
+        return $admin('admin/woocommerce/show', [
+            'title' => 'WooCommerce - Anbindung',
+            'active' => 'woocommerce',
+            'connection' => $woocommerce()->findConnection($id) ?? $connection,
+            'webhooks' => $woocommerce()->webhooksForConnection($id),
+            'queue' => $woocommerce()->transferQueueForConnection($id),
+            'runs' => $woocommerce()->recentRunsForConnection($id),
+            'webhookEvents' => $woocommerce()->recentWebhookEventsForConnection($id),
+            'expectedWebhooks' => woocommerceExpectedWebhooks((string) $deliveryUrlInfo['delivery_url']),
+            'deliveryUrlInfo' => $deliveryUrlInfo,
+            'topicLabels' => woocommerceWebhookTopicLabels(),
+            'defaultNames' => woocommerceWebhookDefaultNames(),
+            'validation' => null,
+            'alert' => ['type' => (int) $result['failed'] > 0 ? 'warning' : 'success', 'message' => 'Queue-Eintrag ausgeführt. Verarbeitet: ' . (int) $result['processed'] . ', erfolgreich: ' . (int) $result['success'] . ', fehlgeschlagen: ' . (int) $result['failed'] . '.'],
+        ]);
+    }, 'admin.woocommerce.queue.run_one', 'web');
 
     $routes->get('/admin/datasets', static function () use ($admin, $datasets): Response {
         try {
@@ -2490,6 +2961,23 @@ return static function (RouteCollection $routes, Application $app): void {
         'active' => 'audit',
         'entries' => $audit()->recent(100),
     ]), 'admin.audit', 'web');
+
+    $routes->post('/api/webhooks/woocommerce/{connection_token}', static function (Request $request) use ($woocommerceWebhookHandler): Response {
+        $rawBody = file_get_contents('php://input');
+        $result = $woocommerceWebhookHandler()->handle(
+            (string) $request->route('connection_token'),
+            [
+                'X-WC-Webhook-Signature' => (string) $request->header('X-WC-Webhook-Signature', ''),
+                'X-WC-Webhook-Topic' => (string) $request->header('X-WC-Webhook-Topic', ''),
+                'X-WC-Webhook-Resource' => (string) $request->header('X-WC-Webhook-Resource', ''),
+                'X-WC-Webhook-Event' => (string) $request->header('X-WC-Webhook-Event', ''),
+                'X-WC-Webhook-Delivery-ID' => (string) $request->header('X-WC-Webhook-Delivery-ID', ''),
+            ],
+            $rawBody === false ? '' : $rawBody,
+        );
+
+        return Response::json($result['payload'], $result['status']);
+    }, 'api.webhooks.woocommerce', 'web');
 
     $routes->get('/health', static fn (): Response => Response::json([
         'status' => 'ok',

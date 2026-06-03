@@ -15,10 +15,17 @@ final class SingleTableTransferWriter
      */
     public function write(PDO $pdo, string $targetTable, array $operations): int
     {
-        if ($operations === []) {
-            return 0;
-        }
+        return $this->writeGroups($pdo, [[
+            'target_table' => $targetTable,
+            'operations' => $operations,
+        ]]);
+    }
 
+    /**
+     * @param list<array{target_table: string, operations: list<array{operation: string, key: array<string, mixed>, data: array<string, mixed>}>}> $groups
+     */
+    public function writeGroups(PDO $pdo, array $groups): int
+    {
         $startedTransaction = ! $pdo->inTransaction();
         if ($startedTransaction) {
             $pdo->beginTransaction();
@@ -26,24 +33,27 @@ final class SingleTableTransferWriter
 
         try {
             $written = 0;
-            foreach ($operations as $operation) {
-                $type = (string) $operation['operation'];
-                if ($type === 'insert') {
-                    $this->insert($pdo, $targetTable, $operation['data']);
-                    $written++;
-                    continue;
-                }
+            foreach ($groups as $group) {
+                foreach ($group['operations'] as $operation) {
+                    $type = (string) $operation['operation'];
+                    $targetTable = $group['target_table'];
+                    if ($type === 'insert') {
+                        $this->insert($pdo, $targetTable, $operation['data']);
+                        $written++;
+                        continue;
+                    }
 
-                if ($type === 'update') {
-                    $written += $this->update($pdo, $targetTable, $operation['key'], $operation['data']);
-                    continue;
-                }
+                    if ($type === 'update') {
+                        $written += $this->update($pdo, $targetTable, $operation['key'], $operation['data']);
+                        continue;
+                    }
 
-                if ($this->exists($pdo, $targetTable, $operation['key'])) {
-                    $written += $this->update($pdo, $targetTable, $operation['key'], $operation['data']);
-                } else {
-                    $this->insert($pdo, $targetTable, $operation['data']);
-                    $written++;
+                    if ($this->exists($pdo, $targetTable, $operation['key'])) {
+                        $written += $this->update($pdo, $targetTable, $operation['key'], $operation['data']);
+                    } else {
+                        $this->insert($pdo, $targetTable, $operation['data']);
+                        $written++;
+                    }
                 }
             }
 

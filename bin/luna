@@ -15,6 +15,7 @@ use Luna\Jobs\JobRunner;
 use Luna\Repository\ConnectionProfileRepository;
 use Luna\Transfer\DatasetTransferRunner;
 use Luna\Repository\JobRunRepository;
+use Luna\WooCommerce\WooCommerceTransferRunner;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -43,7 +44,7 @@ function exitCodeForRun(array $run): int
 }
 
 if ($command === null) {
-    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|endpoint:export|integration:export>\n");
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|endpoint:export|integration:export>\n");
     exit(2);
 }
 
@@ -247,6 +248,39 @@ try {
 
         echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
         exit((int) ($result['error_count'] ?? 0) > 0 ? 1 : 0);
+    }
+
+    if ($command === 'woocommerce:transfer:run') {
+        $connectionId = null;
+        $queueId = null;
+        $limit = 10;
+        $retryFailed = in_array('--retry-failed', $argv, true);
+
+        foreach ($argv as $argument) {
+            if (str_starts_with($argument, '--connection-id=')) {
+                $connectionId = (int) substr($argument, strlen('--connection-id='));
+            }
+            if (str_starts_with($argument, '--queue-id=')) {
+                $queueId = (int) substr($argument, strlen('--queue-id='));
+            }
+            if (str_starts_with($argument, '--limit=')) {
+                $limit = max(1, (int) substr($argument, strlen('--limit=')));
+            }
+        }
+
+        /** @var WooCommerceTransferRunner $runner */
+        $runner = $app->services()->get(WooCommerceTransferRunner::class);
+        $result = $runner->run($connectionId, $queueId, $limit, $retryFailed);
+
+        echo 'Processed: ' . (int) $result['processed'] . "\n";
+        echo 'Success: ' . (int) $result['success'] . "\n";
+        echo 'Failed: ' . (int) $result['failed'] . "\n";
+        echo 'Orders written: ' . (int) $result['orders_written'] . "\n";
+        echo 'Addresses written: ' . (int) $result['addresses_written'] . "\n";
+        echo 'Items written: ' . (int) $result['items_written'] . "\n";
+        echo 'Item meta written: ' . (int) $result['item_meta_written'] . "\n";
+        echo 'Order meta written: ' . (int) $result['order_meta_written'] . "\n";
+        exit((int) $result['failed'] > 0 ? 1 : 0);
     }
 
     if ($command === 'endpoint:export') {

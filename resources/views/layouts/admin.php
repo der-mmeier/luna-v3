@@ -18,6 +18,7 @@ $navItems = [
     'mappings' => ['/admin/mappings', 'Mappings'],
     'datasets' => ['/admin/datasets', 'Datasets'],
     'transfers' => ['/admin/transfers', 'Transfers'],
+    'woocommerce' => ['/admin/woocommerce', 'WooCommerce'],
     'jobs' => ['/admin/jobs', 'Jobs'],
     'reports' => ['/admin/reports', 'Reports'],
     'endpoints' => ['/admin/endpoints', 'Endpoints'],

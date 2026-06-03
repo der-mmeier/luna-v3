@@ -20,6 +20,9 @@ final class DatasetTransferResult
     /** @var list<array<string, mixed>> */
     private array $previewOperations = [];
 
+    /** @var list<array<string, mixed>> */
+    private array $targetGroups = [];
+
     public function __construct(
         public readonly bool $dryRun,
         public readonly string $sourceDataset,
@@ -49,6 +52,24 @@ final class DatasetTransferResult
         }
     }
 
+    /**
+     * @param list<array<string, mixed>> $operations
+     */
+    public function addTargetGroup(array $group, array $operations): void
+    {
+        $preview = array_slice($operations, 0, 20);
+        $this->targetGroups[] = [
+            'name' => (string) ($group['name'] ?? ''),
+            'type' => (string) ($group['group_type'] ?? 'root'),
+            'source_path' => (string) ($group['source_path'] ?? '$'),
+            'target_table' => (string) ($group['target_table'] ?? ''),
+            'operation' => (string) ($group['operation_type'] ?? ''),
+            'upsert_key' => (string) ($group['upsert_key'] ?? ''),
+            'planned_count' => count($operations),
+            'preview_operations' => $preview,
+        ];
+    }
+
     public function errorCount(): int
     {
         return count($this->errors);
@@ -73,6 +94,7 @@ final class DatasetTransferResult
             'errors' => $this->errors,
             'warnings' => $this->warnings,
             'preview_operations' => $this->previewOperations,
+            'target_groups' => $this->targetGroups,
         ];
     }
 }
