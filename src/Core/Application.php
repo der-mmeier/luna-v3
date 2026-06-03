@@ -40,6 +40,7 @@ use Luna\Repository\MappingRepository;
 use Luna\Repository\ReportRepository;
 use Luna\Repository\SchemaMetadataRepository;
 use Luna\Repository\WorkspaceRepository;
+use Luna\Repository\WooCommerceIntegrationRepository;
 use Luna\Security\EncryptionService;
 use Luna\Transfer\DatasetTransferRunner;
 use Luna\Transfer\MappingExecutor;
@@ -48,6 +49,11 @@ use Luna\Transfer\MappingSourceRowProvider;
 use Luna\Transfer\SingleTableTransferWriter;
 use Luna\Transfer\TargetWriter;
 use Luna\View\ViewRenderer;
+use Luna\WooCommerce\WooCommerceHposValidator;
+use Luna\WooCommerce\WooCommerceHposOrderReader;
+use Luna\WooCommerce\WooCommerceTransferRunner;
+use Luna\WooCommerce\WooCommerceTransferWriter;
+use Luna\WooCommerce\WooCommerceWebhookHandler;
 
 final class Application
 {
@@ -131,6 +137,24 @@ final class Application
         $this->services->set(EndpointRepository::class, new EndpointRepository(
             $systemDatabase,
             $this->services->get(EncryptionService::class),
+        ));
+        $this->services->set(WooCommerceIntegrationRepository::class, new WooCommerceIntegrationRepository(
+            $systemDatabase,
+            $this->services->get(EncryptionService::class),
+        ));
+        $this->services->set(WooCommerceHposValidator::class, new WooCommerceHposValidator());
+        $this->services->set(WooCommerceHposOrderReader::class, new WooCommerceHposOrderReader());
+        $this->services->set(WooCommerceTransferWriter::class, new WooCommerceTransferWriter($systemDatabase));
+        $this->services->set(WooCommerceTransferRunner::class, new WooCommerceTransferRunner(
+            $this->services->get(WooCommerceIntegrationRepository::class),
+            $this->services->get(ConnectionProfileRepository::class),
+            $externalPdoFactory,
+            $this->services->get(WooCommerceHposValidator::class),
+            $this->services->get(WooCommerceHposOrderReader::class),
+            $this->services->get(WooCommerceTransferWriter::class),
+        ));
+        $this->services->set(WooCommerceWebhookHandler::class, new WooCommerceWebhookHandler(
+            $this->services->get(WooCommerceIntegrationRepository::class),
         ));
         $this->services->set(SchemaMetadataRepository::class, new SchemaMetadataRepository($systemDatabase));
         $this->services->set(MappingValidator::class, new MappingValidator(
@@ -255,6 +279,7 @@ final class Application
         $this->services->set('repository.job_runs', $this->services->get(JobRunRepository::class));
         $this->services->set('repository.reports', $this->services->get(ReportRepository::class));
         $this->services->set('repository.endpoints', $this->services->get(EndpointRepository::class));
+        $this->services->set('repository.woocommerce_integrations', $this->services->get(WooCommerceIntegrationRepository::class));
         $this->services->set('dataset.registry', $this->services->get(DatasetRegistry::class));
         $this->services->set('dataset.transfer_runner', $this->services->get(DatasetTransferRunner::class));
         $this->services->set('mapping.validator', $this->services->get(MappingValidator::class));
@@ -272,5 +297,8 @@ final class Application
         $this->services->set('export.endpoint_archive', $this->services->get(EndpointExportArchiveService::class));
         $this->services->set('integration.export_modules', $this->services->get(ExportModuleRegistry::class));
         $this->services->set('integration.export_runtime_builder', $this->services->get(ExportRuntimeBuilder::class));
+        $this->services->set('woocommerce.hpos_validator', $this->services->get(WooCommerceHposValidator::class));
+        $this->services->set('woocommerce.transfer_runner', $this->services->get(WooCommerceTransferRunner::class));
+        $this->services->set('woocommerce.webhook_handler', $this->services->get(WooCommerceWebhookHandler::class));
     }
 }
