@@ -21,6 +21,7 @@ use Luna\Dataset\DatasetRegistry;
 use Luna\Http\Response;
 use Luna\Export\EndpointExportArchiveService;
 use Luna\Export\EndpointRuntimeExporter;
+use Luna\Export\WooCommerceExportService;
 use Luna\Integration\ExportModuleRegistry;
 use Luna\Integration\ExportRuntimeBuilder;
 use Luna\Integration\Modules\IsrPricesExportModule;
@@ -34,6 +35,7 @@ use Luna\Repository\AuditLogRepository;
 use Luna\Repository\ConnectionProfileRepository;
 use Luna\Repository\DatasetTransferRepository;
 use Luna\Repository\EndpointRepository;
+use Luna\Repository\ExportProfileRepository;
 use Luna\Repository\JobRepository;
 use Luna\Repository\JobRunRepository;
 use Luna\Repository\MappingRepository;
@@ -142,6 +144,10 @@ final class Application
             $systemDatabase,
             $this->services->get(EncryptionService::class),
         ));
+        $this->services->set(ExportProfileRepository::class, new ExportProfileRepository(
+            $systemDatabase,
+            $this->services->get(EncryptionService::class),
+        ));
         $this->services->set(WooCommerceHposValidator::class, new WooCommerceHposValidator());
         $this->services->set(WooCommerceHposOrderReader::class, new WooCommerceHposOrderReader());
         $this->services->set(WooCommerceTransferWriter::class, new WooCommerceTransferWriter($systemDatabase));
@@ -155,6 +161,10 @@ final class Application
         ));
         $this->services->set(WooCommerceWebhookHandler::class, new WooCommerceWebhookHandler(
             $this->services->get(WooCommerceIntegrationRepository::class),
+        ));
+        $this->services->set(WooCommerceExportService::class, new WooCommerceExportService(
+            $this->services->get(ExportProfileRepository::class),
+            $systemDatabase,
         ));
         $this->services->set(SchemaMetadataRepository::class, new SchemaMetadataRepository($systemDatabase));
         $this->services->set(MappingValidator::class, new MappingValidator(
@@ -280,6 +290,7 @@ final class Application
         $this->services->set('repository.reports', $this->services->get(ReportRepository::class));
         $this->services->set('repository.endpoints', $this->services->get(EndpointRepository::class));
         $this->services->set('repository.woocommerce_integrations', $this->services->get(WooCommerceIntegrationRepository::class));
+        $this->services->set('repository.export_profiles', $this->services->get(ExportProfileRepository::class));
         $this->services->set('dataset.registry', $this->services->get(DatasetRegistry::class));
         $this->services->set('dataset.transfer_runner', $this->services->get(DatasetTransferRunner::class));
         $this->services->set('mapping.validator', $this->services->get(MappingValidator::class));
@@ -300,5 +311,6 @@ final class Application
         $this->services->set('woocommerce.hpos_validator', $this->services->get(WooCommerceHposValidator::class));
         $this->services->set('woocommerce.transfer_runner', $this->services->get(WooCommerceTransferRunner::class));
         $this->services->set('woocommerce.webhook_handler', $this->services->get(WooCommerceWebhookHandler::class));
+        $this->services->set('woocommerce.export_service', $this->services->get(WooCommerceExportService::class));
     }
 }

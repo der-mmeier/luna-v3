@@ -10,6 +10,7 @@ use Luna\Core\Application;
 use Luna\Dataset\DatasetRegistry;
 use Luna\Export\EndpointExportArchiveService;
 use Luna\Export\EndpointRuntimeExporter;
+use Luna\Export\WooCommerceExportService;
 use Luna\Http\Request;
 use Luna\Http\Response;
 use Luna\Jobs\JobRunner;
@@ -21,6 +22,7 @@ use Luna\Repository\AuditLogRepository;
 use Luna\Repository\ConnectionProfileRepository;
 use Luna\Repository\DatasetTransferRepository;
 use Luna\Repository\EndpointRepository;
+use Luna\Repository\ExportProfileRepository;
 use Luna\Repository\JobRepository;
 use Luna\Repository\JobRunRepository;
 use Luna\Repository\MappingRepository;
@@ -574,6 +576,54 @@ if (! function_exists('woocommerceDeliveryUrlInfo')) {
             'delivery_url' => $deliveryUrl,
             'is_localhost' => $isLocalhost,
         ];
+    }
+}
+
+if (! function_exists('woocommerceExportUrl')) {
+    function woocommerceExportUrl(Application $app, Request $request, string $profileKey): string
+    {
+        $baseUrl = '';
+        foreach (['APP_URL', 'LUNA_BASE_URL', 'PUBLIC_BASE_URL'] as $key) {
+            $configured = trim($app->config()->string($key, ''));
+            if ($configured !== '') {
+                $baseUrl = $configured;
+                break;
+            }
+        }
+
+        if ($baseUrl === '') {
+            $scheme = $request->server('HTTPS') === 'on' ? 'https' : 'http';
+            $baseUrl = $scheme . '://' . (string) $request->server('HTTP_HOST', 'localhost');
+        }
+
+        return rtrim($baseUrl, '/') . '/api/exports/woocommerce/' . rawurlencode($profileKey);
+    }
+}
+
+if (! function_exists('woocommerceExportParams')) {
+    function woocommerceExportParams(Request $request): array
+    {
+        return [
+            'since' => $request->query('since', ''),
+            'until' => $request->query('until', ''),
+            'limit' => $request->query('limit', ''),
+            'offset' => $request->query('offset', ''),
+            'include_raw_meta' => $request->query('include_raw_meta', ''),
+            'include_item_raw_meta' => $request->query('include_item_raw_meta', ''),
+            'order_id' => $request->query('order_id', ''),
+            'status' => $request->query('status', ''),
+        ];
+    }
+}
+
+if (! function_exists('woocommerceExportProfilesForView')) {
+    function woocommerceExportProfilesForView(Application $app, Request $request, array $profiles): array
+    {
+        foreach ($profiles as &$profile) {
+            $profile['export_url'] = woocommerceExportUrl($app, $request, (string) ($profile['profile_key'] ?? ''));
+        }
+
+        return $profiles;
     }
 }
 
@@ -1145,6 +1195,8 @@ return static function (RouteCollection $routes, Application $app): void {
     $woocommerceValidator = static fn (): WooCommerceHposValidator => $app->services()->get(WooCommerceHposValidator::class);
     $woocommerceTransferRunner = static fn (): WooCommerceTransferRunner => $app->services()->get(WooCommerceTransferRunner::class);
     $woocommerceWebhookHandler = static fn (): WooCommerceWebhookHandler => $app->services()->get(WooCommerceWebhookHandler::class);
+    $exportProfiles = static fn (): ExportProfileRepository => $app->services()->get(ExportProfileRepository::class);
+    $woocommerceExport = static fn (): WooCommerceExportService => $app->services()->get(WooCommerceExportService::class);
     $datasets = static fn (): DatasetRegistry => $app->services()->get(DatasetRegistry::class);
     $datasetTransfers = static fn (): DatasetTransferRepository => $app->services()->get(DatasetTransferRepository::class);
     $datasetTransferRunner = static fn (): DatasetTransferRunner => $app->services()->get(DatasetTransferRunner::class);
@@ -1165,6 +1217,30 @@ return static function (RouteCollection $routes, Application $app): void {
         'mappingCount' => count(safeList($mappings)),
         'jobCount' => count(safeList($jobs)),
     ];
+
+    $woocommerceShowResponse = static function (Request $request, array $connection, ?array $alert = null, ?array $validation = null) use ($admin, $app, $woocommerce, $exportProfiles): Response {
+        $id = (int) $connection['id'];
+        $deliveryUrlInfo = woocommerceDeliveryUrlInfo($app, $request, $connection);
+
+        return $admin('admin/woocommerce/show', [
+            'title' => 'WooCommerce - Anbindung',
+            'active' => 'woocommerce',
+            'connection' => $connection,
+            'webhooks' => $woocommerce()->webhooksForConnection($id),
+            'queue' => $woocommerce()->transferQueueForConnection($id),
+            'runs' => $woocommerce()->recentRunsForConnection($id),
+            'lastSuccessfulRun' => $exportProfiles()->latestSuccessfulRunForWooCommerceConnection($id),
+            'exportProfiles' => woocommerceExportProfilesForView($app, $request, $exportProfiles()->wooCommerceProfilesForConnection($id)),
+            'exportRuns' => $exportProfiles()->recentRunsForWooCommerceConnection($id),
+            'webhookEvents' => $woocommerce()->recentWebhookEventsForConnection($id),
+            'expectedWebhooks' => woocommerceExpectedWebhooks((string) $deliveryUrlInfo['delivery_url']),
+            'deliveryUrlInfo' => $deliveryUrlInfo,
+            'topicLabels' => woocommerceWebhookTopicLabels(),
+            'defaultNames' => woocommerceWebhookDefaultNames(),
+            'validation' => $validation,
+            'alert' => $alert,
+        ]);
+    };
 
     $routes->get('/', static fn (): Response => Response::html($view->render(
         'admin/dashboard',
@@ -2454,7 +2530,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/woocommerce/' . $id]);
     }, 'admin.woocommerce.store', 'web');
 
-    $routes->get('/admin/woocommerce/{id}', static function (Request $request) use ($admin, $app, $woocommerce): Response {
+    $routes->get('/admin/woocommerce/{id}', static function (Request $request) use ($admin, $app, $woocommerce, $exportProfiles): Response {
         $id = (int) $request->route('id');
         $connection = $woocommerce()->findConnection($id);
         if ($connection === null) {
@@ -2470,6 +2546,9 @@ return static function (RouteCollection $routes, Application $app): void {
             'webhooks' => $woocommerce()->webhooksForConnection($id),
             'queue' => $woocommerce()->transferQueueForConnection($id),
             'runs' => $woocommerce()->recentRunsForConnection($id),
+            'lastSuccessfulRun' => $exportProfiles()->latestSuccessfulRunForWooCommerceConnection($id),
+            'exportProfiles' => woocommerceExportProfilesForView($app, $request, $exportProfiles()->wooCommerceProfilesForConnection($id)),
+            'exportRuns' => $exportProfiles()->recentRunsForWooCommerceConnection($id),
             'webhookEvents' => $woocommerce()->recentWebhookEventsForConnection($id),
             'expectedWebhooks' => woocommerceExpectedWebhooks((string) $deliveryUrlInfo['delivery_url']),
             'deliveryUrlInfo' => $deliveryUrlInfo,
@@ -2480,7 +2559,7 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.woocommerce.show', 'web');
 
-    $routes->post('/admin/woocommerce/{id}/validate', static function (Request $request) use ($admin, $app, $woocommerce, $woocommerceValidator, $connections, $pdoFactory, $configFor): Response {
+    $routes->post('/admin/woocommerce/{id}/validate', static function (Request $request) use ($admin, $app, $woocommerce, $woocommerceValidator, $connections, $pdoFactory, $configFor, $exportProfiles): Response {
         $id = (int) $request->route('id');
         $connection = $woocommerce()->findConnection($id);
         if ($connection === null) {
@@ -2518,6 +2597,9 @@ return static function (RouteCollection $routes, Application $app): void {
             'webhooks' => $woocommerce()->webhooksForConnection($id),
             'queue' => $woocommerce()->transferQueueForConnection($id),
             'runs' => $woocommerce()->recentRunsForConnection($id),
+            'lastSuccessfulRun' => $exportProfiles()->latestSuccessfulRunForWooCommerceConnection($id),
+            'exportProfiles' => woocommerceExportProfilesForView($app, $request, $exportProfiles()->wooCommerceProfilesForConnection($id)),
+            'exportRuns' => $exportProfiles()->recentRunsForWooCommerceConnection($id),
             'webhookEvents' => $woocommerce()->recentWebhookEventsForConnection($id),
             'expectedWebhooks' => woocommerceExpectedWebhooks((string) $deliveryUrlInfo['delivery_url']),
             'deliveryUrlInfo' => $deliveryUrlInfo,
@@ -2559,7 +2641,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/woocommerce/' . $id]);
     }, 'admin.woocommerce.webhooks.update', 'web');
 
-    $routes->post('/admin/woocommerce/{id}/initial-transfer', static function (Request $request) use ($admin, $app, $woocommerce): Response {
+    $routes->post('/admin/woocommerce/{id}/initial-transfer', static function (Request $request) use ($admin, $app, $woocommerce, $exportProfiles): Response {
         $id = (int) $request->route('id');
         $connection = $woocommerce()->findConnection($id);
         if ($connection === null) {
@@ -2592,6 +2674,9 @@ return static function (RouteCollection $routes, Application $app): void {
             'webhooks' => $woocommerce()->webhooksForConnection($id),
             'queue' => $woocommerce()->transferQueueForConnection($id),
             'runs' => $woocommerce()->recentRunsForConnection($id),
+            'lastSuccessfulRun' => $exportProfiles()->latestSuccessfulRunForWooCommerceConnection($id),
+            'exportProfiles' => woocommerceExportProfilesForView($app, $request, $exportProfiles()->wooCommerceProfilesForConnection($id)),
+            'exportRuns' => $exportProfiles()->recentRunsForWooCommerceConnection($id),
             'webhookEvents' => $woocommerce()->recentWebhookEventsForConnection($id),
             'expectedWebhooks' => woocommerceExpectedWebhooks((string) $deliveryUrlInfo['delivery_url']),
             'deliveryUrlInfo' => $deliveryUrlInfo,
@@ -2602,7 +2687,7 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.woocommerce.initial_transfer', 'web');
 
-    $routes->post('/admin/woocommerce/{id}/queue/run', static function (Request $request) use ($admin, $app, $woocommerce, $woocommerceTransferRunner): Response {
+    $routes->post('/admin/woocommerce/{id}/queue/run', static function (Request $request) use ($admin, $app, $woocommerce, $woocommerceTransferRunner, $exportProfiles): Response {
         $id = (int) $request->route('id');
         $connection = $woocommerce()->findConnection($id);
         if ($connection === null) {
@@ -2619,6 +2704,9 @@ return static function (RouteCollection $routes, Application $app): void {
             'webhooks' => $woocommerce()->webhooksForConnection($id),
             'queue' => $woocommerce()->transferQueueForConnection($id),
             'runs' => $woocommerce()->recentRunsForConnection($id),
+            'lastSuccessfulRun' => $exportProfiles()->latestSuccessfulRunForWooCommerceConnection($id),
+            'exportProfiles' => woocommerceExportProfilesForView($app, $request, $exportProfiles()->wooCommerceProfilesForConnection($id)),
+            'exportRuns' => $exportProfiles()->recentRunsForWooCommerceConnection($id),
             'webhookEvents' => $woocommerce()->recentWebhookEventsForConnection($id),
             'expectedWebhooks' => woocommerceExpectedWebhooks((string) $deliveryUrlInfo['delivery_url']),
             'deliveryUrlInfo' => $deliveryUrlInfo,
@@ -2629,7 +2717,7 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.woocommerce.queue.run', 'web');
 
-    $routes->post('/admin/woocommerce/{id}/queue/{queueId}/run', static function (Request $request) use ($admin, $app, $woocommerce, $woocommerceTransferRunner): Response {
+    $routes->post('/admin/woocommerce/{id}/queue/{queueId}/run', static function (Request $request) use ($admin, $app, $woocommerce, $woocommerceTransferRunner, $exportProfiles): Response {
         $id = (int) $request->route('id');
         $queueId = (int) $request->route('queueId');
         $connection = $woocommerce()->findConnection($id);
@@ -2648,6 +2736,9 @@ return static function (RouteCollection $routes, Application $app): void {
             'webhooks' => $woocommerce()->webhooksForConnection($id),
             'queue' => $woocommerce()->transferQueueForConnection($id),
             'runs' => $woocommerce()->recentRunsForConnection($id),
+            'lastSuccessfulRun' => $exportProfiles()->latestSuccessfulRunForWooCommerceConnection($id),
+            'exportProfiles' => woocommerceExportProfilesForView($app, $request, $exportProfiles()->wooCommerceProfilesForConnection($id)),
+            'exportRuns' => $exportProfiles()->recentRunsForWooCommerceConnection($id),
             'webhookEvents' => $woocommerce()->recentWebhookEventsForConnection($id),
             'expectedWebhooks' => woocommerceExpectedWebhooks((string) $deliveryUrlInfo['delivery_url']),
             'deliveryUrlInfo' => $deliveryUrlInfo,
@@ -2657,6 +2748,87 @@ return static function (RouteCollection $routes, Application $app): void {
             'alert' => ['type' => (int) $result['failed'] > 0 ? 'warning' : 'success', 'message' => 'Queue-Eintrag ausgeführt. Verarbeitet: ' . (int) $result['processed'] . ', erfolgreich: ' . (int) $result['success'] . ', fehlgeschlagen: ' . (int) $result['failed'] . '.'],
         ]);
     }, 'admin.woocommerce.queue.run_one', 'web');
+
+    $routes->post('/admin/woocommerce/{id}/exports/defaults', static function (Request $request) use ($woocommerce, $exportProfiles, $woocommerceShowResponse): Response {
+        $id = (int) $request->route('id');
+        $connection = $woocommerce()->findConnection($id);
+        if ($connection === null) {
+            return Response::notFound();
+        }
+
+        $ids = $exportProfiles()->createDefaultWooCommerceProfiles($connection);
+
+        return $woocommerceShowResponse($request, $woocommerce()->findConnection($id) ?? $connection, [
+            'type' => 'success',
+            'message' => 'WooCommerce-Exportprofile wurden angelegt oder bestätigt. Profile: ' . count($ids) . '.',
+        ]);
+    }, 'admin.woocommerce.exports.defaults', 'web');
+
+    $routes->post('/admin/woocommerce/{id}/exports/{profileId}/token', static function (Request $request) use ($woocommerce, $exportProfiles, $woocommerceShowResponse): Response {
+        $id = (int) $request->route('id');
+        $connection = $woocommerce()->findConnection($id);
+        $profile = $exportProfiles()->find((int) $request->route('profileId'));
+        if ($connection === null || $profile === null || (int) ($profile['connection_id'] ?? 0) !== $id) {
+            return Response::notFound();
+        }
+
+        $token = $exportProfiles()->generateToken();
+        $exportProfiles()->setToken((int) $profile['id'], $token);
+
+        return $woocommerceShowResponse($request, $connection, [
+            'type' => 'warning',
+            'message' => 'Neuer Export-Token erzeugt. Nur jetzt kopieren: ' . $token,
+        ]);
+    }, 'admin.woocommerce.exports.token', 'web');
+
+    $routes->post('/admin/woocommerce/{id}/exports/{profileId}/secret', static function (Request $request) use ($woocommerce, $exportProfiles, $woocommerceShowResponse): Response {
+        $id = (int) $request->route('id');
+        $connection = $woocommerce()->findConnection($id);
+        $profile = $exportProfiles()->find((int) $request->route('profileId'));
+        if ($connection === null || $profile === null || (int) ($profile['connection_id'] ?? 0) !== $id) {
+            return Response::notFound();
+        }
+
+        $secret = $exportProfiles()->generateSecret();
+        $exportProfiles()->setSecret((int) $profile['id'], $secret);
+
+        return $woocommerceShowResponse($request, $connection, [
+            'type' => 'warning',
+            'message' => 'Neues Export-HMAC-Secret erzeugt. Nur jetzt kopieren: ' . $secret,
+        ]);
+    }, 'admin.woocommerce.exports.secret', 'web');
+
+    $routes->post('/admin/woocommerce/{id}/exports/{profileId}/toggle', static function (Request $request) use ($woocommerce, $exportProfiles): Response {
+        $id = (int) $request->route('id');
+        $connection = $woocommerce()->findConnection($id);
+        $profile = $exportProfiles()->find((int) $request->route('profileId'));
+        if ($connection === null || $profile === null || (int) ($profile['connection_id'] ?? 0) !== $id) {
+            return Response::notFound();
+        }
+
+        $exportProfiles()->toggleEnabled((int) $profile['id']);
+
+        return new Response('', 302, ['Location' => '/admin/woocommerce/' . $id]);
+    }, 'admin.woocommerce.exports.toggle', 'web');
+
+    $routes->post('/admin/woocommerce/{id}/exports/{profileId}/test', static function (Request $request) use ($woocommerce, $exportProfiles, $woocommerceExport, $woocommerceShowResponse): Response {
+        $id = (int) $request->route('id');
+        $connection = $woocommerce()->findConnection($id);
+        $profile = $exportProfiles()->find((int) $request->route('profileId'));
+        if ($connection === null || $profile === null || (int) ($profile['connection_id'] ?? 0) !== $id) {
+            return Response::notFound();
+        }
+
+        $result = $woocommerceExport()->export($profile, ['limit' => 5], 'ui');
+        $success = ! empty($result['success']);
+
+        return $woocommerceShowResponse($request, $connection, [
+            'type' => $success ? 'success' : 'danger',
+            'message' => $success
+                ? 'Test-Export erfolgreich. Datensätze: ' . (int) ($result['count'] ?? 0) . '.'
+                : 'Test-Export fehlgeschlagen: ' . (string) ($result['error']['message'] ?? 'unbekannter Fehler'),
+        ]);
+    }, 'admin.woocommerce.exports.test', 'web');
 
     $routes->get('/admin/datasets', static function () use ($admin, $datasets): Response {
         try {
@@ -2978,6 +3150,60 @@ return static function (RouteCollection $routes, Application $app): void {
 
         return Response::json($result['payload'], $result['status']);
     }, 'api.webhooks.woocommerce', 'web');
+
+    $routes->get('/api/exports/woocommerce/{profile_key}', static function (Request $request) use ($exportProfiles, $woocommerceExport): Response {
+        $profile = $exportProfiles()->findEnabledWooCommerceProfile((string) $request->route('profile_key'));
+        if ($profile === null) {
+            return Response::json([
+                'success' => false,
+                'error' => ['code' => 'not_found', 'message' => 'Export profile not found.'],
+            ], 404);
+        }
+
+        $authorized = $woocommerceExport()->authenticate($profile, 'GET', $request->path(), (string) $request->server('QUERY_STRING', ''), '', (string) $request->header('Authorization', ''), [
+            'x-luna-export-token' => (string) $request->header('X-Luna-Export-Token', ''),
+            'x-luna-timestamp' => (string) $request->header('X-Luna-Timestamp', ''),
+            'x-luna-signature' => (string) $request->header('X-Luna-Signature', ''),
+        ]);
+        if (! $authorized) {
+            return Response::json([
+                'success' => false,
+                'error' => ['code' => 'unauthorized', 'message' => 'Export authentication failed.'],
+            ], 401);
+        }
+
+        $result = $woocommerceExport()->export($profile, woocommerceExportParams($request), 'api');
+
+        return Response::json($result, ! empty($result['success']) ? 200 : 500);
+    }, 'api.exports.woocommerce', 'web');
+
+    $routes->post('/api/exports/woocommerce/{profile_key}', static function (Request $request) use ($exportProfiles, $woocommerceExport): Response {
+        $profile = $exportProfiles()->findEnabledWooCommerceProfile((string) $request->route('profile_key'));
+        if ($profile === null) {
+            return Response::json([
+                'success' => false,
+                'error' => ['code' => 'not_found', 'message' => 'Export profile not found.'],
+            ], 404);
+        }
+
+        $rawBody = file_get_contents('php://input');
+        $rawBody = $rawBody === false ? '' : $rawBody;
+        $authorized = $woocommerceExport()->authenticate($profile, 'POST', $request->path(), (string) $request->server('QUERY_STRING', ''), $rawBody, (string) $request->header('Authorization', ''), [
+            'x-luna-export-token' => (string) $request->header('X-Luna-Export-Token', ''),
+            'x-luna-timestamp' => (string) $request->header('X-Luna-Timestamp', ''),
+            'x-luna-signature' => (string) $request->header('X-Luna-Signature', ''),
+        ]);
+        if (! $authorized) {
+            return Response::json([
+                'success' => false,
+                'error' => ['code' => 'unauthorized', 'message' => 'Export authentication failed.'],
+            ], 401);
+        }
+
+        $result = $woocommerceExport()->export($profile, woocommerceExportParams($request), 'api');
+
+        return Response::json($result, ! empty($result['success']) ? 200 : 500);
+    }, 'api.exports.woocommerce_post', 'web');
 
     $routes->get('/health', static fn (): Response => Response::json([
         'status' => 'ok',
