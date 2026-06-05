@@ -10,11 +10,13 @@ use Luna\Database\SystemDatabase;
 use Luna\Dataset\DatasetRegistry;
 use Luna\Export\EndpointExportArchiveService;
 use Luna\Export\EndpointRuntimeExporter;
+use Luna\Export\WooCommerceExportService;
 use Luna\Integration\ExportRuntimeBuilder;
 use Luna\Jobs\JobRunner;
 use Luna\Repository\ConnectionProfileRepository;
 use Luna\Transfer\DatasetTransferRunner;
 use Luna\Repository\JobRunRepository;
+use Luna\Repository\ExportProfileRepository;
 use Luna\WooCommerce\WooCommerceTransferRunner;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -44,7 +46,7 @@ function exitCodeForRun(array $run): int
 }
 
 if ($command === null) {
-    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|endpoint:export|integration:export>\n");
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|export:woocommerce:list|export:woocommerce:run|endpoint:export|integration:export>\n");
     exit(2);
 }
 
@@ -281,6 +283,57 @@ try {
         echo 'Item meta written: ' . (int) $result['item_meta_written'] . "\n";
         echo 'Order meta written: ' . (int) $result['order_meta_written'] . "\n";
         exit((int) $result['failed'] > 0 ? 1 : 0);
+    }
+
+    if ($command === 'export:woocommerce:list') {
+        /** @var ExportProfileRepository $profiles */
+        $profiles = $app->services()->get(ExportProfileRepository::class);
+
+        foreach ($profiles->wooCommerceProfiles() as $profile) {
+            echo (string) $profile['profile_key'] . "\t"
+                . (string) $profile['name'] . "\t"
+                . (! empty($profile['is_enabled']) ? 'enabled' : 'disabled') . "\t"
+                . 'token=' . (! empty($profile['has_token']) ? 'yes' : 'no') . "\t"
+                . 'secret=' . (! empty($profile['has_secret']) ? 'yes' : 'no') . "\n";
+        }
+
+        exit(0);
+    }
+
+    if ($command === 'export:woocommerce:run') {
+        $profileKey = '';
+        $params = [];
+
+        foreach ($argv as $argument) {
+            if (str_starts_with($argument, '--profile=')) {
+                $profileKey = (string) substr($argument, strlen('--profile='));
+            }
+            foreach (['since', 'until', 'limit', 'offset', 'include_raw_meta', 'include_item_raw_meta', 'order_id', 'status'] as $key) {
+                if (str_starts_with($argument, '--' . $key . '=')) {
+                    $params[$key] = substr($argument, strlen('--' . $key . '='));
+                }
+            }
+        }
+
+        if ($profileKey === '') {
+            fwrite(STDERR, "Usage: php bin/luna export:woocommerce:run --profile=<profile-key> [--since=<date>] [--until=<date>] [--limit=<n>] [--order_id=<id>] [--status=<status>]\n");
+            exit(2);
+        }
+
+        /** @var ExportProfileRepository $profiles */
+        $profiles = $app->services()->get(ExportProfileRepository::class);
+        $profile = $profiles->findEnabledWooCommerceProfile($profileKey);
+        if ($profile === null) {
+            fwrite(STDERR, "WooCommerce export profile not found or disabled.\n");
+            exit(1);
+        }
+
+        /** @var WooCommerceExportService $exportService */
+        $exportService = $app->services()->get(WooCommerceExportService::class);
+        $result = $exportService->export($profile, $params, 'cli');
+
+        echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
+        exit(! empty($result['success']) ? 0 : 1);
     }
 
     if ($command === 'endpoint:export') {

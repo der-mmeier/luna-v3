@@ -4,6 +4,9 @@
 /** @var array<int, array<string, mixed>> $webhooks */
 /** @var array<int, array<string, mixed>> $queue */
 /** @var array<int, array<string, mixed>> $runs */
+/** @var array<string, mixed>|null $lastSuccessfulRun */
+/** @var array<int, array<string, mixed>> $exportProfiles */
+/** @var array<int, array<string, mixed>> $exportRuns */
 /** @var array<int, array<string, mixed>> $webhookEvents */
 /** @var array<int, array<string, mixed>> $expectedWebhooks */
 /** @var array<string, mixed> $deliveryUrlInfo */
@@ -349,6 +352,128 @@ $lastEventLabel = static function (?array $event): string {
             <?php endforeach; ?>
             <?php if (($runs ?? []) === []): ?>
                 <tr><td colspan="15" class="text-body-secondary">Noch keine Transfer Runs vorhanden.</td></tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card admin-card mb-4" id="export-profiles">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Exportprofile</span>
+        <form method="post" action="/admin/woocommerce/<?= (int) $connection['id'] ?>/exports/defaults" class="mb-0">
+            <button class="btn btn-sm btn-primary" type="submit">Default-Profile anlegen</button>
+        </form>
+    </div>
+    <div class="card-body border-bottom">
+        <p class="text-body-secondary mb-2">Der Export liest aus Luna-Transferdaten, nicht direkt aus WooCommerce. Webhooks und HPOS-Transfers aktualisieren diese Daten. Externe Systeme greifen anschließend über geschützte Exportprofile auf den stabilisierten Stand zu.</p>
+        <?php if (! empty($lastSuccessfulRun)): ?>
+            <div class="small">Letzter erfolgreicher Exportlauf: #<?= (int) $lastSuccessfulRun['id'] ?> am <?= htmlspecialchars((string) ($lastSuccessfulRun['finished_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?>, Profil <code><?= htmlspecialchars((string) ($lastSuccessfulRun['profile_key'] ?? ''), ENT_QUOTES, 'UTF-8') ?></code></div>
+        <?php else: ?>
+            <div class="small text-body-secondary">Noch kein erfolgreicher Exportlauf vorhanden.</div>
+        <?php endif; ?>
+    </div>
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+            <tr>
+                <th>Profil</th>
+                <th>Name</th>
+                <th>Aktiv</th>
+                <th>Format</th>
+                <th>Auth-Modus</th>
+                <th>Token vorhanden</th>
+                <th>Secret vorhanden</th>
+                <th>Raw Meta</th>
+                <th>Item Raw Meta</th>
+                <th>Batch Size</th>
+                <th>Letzter erfolgreicher Export</th>
+                <th>Letztes Watermark</th>
+                <th>Export-URL</th>
+                <th>Aktionen</th>
+            </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($exportProfiles ?? [] as $profile): ?>
+                <?php $profileId = (int) $profile['id']; ?>
+                <tr>
+                    <td><code><?= htmlspecialchars((string) ($profile['profile_key'] ?? ''), ENT_QUOTES, 'UTF-8') ?></code></td>
+                    <td><?= htmlspecialchars((string) ($profile['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                    <td><?= $yesNo(! empty($profile['is_enabled'])) ?></td>
+                    <td><?= htmlspecialchars((string) ($profile['export_format'] ?? 'json'), ENT_QUOTES, 'UTF-8') ?></td>
+                    <td><code><?= htmlspecialchars((string) ($profile['auth_mode'] ?? ''), ENT_QUOTES, 'UTF-8') ?></code></td>
+                    <td><?= $yesNo(! empty($profile['has_token'])) ?></td>
+                    <td><?= $yesNo(! empty($profile['has_secret'])) ?></td>
+                    <td><?= $yesNo(! empty($profile['include_raw_meta'])) ?></td>
+                    <td><?= $yesNo(! empty($profile['include_item_raw_meta'])) ?></td>
+                    <td><?= (int) ($profile['batch_size'] ?? 100) ?></td>
+                    <td><?= htmlspecialchars((string) ($profile['last_successful_export_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                    <td><?= htmlspecialchars((string) ($profile['last_successful_watermark'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                    <td>
+                        <code data-copy-source="export-url-<?= $profileId ?>"><?= htmlspecialchars((string) ($profile['export_url'] ?? ''), ENT_QUOTES, 'UTF-8') ?></code>
+                        <button class="btn btn-sm btn-outline-secondary mt-1" type="button" data-copy-target="export-url-<?= $profileId ?>">Export-URL kopieren</button>
+                    </td>
+                    <td class="text-nowrap">
+                        <form method="post" action="/admin/woocommerce/<?= (int) $connection['id'] ?>/exports/<?= $profileId ?>/token" class="d-inline">
+                            <button class="btn btn-sm btn-outline-secondary" type="submit">Token generieren</button>
+                        </form>
+                        <form method="post" action="/admin/woocommerce/<?= (int) $connection['id'] ?>/exports/<?= $profileId ?>/secret" class="d-inline">
+                            <button class="btn btn-sm btn-outline-secondary" type="submit">Secret generieren</button>
+                        </form>
+                        <form method="post" action="/admin/woocommerce/<?= (int) $connection['id'] ?>/exports/<?= $profileId ?>/test" class="d-inline">
+                            <button class="btn btn-sm btn-outline-primary" type="submit">Test-Export</button>
+                        </form>
+                        <form method="post" action="/admin/woocommerce/<?= (int) $connection['id'] ?>/exports/<?= $profileId ?>/toggle" class="d-inline">
+                            <button class="btn btn-sm btn-outline-warning" type="submit"><?= ! empty($profile['is_enabled']) ? 'Deaktivieren' : 'Aktivieren' ?></button>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            <?php if (($exportProfiles ?? []) === []): ?>
+                <tr><td colspan="14" class="text-body-secondary">Noch keine Exportprofile vorhanden. Lege zuerst die Default-Profile an.</td></tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card admin-card mb-4">
+    <div class="card-header">Exportläufe</div>
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Profil</th>
+                <th>Status</th>
+                <th>Ausgelöst durch</th>
+                <th>Datensätze gefunden</th>
+                <th>Datensätze exportiert</th>
+                <th>Fehler</th>
+                <th>Gestartet</th>
+                <th>Beendet</th>
+                <th>Watermark</th>
+                <th>Fehlermeldung</th>
+            </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($exportRuns ?? [] as $run): ?>
+                <tr>
+                    <td><?= (int) $run['id'] ?></td>
+                    <td><code><?= htmlspecialchars((string) ($run['profile_key'] ?? ''), ENT_QUOTES, 'UTF-8') ?></code></td>
+                    <td><?= htmlspecialchars((string) ($run['status'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                    <td><?= htmlspecialchars((string) ($run['triggered_by'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                    <td><?= (int) ($run['records_found'] ?? 0) ?></td>
+                    <td><?= (int) ($run['records_exported'] ?? 0) ?></td>
+                    <td><?= (int) ($run['error_count'] ?? 0) ?></td>
+                    <td><?= htmlspecialchars((string) ($run['started_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                    <td><?= htmlspecialchars((string) ($run['finished_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                    <td><?= htmlspecialchars((string) ($run['watermark_after'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                    <td><?= htmlspecialchars((string) ($run['error_message'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                </tr>
+            <?php endforeach; ?>
+            <?php if (($exportRuns ?? []) === []): ?>
+                <tr><td colspan="11" class="text-body-secondary">Noch keine Exportläufe vorhanden.</td></tr>
             <?php endif; ?>
             </tbody>
         </table>
