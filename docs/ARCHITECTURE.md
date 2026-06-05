@@ -1,75 +1,245 @@
-# Architektur — Luna V3
+# Luna V3 Architektur
 
-Dieses Dokument skizziert die geplante technische Laufzeit von Luna V3 als Integrations- und Mapping-Workbench. Es beschreibt die Architektur grob und legt noch keine konkreten Klassenverträge fest.
+## 1. Überblick
 
-## Laufzeitidee
+Luna ist die zentrale Integrations-Workbench und Serverkomponente.
 
-Ein Request erreicht den Public Front Controller unter `/public`. Dort wird der Composer-Autoloader geladen und die technische Bootstrap-Phase gestartet. Die Bootstrap-Phase lädt nur die Luna-Core-Konfiguration, zum Beispiel Umgebung, Debug-Modus, Systemdatenbank-Zugang und `APP_KEY`.
+Luna liest Quellsysteme, normalisiert Daten in Transfer-/Staging-Schichten, nimmt Webhooks entgegen, stellt geschützte Exporte bereit und kann später Zielsystemadapter betreiben.
 
-Externe Datenquellen werden nicht über `.env` konfiguriert. Sie werden später über die Admin UI angelegt, verschlüsselt in der Luna-Systemdatenbank gespeichert und über den Connection Manager genutzt.
+Für WooCommerce gilt:
 
-## Geplante Hauptbereiche
+- WooCommerce liefert Rohdaten über HPOS.
+- WooCommerce ruft Luna per Webhook auf.
+- Luna prüft Webhook-Signaturen.
+- Luna lädt betroffene Bestellungen aus HPOS nach.
+- Luna schreibt normalisierte Daten in die Luna-TransferDB/Staging-Schicht.
+- Luna stellt spätere Exporte aus dieser stabilisierten Schicht bereit.
 
-- Application Core für zentrale Laufzeit, Konfiguration und Service-Zugriff
-- Admin UI für Workspaces, Connections, Schema Explorer, Mappings, Jobs, Reports und Endpoints
-- Luna-Systemdatenbank für interne Metadaten und verschlüsselte Connection-Secrets
-- Connection Manager für externe Datenquellen
-- Schema Explorer für Tabellen, Spalten, Kommentare und Beispieldaten
-- Mapping Designer für Feldzuordnungen, Transformationsregeln und Value Mapping
-- Job Runner für Transfers und geplante Verarbeitung
-- Report Engine für Auswertungen und E-Mail-Versand
-- Endpoint Builder für einfache private API-Endpunkte
-- Audit Log für sicherheits- und fachrelevante Ereignisse
+Luna schreibt nicht in WooCommerce.
 
-## Grober Ablauf eines UI-Requests
+## 2. Schichtenmodell
 
-1. Public Front Controller wird aufgerufen.
-2. Composer-Autoloader wird geladen.
-3. Bootstrap lädt Luna-Core-Konfiguration aus `.env`.
-4. Application Core verarbeitet den HTTP-Request.
-5. Routing wählt Admin-, API- oder Systemaktion.
-6. Fachkomponente nutzt Systemdatenbank oder externe read-only Connection.
-7. Response wird zentral erzeugt und ausgegeben.
-8. Fehler und relevante Änderungen werden auditierbar protokolliert.
+### Source Layer
 
-## Grober Ablauf eines Jobs
+Der Source Layer beschreibt reale Quellsysteme.
 
-1. Job Runner erhält einen manuellen oder geplanten Auftrag.
-2. Mapping- und Connection-Metadaten werden aus der Luna-Systemdatenbank geladen.
-3. Benötigte Secrets werden nur im Arbeitsspeicher entschlüsselt.
-4. Quellverbindungen werden standardmäßig read-only genutzt.
-5. Daten werden transformiert und in eine Transferdatenbank geschrieben.
-6. Laufstatus, Fehler und Statistiken werden protokolliert.
-7. Optional erzeugt die Report Engine einen E-Mail-Report.
+Beispiele:
 
-## Layer-Modell ab 1.8.0
+- WooCommerce HPOS
+- Pimcore-Datenbank
+- Lagerdatenbank
+- externe APIs
 
-Nach dem stabilen Export von `isr_prices_v2` wird Luna nicht direkt um Zielsystem-Adapter erweitert. Die nächsten Schichten werden getrennt geplant:
+Quellsysteme liefern Rohdaten. Sie kennen keine Luna-Zielstruktur.
+
+### Ingestion Layer
+
+Der Ingestion Layer ist der Eingang von außen nach Luna.
+
+Bei WooCommerce bedeutet das:
 
 ```text
-Connections liefern Rohdaten.
-Mappings erzeugen Datasets.
-Endpoints veröffentlichen Datasets.
-Transfers konsumieren Datasets.
-Writers schreiben Transfer-Pläne.
-Jobs führen Transfers nachvollziehbar aus.
+WooCommerce Webhook
+  -> Luna Webhook Endpoint
+  -> Signaturprüfung
+  -> Event Log
+  -> Transfer Queue
 ```
 
-Ein Endpoint ist dabei kein Transfer. Er veröffentlicht ein geprüftes Dataset als JSON und schreibt nicht in Zielsysteme.
+Ingestion erzeugt keine fachlichen Zielobjekte direkt. Sie erzeugt verifizierte Ereignisse und Queue-Einträge.
 
-Ein Transfer konsumiert ein Dataset und erzeugt daraus einen nachvollziehbaren Transfer Plan. Erst ein Writer schreibt diesen Plan in ein Zielsystem.
+### TransferDB / Staging Layer
 
-Die konkrete Versionsplanung steht in `ROADMAP.md`:
+Die TransferDB/Staging-Schicht ist die Luna-interne stabilisierte Datenhaltung.
 
-- `1.8.0` — Dataset Sources
-- `1.9.0` — Transfer Layer v1: Single Target Table
-- `2.0.0` — Transfer Layer v2: Parent/Child
-- `2.1.0` — Transferbetrieb
-- `2.2.0` — Zielsystem-Adapter
+Hier landen normalisierte WooCommerce-Daten, zum Beispiel:
 
-## Architekturgrenzen
+- Order Header
+- Order Addresses
+- Order Items
+- Order Meta Raw
+- Order Item Meta Raw
 
-- Luna V3 verwaltet keine externen Datenbanken wie ein phpMyAdmin-Ersatz.
-- Die Workbench soll Integrationsflüsse beschreiben und ausführen, nicht beliebige Anwendungen generieren.
-- Secrets dürfen nicht in Logs, Reports oder Fehlermeldungen erscheinen.
-- API-Endpunkte bleiben einfache Integrationsschnittstellen und ersetzen keine vollständige API-Plattform.
+Diese Schicht ist die Quelle für Export und spätere Zielsystemadapter.
+
+### Transfer Operations Layer
+
+Der Transferbetrieb steuert Queue, Runner, Retry, Fehler und Historie.
+
+Er beantwortet:
+
+- Welche Queue-Einträge sind offen?
+- Welche Läufe waren erfolgreich?
+- Welche Order ist fehlgeschlagen?
+- Kann ein Lauf idempotent wiederholt werden?
+
+Transferbetrieb ist nicht der Export-Layer.
+
+### Export Layer
+
+Der Export Layer stellt Daten aus Luna heraus bereit.
+
+```text
+Luna TransferDB/Staging
+  -> geschützter Luna Export Endpoint
+  -> externer Verbraucher
+```
+
+Export liest nicht direkt aus WooCommerce. Export schreibt nicht nach WooCommerce. Export ist Luna -> extern.
+
+### Target Adapter Layer
+
+Zielsystemadapter schreiben später aktiv in externe Systeme.
+
+Beispiele:
+
+- TransferDB/Export -> Afterbuy
+- TransferDB/Export -> weitere Systeme
+- später API-Writer
+
+Zielsystemadapter sind nicht Teil des Exports. Sie bauen auf stabiler Ingestion, TransferDB, Transferbetrieb und Export-Schicht auf.
+
+### Optional Helper Plugin Layer
+
+Ein optionales WooCommerce Helper Plugin darf später nur Konfiguration und Bedienung erleichtern.
+
+Erlaubt:
+
+- Delivery URL anzeigen
+- Secret-Feld verwalten
+- Webhook-Anlage im Shop erleichtern
+- Status anzeigen
+
+Nicht erlaubt:
+
+- eigene Luna-TransferDB im Shop speichern
+- lokale Kopie aller Luna-Transferdaten im Plugin
+- fachliche Verarbeitung im Shop, die nach Luna gehört
+
+Das Plugin ist ein optionaler Konfigurationshelfer. Die zentrale Integration bleibt Luna.
+
+## 3. WooCommerce-Architektur
+
+### Initialimport
+
+```text
+WooCommerce HPOS
+  -> Luna Initialimport
+  -> Luna TransferDB/Staging
+```
+
+Der Initialimport liest aus HPOS und schreibt in Luna-Staging-Tabellen. WooCommerce wird nicht beschrieben.
+
+### Laufende Änderungen
+
+```text
+WooCommerce Webhook
+  -> Luna Webhook Endpoint
+  -> Signaturprüfung
+  -> Event Log
+  -> Transfer Queue
+  -> HPOS-Nachladen
+  -> TransferDB/Staging
+```
+
+WooCommerce-Webhooks zeigen auf Luna. Nach gültiger Signatur schreibt Luna ein Event und einen Queue-Eintrag. Der Runner liest anschließend die betroffene Bestellung frisch aus HPOS.
+
+### Export
+
+```text
+Luna Export Endpoint
+  -> liest TransferDB/Staging
+  -> liefert geschütztes JSON an externe Verbraucher
+```
+
+Export-Endpunkte gehören zu Luna. Sie sind keine WooCommerce-Webhooks und keine Zielsystemadapter.
+
+## 4. Was nicht passiert
+
+- Luna schreibt nicht in WooCommerce.
+- Export liest nicht direkt aus WooCommerce.
+- Webhook ist kein Export.
+- Export ist kein Webhook.
+- Zielsystemadapter sind nicht Teil des Exports.
+- Ein optionales WP-Plugin darf keine eigene TransferDB im Shop speichern.
+- Es entsteht kein WP-Plugin, das lokal im Shop eigene Luna-Transferdaten speichert.
+- Legacy `wp_posts`/`wp_postmeta` ist keine produktive WooCommerce-Order-Quelle für Luna.
+
+## 5. Begriffsdefinitionen
+
+### Webhook / Ingestion
+
+WooCommerce ruft einen Luna-Serverendpunkt auf. Luna prüft Secret/HMAC, speichert ein Event und erzeugt einen Queue-Eintrag.
+
+### TransferDB / Staging
+
+Luna-interne stabilisierte Datenhaltung. Sie enthält normalisierte Daten aus Quellen wie WooCommerce HPOS.
+
+### Transfer Queue
+
+Warteschlange für konkrete Nachlade- oder Importaufträge. Ein Webhook erzeugt nur Queue-Arbeit, keine Zielobjekte.
+
+### Transfer Run
+
+Protokoll eines ausgeführten Queue-/Importlaufs mit Status, Zählern, Fehlern und Zeiten.
+
+### Transferbetrieb
+
+Betriebssteuerung für Queue, Runner, Retry, Fehler, Historie und Monitoring.
+
+### Export Profile
+
+Konfiguration, welche Staging-Daten in welchem Format und mit welcher Authentifizierung exportiert werden dürfen.
+
+### Export Endpoint
+
+Geschützter Luna-Endpunkt, der Daten aus TransferDB/Staging als JSON bereitstellt.
+
+### Target Adapter
+
+Spätere Schicht, die Daten aktiv in externe Zielsysteme schreibt.
+
+### Optional Helper Plugin
+
+Optionales WooCommerce-Plugin zur Konfigurationserleichterung. Es ersetzt Luna nicht und speichert keine Luna-TransferDB im Shop.
+
+## 6. Sicherheitsmodell
+
+- WooCommerce-Webhooks werden per Secret/HMAC geprüft.
+- Export-Endpunkte werden per Token/HMAC geschützt.
+- Secrets werden nicht im Klartext angezeigt.
+- Secrets werden nicht geloggt.
+- Öffentliche Endpunkte dürfen nie ungeschützt sein.
+- Unsignierte Webhooks erzeugen keine Transferjobs.
+- Export-Endpunkte liefern keine Stacktraces und keine lokalen Pfade.
+- WooCommerce-Connections werden für den Import read-only behandelt.
+
+## 7. Versionierte Architekturentscheidungen
+
+### v2.0.0: WooCommerce HPOS Integration
+
+WooCommerce `>= 10.7.0`, HPOS authoritative, Initialimport, Staging-Tabellen, Queue, Runner, Transfer Runs und Webhook-Grundlage.
+
+### v2.1.0: Roadmap/Architecture Reset
+
+Roadmap und Architektur werden bereinigt. Ingestion, TransferDB, Transferbetrieb, Export und Zielsystemadapter werden fachlich getrennt.
+
+### v2.2.0: Ingestion Runtime
+
+WooCommerce -> Luna Webhook-Eingang wird betriebssicher gemacht.
+
+### v2.3.0: Transferbetrieb
+
+Queue, Runner, Retry, Fehler je Order, Historie und Monitoring werden robust betrieben.
+
+### v2.4.0: Export Layer
+
+Luna stellt stabilisierte Daten aus TransferDB/Staging über geschützte Export-Endpunkte bereit.
+
+### v2.5.0: Zielsystem-Adapter
+
+Externe Zielsysteme werden auf Basis stabiler TransferDB-/Export-Schichten angebunden.
+
+### v2.6.0: Optionales WooCommerce Helper Plugin
+
+Optionaler Konfigurationshelfer für WooCommerce. Keine eigene Transferdatenhaltung im Shop.
