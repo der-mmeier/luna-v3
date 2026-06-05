@@ -8,6 +8,8 @@ use Luna\Connections\ExternalDatabaseConfig;
 use Luna\Connections\ExternalPdoConnectionFactory;
 use Luna\Core\Application;
 use Luna\Dataset\DatasetRegistry;
+use Luna\Deployment\DeploymentTargetUrlBuilder;
+use Luna\Export\EndpointExportContractService;
 use Luna\Export\EndpointExportArchiveService;
 use Luna\Export\EndpointRuntimeExporter;
 use Luna\Http\Request;
@@ -20,6 +22,7 @@ use Luna\Reports\ReportMailer;
 use Luna\Repository\AuditLogRepository;
 use Luna\Repository\ConnectionProfileRepository;
 use Luna\Repository\DatasetTransferRepository;
+use Luna\Repository\DeploymentTargetRepository;
 use Luna\Repository\EndpointRepository;
 use Luna\Repository\JobRepository;
 use Luna\Repository\JobRunRepository;
@@ -47,6 +50,88 @@ if (! function_exists('safeList')) {
         } catch (Throwable) {
             return [];
         }
+    }
+}
+
+if (! function_exists('deploymentTargetValues')) {
+    function deploymentTargetValues(Request $request): array
+    {
+        return [
+            'workspace_id' => $request->post('workspace_id'),
+            'name' => (string) $request->post('name', ''),
+            'environment' => (string) $request->post('environment', 'custom'),
+            'public_base_url' => (string) $request->post('public_base_url', ''),
+            'endpoint_base_url' => (string) $request->post('endpoint_base_url', ''),
+            'webhook_base_url' => (string) $request->post('webhook_base_url', ''),
+            'license_server_url' => (string) $request->post('license_server_url', ''),
+            'is_default' => $request->post('is_default') !== null ? '1' : '',
+            'is_active' => $request->post('is_active') !== null ? '1' : '',
+            'origin' => (string) $request->post('origin', 'customer_created'),
+            'support_status' => (string) $request->post('support_status', 'unverified'),
+            'module_key' => (string) $request->post('module_key', ''),
+            'requires_entitlement' => $request->post('requires_entitlement') !== null ? '1' : '',
+        ];
+    }
+}
+
+if (! function_exists('deploymentTargetErrors')) {
+    function deploymentTargetErrors(array $values, DeploymentTargetUrlBuilder $urlBuilder): array
+    {
+        $errors = [];
+        if (trim((string) ($values['name'] ?? '')) === '') {
+            $errors[] = 'Name ist erforderlich.';
+        }
+        if (! in_array((string) ($values['environment'] ?? ''), ['local', 'staging', 'production', 'custom'], true)) {
+            $errors[] = 'Environment ist ungültig.';
+        }
+
+        foreach (['public_base_url', 'endpoint_base_url', 'webhook_base_url', 'license_server_url'] as $field) {
+            $value = trim((string) ($values[$field] ?? ''));
+            if ($field === 'public_base_url' || $value !== '') {
+                try {
+                    $urlBuilder->normalizeBaseUrl($value);
+                } catch (Throwable $exception) {
+                    $errors[] = match ($field) {
+                        'public_base_url' => 'Public Base URL: ' . $exception->getMessage(),
+                        'endpoint_base_url' => 'Endpoint Base URL: ' . $exception->getMessage(),
+                        'webhook_base_url' => 'Webhook Base URL: ' . $exception->getMessage(),
+                        default => 'License Server URL: ' . $exception->getMessage(),
+                    };
+                }
+            }
+        }
+
+        return $errors;
+    }
+}
+
+if (! function_exists('currentEndpointUrl')) {
+    function currentEndpointUrl(Request $request, DeploymentTargetUrlBuilder $urlBuilder, string $endpointKey): string
+    {
+        $https = (string) $request->server('HTTPS', '');
+        $scheme = $https !== '' && strtolower($https) !== 'off' ? 'https' : (string) $request->server('REQUEST_SCHEME', 'http');
+        $host = (string) $request->server('HTTP_HOST', $request->server('SERVER_NAME', 'localhost'));
+        $scriptName = (string) $request->server('SCRIPT_NAME', '');
+
+        return $urlBuilder->currentRequestBaseUrl($scheme, $host, $scriptName) . $urlBuilder->endpointPath($endpointKey);
+    }
+}
+
+if (! function_exists('endpointTargetRows')) {
+    function endpointTargetRows(?array $endpoint, DeploymentTargetRepository $deploymentTargets, DeploymentTargetUrlBuilder $urlBuilder): array
+    {
+        if ($endpoint === null) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($deploymentTargets->activeForWorkspace(empty($endpoint['workspace_id']) ? null : (int) $endpoint['workspace_id']) as $target) {
+            $rows[] = $target + [
+                'endpoint_url' => $urlBuilder->endpointUrl($target, (string) $endpoint['endpoint_key']),
+            ];
+        }
+
+        return $rows;
     }
 }
 
@@ -1149,7 +1234,10 @@ return static function (RouteCollection $routes, Application $app): void {
     $datasetTransfers = static fn (): DatasetTransferRepository => $app->services()->get(DatasetTransferRepository::class);
     $datasetTransferRunner = static fn (): DatasetTransferRunner => $app->services()->get(DatasetTransferRunner::class);
     $endpointExporter = static fn (): EndpointRuntimeExporter => $app->services()->get(EndpointRuntimeExporter::class);
+    $endpointContractExporter = static fn (): EndpointExportContractService => $app->services()->get(EndpointExportContractService::class);
     $endpointArchive = static fn (): EndpointExportArchiveService => $app->services()->get(EndpointExportArchiveService::class);
+    $deploymentTargets = static fn (): DeploymentTargetRepository => $app->services()->get(DeploymentTargetRepository::class);
+    $targetUrlBuilder = static fn (): DeploymentTargetUrlBuilder => $app->services()->get(DeploymentTargetUrlBuilder::class);
     $sourceRows = static fn (): MappingSourceRowProvider => $app->services()->get(MappingSourceRowProvider::class);
     $jobRunner = static fn (): JobRunner => $app->services()->get('jobs.runner');
     $reportMailer = static fn (): ReportMailer => $app->services()->get('reports.mailer');
@@ -2718,6 +2806,123 @@ return static function (RouteCollection $routes, Application $app): void {
         return $admin('admin/reports/show', ['title' => 'Report', 'active' => 'reports', 'report' => $reports()->find($id), 'result' => $result]);
     }, 'admin.reports.send', 'web');
 
+    $routes->get('/admin/deployment-targets', static fn (): Response => $admin('admin/deployment-targets/index', [
+        'title' => 'Deployment Targets',
+        'active' => 'deployment-targets',
+        'targets' => safeList($deploymentTargets),
+        'alert' => null,
+    ]), 'admin.deployment_targets', 'web');
+
+    $routes->get('/admin/deployment-targets/create', static fn (): Response => $admin('admin/deployment-targets/create', [
+        'title' => 'Deployment Target anlegen',
+        'active' => 'deployment-targets',
+        'workspaces' => safeList($workspaces),
+        'values' => ['environment' => 'production', 'origin' => 'customer_created', 'support_status' => 'unverified', 'is_active' => '1'],
+        'errors' => [],
+    ]), 'admin.deployment_targets.create', 'web');
+
+    $routes->post('/admin/deployment-targets', static function (Request $request) use ($admin, $deploymentTargets, $targetUrlBuilder, $workspaces): Response {
+        $values = deploymentTargetValues($request);
+        $errors = deploymentTargetErrors($values, $targetUrlBuilder());
+        if ($errors !== []) {
+            return $admin('admin/deployment-targets/create', [
+                'title' => 'Deployment Target anlegen',
+                'active' => 'deployment-targets',
+                'workspaces' => safeList($workspaces),
+                'values' => $values,
+                'errors' => $errors,
+            ]);
+        }
+
+        try {
+            $id = $deploymentTargets()->create($values);
+        } catch (Throwable $exception) {
+            return $admin('admin/deployment-targets/create', [
+                'title' => 'Deployment Target anlegen',
+                'active' => 'deployment-targets',
+                'workspaces' => safeList($workspaces),
+                'values' => $values,
+                'errors' => [$exception->getMessage()],
+            ]);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/deployment-targets/' . $id . '/edit']);
+    }, 'admin.deployment_targets.store', 'web');
+
+    $routes->get('/admin/deployment-targets/{id}/edit', static function (Request $request) use ($admin, $deploymentTargets, $workspaces): Response {
+        $target = $deploymentTargets()->find((int) $request->route('id'));
+        if ($target === null) {
+            return Response::notFound();
+        }
+
+        return $admin('admin/deployment-targets/edit', [
+            'title' => 'Deployment Target bearbeiten',
+            'active' => 'deployment-targets',
+            'workspaces' => safeList($workspaces),
+            'target' => $target,
+            'values' => $target,
+            'errors' => [],
+        ]);
+    }, 'admin.deployment_targets.edit', 'web');
+
+    $routes->post('/admin/deployment-targets/{id}', static function (Request $request) use ($admin, $deploymentTargets, $targetUrlBuilder, $workspaces): Response {
+        $id = (int) $request->route('id');
+        $target = $deploymentTargets()->find($id);
+        if ($target === null) {
+            return Response::notFound();
+        }
+
+        $values = deploymentTargetValues($request);
+        $errors = deploymentTargetErrors($values, $targetUrlBuilder());
+        if ($errors !== []) {
+            return $admin('admin/deployment-targets/edit', [
+                'title' => 'Deployment Target bearbeiten',
+                'active' => 'deployment-targets',
+                'workspaces' => safeList($workspaces),
+                'target' => $target,
+                'values' => $values + ['id' => $id],
+                'errors' => $errors,
+            ]);
+        }
+
+        try {
+            $deploymentTargets()->update($id, $values);
+        } catch (Throwable $exception) {
+            return $admin('admin/deployment-targets/edit', [
+                'title' => 'Deployment Target bearbeiten',
+                'active' => 'deployment-targets',
+                'workspaces' => safeList($workspaces),
+                'target' => $target,
+                'values' => $values + ['id' => $id],
+                'errors' => [$exception->getMessage()],
+            ]);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/deployment-targets']);
+    }, 'admin.deployment_targets.update', 'web');
+
+    $routes->post('/admin/deployment-targets/{id}/default', static function (Request $request) use ($deploymentTargets): Response {
+        $deploymentTargets()->setDefault((int) $request->route('id'));
+
+        return new Response('', 302, ['Location' => '/admin/deployment-targets']);
+    }, 'admin.deployment_targets.default', 'web');
+
+    $routes->post('/admin/deployment-targets/{id}/toggle', static function (Request $request) use ($deploymentTargets): Response {
+        $id = (int) $request->route('id');
+        $target = $deploymentTargets()->find($id);
+        if ($target !== null) {
+            $deploymentTargets()->setActive($id, empty($target['is_active']));
+        }
+
+        return new Response('', 302, ['Location' => '/admin/deployment-targets']);
+    }, 'admin.deployment_targets.toggle', 'web');
+
+    $routes->post('/admin/deployment-targets/{id}/delete', static function (Request $request) use ($deploymentTargets): Response {
+        $deploymentTargets()->delete((int) $request->route('id'));
+
+        return new Response('', 302, ['Location' => '/admin/deployment-targets']);
+    }, 'admin.deployment_targets.delete', 'web');
+
     $routes->get('/admin/endpoints', static fn (): Response => $admin('admin/endpoints/index', [
         'title' => 'Endpoints',
         'active' => 'endpoints',
@@ -2760,10 +2965,11 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/endpoints/' . $id]);
     }, 'admin.endpoints.store', 'web');
 
-    $routes->get('/admin/endpoints/{id}', static function (Request $request) use ($admin, $endpoints, $endpointExporter, $workspaces, $mappings, $connections, $jobs): Response {
+    $routes->get('/admin/endpoints/{id}', static function (Request $request) use ($admin, $endpoints, $endpointExporter, $deploymentTargets, $targetUrlBuilder, $workspaces, $mappings, $connections, $jobs): Response {
         $id = (int) $request->route('id');
         $endpoint = $endpoints()->find($id);
         $config = $endpoint === null ? [] : (json_decode((string) ($endpoint['config_json'] ?? '{}'), true) ?: []);
+        $currentUrl = $endpoint === null ? null : currentEndpointUrl($request, $targetUrlBuilder(), (string) $endpoint['endpoint_key']);
 
         return $admin('admin/endpoints/show', [
             'title' => 'Endpoint',
@@ -2775,6 +2981,9 @@ return static function (RouteCollection $routes, Application $app): void {
             'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
             'hasSecret' => $endpoint !== null && $endpoints()->hasSecret((int) $endpoint['id']),
             'exportStatus' => $endpoint !== null ? $endpointExporter()->exportStatusForEndpoint((int) $endpoint['id']) : null,
+            'contractTargets' => $endpoint === null ? [] : endpointTargetRows($endpoint, $deploymentTargets(), $targetUrlBuilder()),
+            'currentEndpointUrl' => $currentUrl,
+            'contractExportStatus' => null,
             'mappingSummary' => endpointMappingSummary($endpoint, $mappings, $connections),
             'alert' => null,
         ]);
@@ -2871,6 +3080,43 @@ return static function (RouteCollection $routes, Application $app): void {
             ]);
         }
     }, 'admin.endpoints.export', 'web');
+
+    $routes->post('/admin/endpoints/{id}/contract-export', static function (Request $request) use ($admin, $endpoints, $endpointContractExporter, $deploymentTargets, $targetUrlBuilder, $endpointExporter, $workspaces, $mappings, $connections, $jobs): Response {
+        $id = (int) $request->route('id');
+        $endpoint = $endpoints()->find($id);
+        if ($endpoint === null) {
+            return Response::notFound();
+        }
+
+        $environment = trim((string) $request->post('target_environment', '')) ?: null;
+        try {
+            $manifest = $endpointContractExporter()->exportEndpoint($id, $environment);
+            $alert = ['type' => 'success', 'message' => 'Exportpaket wurde erzeugt: ' . (string) ($manifest['target_path'] ?? '')];
+            $contractExportStatus = $manifest;
+        } catch (Throwable $exception) {
+            $alert = ['type' => 'danger', 'message' => $exception->getMessage()];
+            $contractExportStatus = null;
+        }
+
+        $config = json_decode((string) ($endpoint['config_json'] ?? '{}'), true) ?: [];
+
+        return $admin('admin/endpoints/show', [
+            'title' => 'Endpoint',
+            'active' => 'endpoints',
+            'endpoint' => $endpoint,
+            'workspaces' => safeList($workspaces),
+            'mappings' => safeList($mappings),
+            'jobs' => safeList($jobs),
+            'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
+            'hasSecret' => $endpoints()->hasSecret($id),
+            'exportStatus' => $endpointExporter()->exportStatusForEndpoint($id),
+            'contractTargets' => endpointTargetRows($endpoint, $deploymentTargets(), $targetUrlBuilder()),
+            'currentEndpointUrl' => currentEndpointUrl($request, $targetUrlBuilder(), (string) $endpoint['endpoint_key']),
+            'contractExportStatus' => $contractExportStatus,
+            'mappingSummary' => endpointMappingSummary($endpoint, $mappings, $connections),
+            'alert' => $alert,
+        ]);
+    }, 'admin.endpoints.contract_export', 'web');
 
     $routes->get('/admin/endpoints/{id}/export/download', static function (Request $request) use ($endpoints, $endpointExporter): Response {
         $id = (int) $request->route('id');

@@ -3,6 +3,9 @@
 /** @var bool $hasSecret */
 /** @var string $staticResponse */
 /** @var array<string, mixed>|null $exportStatus */
+/** @var array<string, mixed>|null $contractExportStatus */
+/** @var list<array<string, mixed>> $contractTargets */
+/** @var string|null $currentEndpointUrl */
 /** @var array<string, mixed> $mappingSummary */
 /** @var array<string, string>|null $alert */
 ?>
@@ -18,13 +21,24 @@
             <h1 class="h3 mb-1"><?= htmlspecialchars((string) $endpoint['name'], ENT_QUOTES, 'UTF-8') ?></h1>
             <p class="text-body-secondary mb-0"><code>/api/endpoints/<?= htmlspecialchars((string) $endpoint['endpoint_key'], ENT_QUOTES, 'UTF-8') ?></code></p>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex flex-wrap gap-2">
             <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>/export">
                 <div class="form-check mb-1">
                     <input class="form-check-input" type="checkbox" name="local_env" value="1" id="local_env_export">
                     <label class="form-check-label small" for="local_env_export">Lokale Test-.env schreiben</label>
                 </div>
                 <button class="btn btn-outline-success" type="submit">Runtime exportieren</button>
+            </form>
+            <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>/contract-export">
+                <select class="form-select form-select-sm mb-1" name="target_environment" aria-label="Deployment Target für Exportpaket">
+                    <option value="">Ohne Target</option>
+                    <?php foreach (($contractTargets ?? []) as $target): ?>
+                        <option value="<?= htmlspecialchars((string) $target['environment'], ENT_QUOTES, 'UTF-8') ?>">
+                            <?= htmlspecialchars((string) $target['environment'] . ' - ' . (string) $target['name'], ENT_QUOTES, 'UTF-8') ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <button class="btn btn-outline-info" type="submit">Exportpaket erzeugen</button>
             </form>
             <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>/test">
                 <button class="btn btn-outline-primary" type="submit">Preview ausführen</button>
@@ -42,6 +56,55 @@
         <div class="col-md-3"><div class="card admin-card"><div class="card-body"><div class="small text-body-secondary">Methode</div><strong><?= htmlspecialchars((string) $endpoint['method'], ENT_QUOTES, 'UTF-8') ?></strong></div></div></div>
         <div class="col-md-3"><div class="card admin-card"><div class="card-body"><div class="small text-body-secondary">Secret</div><strong><?= $hasSecret ? 'gesetzt' : 'nicht gesetzt' ?></strong></div></div></div>
     </div>
+
+    <div class="card admin-card mb-4">
+        <div class="card-header">Endpoint-URLs und Deployment Targets</div>
+        <div class="card-body">
+            <p class="text-body-secondary">Die aktuelle URL basiert auf dem laufenden Request. Für produktive Dokumentation und Exporte sollten Deployment Targets gepflegt werden.</p>
+            <div class="mb-3">
+                <div class="small text-body-secondary">Aktuelle URL</div>
+                <code class="luna-breakable"><?= htmlspecialchars((string) ($currentEndpointUrl ?? ('/api/endpoints/' . (string) $endpoint['endpoint_key'])), ENT_QUOTES, 'UTF-8') ?></code>
+            </div>
+
+            <?php if (($contractTargets ?? []) === []): ?>
+                <div class="alert alert-secondary mb-0">Kein Deployment Target konfiguriert.</div>
+            <?php else: ?>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0">
+                        <thead>
+                        <tr>
+                            <th>Target</th>
+                            <th>Environment</th>
+                            <th>Endpoint-URL</th>
+                            <th>Default</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ($contractTargets as $target): ?>
+                            <tr>
+                                <td><?= htmlspecialchars((string) $target['name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td><code><?= htmlspecialchars((string) $target['environment'], ENT_QUOTES, 'UTF-8') ?></code></td>
+                                <td><code class="luna-breakable"><?= htmlspecialchars((string) $target['endpoint_url'], ENT_QUOTES, 'UTF-8') ?></code></td>
+                                <td><?= ! empty($target['is_default']) ? 'ja' : 'nein' ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <?php if (($contractExportStatus ?? null) !== null): ?>
+        <div class="card admin-card mb-4">
+            <div class="card-header">Letztes Exportpaket</div>
+            <div class="card-body">
+                <div class="small text-body-secondary">Exportpfad</div>
+                <code class="luna-breakable"><?= htmlspecialchars((string) ($contractExportStatus['target_path'] ?? ''), ENT_QUOTES, 'UTF-8') ?></code>
+                <div class="form-text">Das Exportpaket enthält keine Zugangsdaten. Connections werden nur als Referenzen exportiert.</div>
+            </div>
+        </div>
+    <?php endif; ?>
 
     <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>" class="card admin-card mb-4">
         <div class="card-body">

@@ -52,6 +52,11 @@ body {
     max-width: 1320px;
 }
 
+.luna-breakable {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
 /* Navigation */
 .luna-navbar {
     background: rgba(5, 7, 10, 0.9);
