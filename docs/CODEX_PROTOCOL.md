@@ -946,3 +946,52 @@ Keine. Deployment auf Zielsystem und echte Produktivdaten-Gegenpruefung bleiben 
 ### Commit-Hash
 
 Noch nicht committed.
+
+---
+
+## 2026-06-06 - v2.4.0 Trigger Layer
+
+### Ziel
+
+Bestehende Prozesse aus v2.3.0 über definierte Trigger starten, verwalten und nachvollziehbar protokollieren, ohne Fachlogik in Trigger zu verschieben.
+
+### Geänderte Dateien
+
+- database/migrations/2026_06_06_000017_create_process_triggers.sql
+- src/Core/Application.php
+- src/Process/ProcessRunner.php
+- src/Process/ProcessTriggerException.php
+- src/Process/ProcessTriggerRunner.php
+- src/Process/ProcessTriggerService.php
+- src/Process/TriggerConfigValidator.php
+- src/Process/TriggerUrlBuilder.php
+- src/Repository/ProcessRepository.php
+- src/Repository/ProcessRunRepository.php
+- src/Repository/ProcessTriggerRepository.php
+- routes/api.php
+- routes/web.php
+- bin/luna
+- resources/views/admin/processes/index.php
+- resources/views/admin/processes/show.php
+- resources/views/admin/processes/run.php
+- tests/Unit/ProcessRuntimeTest.php
+- tests/Unit/ProcessTriggerLayerTest.php
+- CHANGELOG.md
+- docs/ROADMAP.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+`luna_process_triggers` speichert Prozess-Trigger mit Typ, Key, Aktiv-Status, JSON-Konfiguration, Secret-Hash und letztem Start. Prozessläufe speichern `trigger_id`, `trigger_source` und sichere Request-Metadaten ohne Authorization-Header, Cookies oder vollständige Payloads. Die Admin-UI verwaltet Trigger pro Prozess, zeigt CLI-/API-/Webhook-URLs über Deployment Targets und erlaubt manuelle Ausführung für sinnvolle Trigger. API- und Webhook-Routen lösen generisch Prozesse aus und enthalten keine WooCommerce-Fachverarbeitung. `process:run <process-id>` bleibt kompatibel und unterstützt zusätzlich `--trigger=<trigger-id-or-key>`; `trigger:list` und `trigger:run` wurden ergänzt.
+
+### Offene Punkte
+
+Produktive Scheduler-/Cron-Runtime und fachliche WooCommerce-/Afterbuy-/ERP-Adapter bleiben bewusst spätere Meilensteine.
+
+### Commit-Hash
+
+Noch nicht committed.
+
+### Abschlussprüfung
+
+UI-Umlautprüfung: durchgeführt

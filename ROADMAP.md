@@ -1,7 +1,10 @@
-# Luna V3 Roadmap
+﻿# Luna V3 Roadmap
 
 Die zentrale Roadmap ist in [`docs/ROADMAP.md`](docs/ROADMAP.md) dokumentiert.
 
 Die zentrale Architektur- und Schichtdefinition ist in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) dokumentiert.
 
-Diese Root-Datei bleibt bewusst kurz, damit keine widersprüchlichen aktiven Roadmaps im Repository entstehen.
+Diese Root-Datei bleibt bewusst kurz, damit keine widersprÃ¼chlichen aktiven Roadmaps im Repository entstehen.
+
+Aktueller Stand: `v2.4.0 - Trigger Layer` ist abgeschlossen. Nächster Meilenstein ist `v2.5.0 - Adapter / Target Actions Foundation`.
+

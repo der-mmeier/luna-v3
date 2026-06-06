@@ -20,6 +20,7 @@ final class ProcessRepository
         $statement = $this->pdo()->query(
             'SELECT p.*, w.name AS workspace_name,
                     (SELECT COUNT(*) FROM luna_process_steps ps WHERE ps.process_id = p.id) AS step_count,
+                    (SELECT COUNT(*) FROM luna_process_triggers pt WHERE pt.process_id = p.id) AS trigger_count,
                     (SELECT pr.status FROM luna_process_runs pr WHERE pr.process_id = p.id ORDER BY pr.created_at DESC, pr.id DESC LIMIT 1) AS last_run_status
              FROM luna_processes p
              INNER JOIN luna_workspaces w ON w.id = p.workspace_id
@@ -83,6 +84,8 @@ final class ProcessRepository
             $statement = $pdo->prepare('DELETE FROM luna_process_run_logs WHERE process_run_id IN (SELECT id FROM luna_process_runs WHERE process_id = :id)');
             $statement->execute(['id' => $id]);
             $statement = $pdo->prepare('DELETE FROM luna_process_runs WHERE process_id = :id');
+            $statement->execute(['id' => $id]);
+            $statement = $pdo->prepare('DELETE FROM luna_process_triggers WHERE process_id = :id');
             $statement->execute(['id' => $id]);
             $statement = $pdo->prepare('DELETE FROM luna_process_steps WHERE process_id = :id');
             $statement->execute(['id' => $id]);

@@ -20,6 +20,10 @@ use Luna\Mapping\LookupKeyTemplateRenderer;
 use Luna\Mapping\MappingValidator;
 use Luna\Mapping\TransformType;
 use Luna\Process\ProcessRunner;
+use Luna\Process\ProcessTriggerException;
+use Luna\Process\ProcessTriggerRunner;
+use Luna\Process\ProcessTriggerService;
+use Luna\Process\TriggerUrlBuilder;
 use Luna\Reports\ReportMailer;
 use Luna\Repository\AuditLogRepository;
 use Luna\Repository\ConnectionProfileRepository;
@@ -32,6 +36,7 @@ use Luna\Repository\JobRunRepository;
 use Luna\Repository\MappingRepository;
 use Luna\Repository\ProcessRepository;
 use Luna\Repository\ProcessRunRepository;
+use Luna\Repository\ProcessTriggerRepository;
 use Luna\Repository\ReportRepository;
 use Luna\Repository\SchemaMetadataRepository;
 use Luna\Repository\WorkspaceRepository;
@@ -1360,6 +1365,9 @@ return static function (RouteCollection $routes, Application $app): void {
     $runs = static fn (): JobRunRepository => $app->services()->get('repository.job_runs');
     $processes = static fn (): ProcessRepository => $app->services()->get(ProcessRepository::class);
     $processRuns = static fn (): ProcessRunRepository => $app->services()->get(ProcessRunRepository::class);
+    $processTriggers = static fn (): ProcessTriggerRepository => $app->services()->get(ProcessTriggerRepository::class);
+    $processTriggerService = static fn (): ProcessTriggerService => $app->services()->get(ProcessTriggerService::class);
+    $processTriggerRunner = static fn (): ProcessTriggerRunner => $app->services()->get(ProcessTriggerRunner::class);
     $reports = static fn (): ReportRepository => $app->services()->get('repository.reports');
     $endpoints = static fn (): EndpointRepository => $app->services()->get('repository.endpoints');
     $woocommerce = static fn (): WooCommerceIntegrationRepository => $app->services()->get(WooCommerceIntegrationRepository::class);
@@ -1379,11 +1387,49 @@ return static function (RouteCollection $routes, Application $app): void {
     $sourceRows = static fn (): MappingSourceRowProvider => $app->services()->get(MappingSourceRowProvider::class);
     $jobRunner = static fn (): JobRunner => $app->services()->get('jobs.runner');
     $processRunner = static fn (): ProcessRunner => $app->services()->get(ProcessRunner::class);
+    $triggerUrlBuilder = static fn (): TriggerUrlBuilder => $app->services()->get(TriggerUrlBuilder::class);
     $reportMailer = static fn (): ReportMailer => $app->services()->get('reports.mailer');
     $validator = static fn (): MappingValidator => $app->services()->get('mapping.validator');
     $pdoFactory = static fn (): ExternalPdoConnectionFactory => $app->services()->get('connections.pdo_factory');
     $configFor = static function (array $profile) use ($connections): ExternalDatabaseConfig {
         return ExternalDatabaseConfig::fromProfile($profile, $connections()->secretsFor((int) $profile['id']));
+    };
+
+    $processShowData = static function (array $process, array $extra = []) use ($processes, $processRuns, $processTriggers, $workspaces, $mappings, $triggerUrlBuilder): array {
+        $processId = (int) $process['id'];
+        $triggers = $processTriggers()->forProcess($processId);
+        $target = $triggerUrlBuilder()->defaultTargetForWorkspace(empty($process['workspace_id']) ? null : (int) $process['workspace_id']);
+        $triggerUrls = [];
+        foreach ($triggers as $trigger) {
+            $triggerUrls[(int) $trigger['id']] = $triggerUrlBuilder()->urlForTrigger($trigger, $target);
+        }
+
+        return $extra + [
+            'title' => 'Prozess',
+            'active' => 'processes',
+            'process' => $process,
+            'steps' => $processes()->stepsForProcess($processId),
+            'runs' => $processRuns()->runsForProcess($processId),
+            'triggers' => $triggers,
+            'triggerTypes' => ProcessTriggerRepository::TYPES,
+            'triggerValues' => [
+                'name' => '',
+                'trigger_type' => 'manual',
+                'trigger_key' => '',
+                'is_active' => '1',
+                'config_json' => '',
+            ],
+            'triggerErrors' => [],
+            'triggerUrls' => $triggerUrls,
+            'triggerTarget' => $target,
+            'workspaces' => safeList($workspaces),
+            'mappings' => safeList($mappings),
+            'values' => $process,
+            'stepValues' => ['position' => 10, 'step_type' => 'mapping_run', 'is_enabled' => '1'],
+            'errors' => [],
+            'stepErrors' => [],
+            'alert' => null,
+        ];
     };
 
     $dashboardData = static fn (): array => [
@@ -2491,30 +2537,17 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.processes.run_show', 'web');
 
-    $routes->get('/admin/processes/{id}', static function (Request $request) use ($admin, $processes, $processRuns, $workspaces, $mappings): Response {
+    $routes->get('/admin/processes/{id}', static function (Request $request) use ($admin, $processes, $processShowData): Response {
         $id = (int) $request->route('id');
         $process = $processes()->find($id);
         if ($process === null) {
             return Response::notFound();
         }
 
-        return $admin('admin/processes/show', [
-            'title' => 'Prozess',
-            'active' => 'processes',
-            'process' => $process,
-            'steps' => $processes()->stepsForProcess($id),
-            'runs' => $processRuns()->runsForProcess($id),
-            'workspaces' => safeList($workspaces),
-            'mappings' => safeList($mappings),
-            'values' => $process,
-            'stepValues' => ['position' => 10, 'step_type' => 'mapping_run', 'is_enabled' => '1'],
-            'errors' => [],
-            'stepErrors' => [],
-            'alert' => null,
-        ]);
+        return $admin('admin/processes/show', $processShowData($process));
     }, 'admin.processes.show', 'web');
 
-    $routes->post('/admin/processes/{id}', static function (Request $request) use ($admin, $processes, $processRuns, $workspaces, $mappings): Response {
+    $routes->post('/admin/processes/{id}', static function (Request $request) use ($admin, $processes, $processShowData): Response {
         $id = (int) $request->route('id');
         $process = $processes()->find($id);
         if ($process === null) {
@@ -2524,45 +2557,25 @@ return static function (RouteCollection $routes, Application $app): void {
         $values = processValues($request);
         $errors = processErrors($values);
         if ($errors !== []) {
-            return $admin('admin/processes/show', [
-                'title' => 'Prozess',
-                'active' => 'processes',
-                'process' => $process,
-                'steps' => $processes()->stepsForProcess($id),
-                'runs' => $processRuns()->runsForProcess($id),
-                'workspaces' => safeList($workspaces),
-                'mappings' => safeList($mappings),
+            return $admin('admin/processes/show', $processShowData($process, [
                 'values' => $values,
-                'stepValues' => ['position' => 10, 'step_type' => 'mapping_run', 'is_enabled' => '1'],
                 'errors' => $errors,
-                'stepErrors' => [],
-                'alert' => null,
-            ]);
+            ]));
         }
 
         try {
             $processes()->update($id, $values);
         } catch (Throwable $exception) {
-            return $admin('admin/processes/show', [
-                'title' => 'Prozess',
-                'active' => 'processes',
-                'process' => $process,
-                'steps' => $processes()->stepsForProcess($id),
-                'runs' => $processRuns()->runsForProcess($id),
-                'workspaces' => safeList($workspaces),
-                'mappings' => safeList($mappings),
+            return $admin('admin/processes/show', $processShowData($process, [
                 'values' => $values,
-                'stepValues' => ['position' => 10, 'step_type' => 'mapping_run', 'is_enabled' => '1'],
                 'errors' => [$exception->getMessage()],
-                'stepErrors' => [],
-                'alert' => null,
-            ]);
+            ]));
         }
 
         return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
     }, 'admin.processes.update', 'web');
 
-    $routes->post('/admin/processes/{id}/steps', static function (Request $request) use ($admin, $processes, $processRuns, $workspaces, $mappings): Response {
+    $routes->post('/admin/processes/{id}/steps', static function (Request $request) use ($admin, $processes, $processShowData): Response {
         $id = (int) $request->route('id');
         $process = $processes()->find($id);
         if ($process === null) {
@@ -2572,20 +2585,10 @@ return static function (RouteCollection $routes, Application $app): void {
         $values = processStepValues($request);
         $errors = processStepErrors($values);
         if ($errors !== []) {
-            return $admin('admin/processes/show', [
-                'title' => 'Prozess',
-                'active' => 'processes',
-                'process' => $process,
-                'steps' => $processes()->stepsForProcess($id),
-                'runs' => $processRuns()->runsForProcess($id),
-                'workspaces' => safeList($workspaces),
-                'mappings' => safeList($mappings),
-                'values' => $process,
+            return $admin('admin/processes/show', $processShowData($process, [
                 'stepValues' => $values,
-                'errors' => [],
                 'stepErrors' => $errors,
-                'alert' => null,
-            ]);
+            ]));
         }
 
         $processes()->addStep($id, $values);
@@ -2625,7 +2628,121 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
     }, 'admin.processes.steps.delete', 'web');
 
-    $routes->post('/admin/processes/{id}/run', static function (Request $request) use ($admin, $processRunner, $processes, $processRuns, $workspaces, $mappings): Response {
+    $routes->post('/admin/processes/{id}/triggers', static function (Request $request) use ($admin, $processes, $processTriggerService, $processShowData): Response {
+        $id = (int) $request->route('id');
+        $process = $processes()->find($id);
+        if ($process === null) {
+            return Response::notFound();
+        }
+
+        $values = $processTriggerService()->valuesForProcess($id, $process, $request);
+        $errors = $processTriggerService()->validate($values);
+        if ($errors !== []) {
+            return $admin('admin/processes/show', $processShowData($process, [
+                'triggerValues' => $values,
+                'triggerErrors' => $errors,
+            ]));
+        }
+
+        try {
+            $processTriggerService()->create($values, (string) $request->post('secret', ''));
+        } catch (Throwable $exception) {
+            return $admin('admin/processes/show', $processShowData($process, [
+                'triggerValues' => $values,
+                'triggerErrors' => [$exception->getMessage()],
+            ]));
+        }
+
+        return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
+    }, 'admin.processes.triggers.store', 'web');
+
+    $routes->post('/admin/processes/{id}/triggers/{triggerId}', static function (Request $request) use ($admin, $processes, $processTriggers, $processTriggerService, $processShowData): Response {
+        $id = (int) $request->route('id');
+        $triggerId = (int) $request->route('triggerId');
+        $process = $processes()->find($id);
+        $trigger = $processTriggers()->find($triggerId);
+        if ($process === null || $trigger === null || (int) $trigger['process_id'] !== $id) {
+            return Response::notFound();
+        }
+
+        $values = $processTriggerService()->valuesForProcess($id, $process, $request);
+        $errors = $processTriggerService()->validate($values);
+        if ($errors !== []) {
+            return $admin('admin/processes/show', $processShowData($process, [
+                'triggerValues' => $values,
+                'triggerErrors' => $errors,
+            ]));
+        }
+
+        try {
+            $secret = (string) $request->post('secret', '');
+            $processTriggerService()->update($triggerId, $values, $secret, trim($secret) !== '');
+        } catch (Throwable $exception) {
+            return $admin('admin/processes/show', $processShowData($process, [
+                'triggerValues' => $values,
+                'triggerErrors' => [$exception->getMessage()],
+            ]));
+        }
+
+        return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
+    }, 'admin.processes.triggers.update', 'web');
+
+    $routes->post('/admin/processes/{id}/triggers/{triggerId}/toggle', static function (Request $request) use ($processTriggers): Response {
+        $id = (int) $request->route('id');
+        $triggerId = (int) $request->route('triggerId');
+        $trigger = $processTriggers()->find($triggerId);
+        if ($trigger === null || (int) $trigger['process_id'] !== $id) {
+            return Response::notFound();
+        }
+
+        $processTriggers()->setActive($triggerId, empty($trigger['is_active']));
+
+        return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
+    }, 'admin.processes.triggers.toggle', 'web');
+
+    $routes->post('/admin/processes/{id}/triggers/{triggerId}/delete', static function (Request $request) use ($processTriggers): Response {
+        $id = (int) $request->route('id');
+        $triggerId = (int) $request->route('triggerId');
+        $trigger = $processTriggers()->find($triggerId);
+        if ($trigger === null || (int) $trigger['process_id'] !== $id) {
+            return Response::notFound();
+        }
+
+        $processTriggers()->delete($triggerId);
+
+        return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
+    }, 'admin.processes.triggers.delete', 'web');
+
+    $routes->post('/admin/processes/{id}/triggers/{triggerId}/run', static function (Request $request) use ($admin, $processes, $processTriggerRunner, $processTriggers, $processShowData): Response {
+        $id = (int) $request->route('id');
+        $triggerId = (int) $request->route('triggerId');
+        $mode = (string) $request->post('mode', 'run');
+        if (! in_array($mode, ['run', 'dry_run'], true)) {
+            $mode = 'run';
+        }
+
+        $trigger = $processTriggers()->find($triggerId);
+        if ($trigger === null || (int) $trigger['process_id'] !== $id) {
+            return Response::notFound();
+        }
+
+        try {
+            $runId = $processTriggerRunner()->runTrigger($trigger, $mode, 'ui', null, [], $id);
+
+            return new Response('', 302, ['Location' => '/admin/processes/runs/' . $runId]);
+        } catch (ProcessTriggerException $exception) {
+            $process = $processes()->find($id);
+            if ($process === null) {
+                return Response::notFound();
+            }
+
+            return $admin('admin/processes/show', $processShowData($process, [
+                'alert' => ['type' => 'danger', 'message' => $exception->getMessage()],
+            ]));
+        }
+    }, 'admin.processes.triggers.run', 'web');
+
+    $routes->post('/admin/processes/{id}/run', static function (Request $request) use ($admin, $processRunner, $processes, $processShowData): Response {
         $id = (int) $request->route('id');
         $mode = (string) $request->post('mode', 'run');
         if (! in_array($mode, ['run', 'dry_run'], true)) {
@@ -2642,20 +2759,9 @@ return static function (RouteCollection $routes, Application $app): void {
                 return Response::notFound();
             }
 
-            return $admin('admin/processes/show', [
-                'title' => 'Prozess',
-                'active' => 'processes',
-                'process' => $process,
-                'steps' => $processes()->stepsForProcess($id),
-                'runs' => $processRuns()->runsForProcess($id),
-                'workspaces' => safeList($workspaces),
-                'mappings' => safeList($mappings),
-                'values' => $process,
-                'stepValues' => ['position' => 10, 'step_type' => 'mapping_run', 'is_enabled' => '1'],
-                'errors' => [],
-                'stepErrors' => [],
+            return $admin('admin/processes/show', $processShowData($process, [
                 'alert' => ['type' => 'danger', 'message' => $exception->getMessage()],
-            ]);
+            ]));
         }
     }, 'admin.processes.run', 'web');
 

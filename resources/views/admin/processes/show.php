@@ -1,24 +1,38 @@
-<?php
+﻿<?php
 /** @var array<string, mixed> $process */
 /** @var array<int, array<string, mixed>> $steps */
 /** @var array<int, array<string, mixed>> $runs */
+/** @var array<int, array<string, mixed>> $triggers */
+/** @var array<int, string> $triggerTypes */
 /** @var array<int, array<string, mixed>> $workspaces */
 /** @var array<int, array<string, mixed>> $mappings */
 /** @var array<string, mixed> $values */
 /** @var array<string, mixed> $stepValues */
+/** @var array<string, mixed> $triggerValues */
 /** @var array<int, string> $errors */
 /** @var array<int, string> $stepErrors */
+/** @var array<int, string> $triggerErrors */
+/** @var array<int, string|null> $triggerUrls */
+/** @var array<string, mixed>|null $triggerTarget */
 /** @var array<string, string>|null $alert */
 
 $mappingNames = [];
 foreach ($mappings ?? [] as $mapping) {
     $mappingNames[(int) $mapping['id']] = (string) $mapping['name'];
 }
+
+$triggerLabels = [
+    'manual' => 'Manual',
+    'cli' => 'CLI',
+    'api' => 'API',
+    'schedule' => 'Schedule',
+    'webhook' => 'Webhook',
+];
 ?>
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h1 class="h3 mb-1"><?= htmlspecialchars((string) $process['name'], ENT_QUOTES, 'UTF-8') ?></h1>
-        <p class="text-body-secondary mb-0">Process Runtime Foundation: manuelle und CLI-Ausführung ohne Scheduler oder Webhook-Runtime.</p>
+        <p class="text-body-secondary mb-0">Process Runtime mit manueller, CLI-, API-, Schedule- und Webhook-Trigger-Grundlage.</p>
     </div>
     <a class="btn btn-outline-secondary" href="/admin/processes">Zurück</a>
 </div>
@@ -71,6 +85,143 @@ foreach ($mappings ?? [] as $mapping) {
 </div>
 
 <div class="card admin-card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Trigger</span>
+        <?php if ($triggerTarget === null): ?>
+            <span class="small text-warning">Kein Deployment Target für diesen Workspace gesetzt. URL-Vorschau nicht verfügbar.</span>
+        <?php else: ?>
+            <span class="small text-body-secondary">URL-Vorschau über <?= htmlspecialchars((string) ($triggerTarget['name'] ?? 'Deployment Target'), ENT_QUOTES, 'UTF-8') ?></span>
+        <?php endif; ?>
+    </div>
+    <div class="card-body">
+        <p class="text-body-secondary">Trigger starten bestehende Prozesse. Fachliche Verarbeitung bleibt im Prozess oder in späteren Adaptern.</p>
+        <?php if (($triggerErrors ?? []) !== []): ?>
+            <div class="alert alert-danger"><?= htmlspecialchars(implode(' ', $triggerErrors), ENT_QUOTES, 'UTF-8') ?></div>
+        <?php endif; ?>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-bordered align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Typ</th>
+                    <th>Aktiv</th>
+                    <th>Trigger Key</th>
+                    <th>Konfiguration</th>
+                    <th>URL / Befehl</th>
+                    <th>Letzter Start</th>
+                    <th>Aktionen</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($triggers ?? [] as $trigger): ?>
+                <?php $triggerType = (string) $trigger['trigger_type']; ?>
+                <tr>
+                    <td>
+                        <form id="trigger-update-<?= (int) $trigger['id'] ?>" method="post" action="/admin/processes/<?= (int) $process['id'] ?>/triggers/<?= (int) $trigger['id'] ?>">
+                            <input class="form-control form-control-sm" name="name" value="<?= htmlspecialchars((string) $trigger['name'], ENT_QUOTES, 'UTF-8') ?>">
+                    </td>
+                    <td>
+                            <select class="form-select form-select-sm" name="trigger_type">
+                                <?php foreach ($triggerTypes ?? [] as $type): ?>
+                                    <option value="<?= htmlspecialchars((string) $type, ENT_QUOTES, 'UTF-8') ?>" <?= $triggerType === (string) $type ? 'selected' : '' ?>><?= htmlspecialchars($triggerLabels[(string) $type] ?? (string) $type, ENT_QUOTES, 'UTF-8') ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                    </td>
+                    <td class="text-center">
+                            <input class="form-check-input" type="checkbox" name="is_active" value="1" <?= ! empty($trigger['is_active']) ? 'checked' : '' ?>>
+                    </td>
+                    <td>
+                            <input class="form-control form-control-sm" name="trigger_key" value="<?= htmlspecialchars((string) $trigger['trigger_key'], ENT_QUOTES, 'UTF-8') ?>">
+                    </td>
+                    <td>
+                            <textarea class="form-control form-control-sm" name="config_json" rows="2"><?= htmlspecialchars((string) ($trigger['config_json'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
+                            <input class="form-control form-control-sm mt-2" name="secret" value="" placeholder="Neues Secret setzen (optional)">
+                            <?php if (in_array($triggerType, ['api', 'webhook'], true)): ?>
+                                <div class="small text-body-secondary mt-1">Secret wird nur als Hash gespeichert. Header: <code>X-Luna-Trigger-Secret</code></div>
+                            <?php endif; ?>
+                            <?php if ($triggerType === 'schedule'): ?>
+                                <div class="small text-body-secondary mt-1">Zeitplan-Trigger werden in v2.4.0 nur konfiguriert. Eine produktive Scheduler-Runtime folgt später.</div>
+                            <?php endif; ?>
+                        </form>
+                    </td>
+                    <td class="small">
+                        <?php if ($triggerType === 'cli'): ?>
+                            <code>php bin/luna process:run <?= (int) $process['id'] ?> --trigger=<?= htmlspecialchars((string) $trigger['trigger_key'], ENT_QUOTES, 'UTF-8') ?></code>
+                        <?php elseif (in_array($triggerType, ['api', 'webhook'], true)): ?>
+                            <?php if (! empty($triggerUrls[(int) $trigger['id']])): ?>
+                                <code><?= htmlspecialchars((string) $triggerUrls[(int) $trigger['id']], ENT_QUOTES, 'UTF-8') ?></code>
+                            <?php else: ?>
+                                <span class="text-body-secondary">URL-Vorschau nicht verfügbar.</span>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <span class="text-body-secondary">Keine externe URL nötig.</span>
+                        <?php endif; ?>
+                    </td>
+                    <td><?= htmlspecialchars((string) ($trigger['last_triggered_at'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
+                    <td>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button class="btn btn-sm btn-primary" form="trigger-update-<?= (int) $trigger['id'] ?>" type="submit">Speichern</button>
+                            <form method="post" action="/admin/processes/<?= (int) $process['id'] ?>/triggers/<?= (int) $trigger['id'] ?>/toggle">
+                                <button class="btn btn-sm btn-outline-secondary" type="submit"><?= ! empty($trigger['is_active']) ? 'Deaktivieren' : 'Aktivieren' ?></button>
+                            </form>
+                            <?php if (in_array($triggerType, ['manual', 'cli'], true)): ?>
+                                <form method="post" action="/admin/processes/<?= (int) $process['id'] ?>/triggers/<?= (int) $trigger['id'] ?>/run">
+                                    <input type="hidden" name="mode" value="<?= htmlspecialchars((string) ($process['default_mode'] ?? 'run'), ENT_QUOTES, 'UTF-8') ?>">
+                                    <button class="btn btn-sm btn-success" type="submit" <?= empty($trigger['is_active']) || (string) $process['status'] !== 'active' ? 'disabled' : '' ?>>Über Trigger starten</button>
+                                </form>
+                            <?php endif; ?>
+                            <form method="post" action="/admin/processes/<?= (int) $process['id'] ?>/triggers/<?= (int) $trigger['id'] ?>/delete">
+                                <button class="btn btn-sm btn-outline-danger" type="submit">Löschen</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            <?php if (($triggers ?? []) === []): ?>
+                <tr><td colspan="8" class="text-body-secondary">Noch keine Trigger angelegt.</td></tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <form method="post" action="/admin/processes/<?= (int) $process['id'] ?>/triggers" class="card-footer row g-3 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label">Name</label>
+            <input class="form-control" name="name" value="<?= htmlspecialchars((string) ($triggerValues['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" required>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Typ</label>
+            <select class="form-select" name="trigger_type">
+                <?php foreach ($triggerTypes ?? [] as $type): ?>
+                    <option value="<?= htmlspecialchars((string) $type, ENT_QUOTES, 'UTF-8') ?>" <?= (string) ($triggerValues['trigger_type'] ?? 'manual') === (string) $type ? 'selected' : '' ?>><?= htmlspecialchars($triggerLabels[(string) $type] ?? (string) $type, ENT_QUOTES, 'UTF-8') ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Trigger Key</label>
+            <input class="form-control" name="trigger_key" value="<?= htmlspecialchars((string) ($triggerValues['trigger_key'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" placeholder="optional">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Konfiguration</label>
+            <textarea class="form-control" name="config_json" rows="1" placeholder='{"mode":"daily","time":"12:00","timezone":"Europe/Berlin"}'><?= htmlspecialchars((string) ($triggerValues['config_json'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Secret</label>
+            <input class="form-control" name="secret" value="" placeholder="optional">
+        </div>
+        <div class="col-md-2">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="is_active" value="1" id="new_trigger_active" <?= ! empty($triggerValues['is_active']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="new_trigger_active">Aktiv</label>
+            </div>
+        </div>
+        <div class="col-md-10">
+            <button class="btn btn-primary" type="submit">Trigger hinzufügen</button>
+        </div>
+    </form>
+</div>
+
+<div class="card admin-card mb-4">
     <div class="card-header">Schritte</div>
     <div class="table-responsive">
         <table class="table table-bordered align-middle mb-0">
@@ -88,35 +239,34 @@ foreach ($mappings ?? [] as $mapping) {
             <tbody>
             <?php foreach ($steps ?? [] as $step): ?>
                 <tr>
-                    <form method="post" action="/admin/processes/<?= (int) $process['id'] ?>/steps/<?= (int) $step['id'] ?>">
-                        <td><input class="form-control form-control-sm" name="position" value="<?= (int) $step['position'] ?>"></td>
-                        <td><input class="form-control form-control-sm" name="name" value="<?= htmlspecialchars((string) $step['name'], ENT_QUOTES, 'UTF-8') ?>"></td>
-                        <td>
-                            <select class="form-select form-select-sm" name="step_type">
-                                <option value="mapping_run" <?= (string) $step['step_type'] === 'mapping_run' ? 'selected' : '' ?>>Mapping ausführen</option>
-                            </select>
-                        </td>
-                        <td>
-                            <select class="form-select form-select-sm" name="reference_id">
-                                <?php foreach ($mappings ?? [] as $mapping): ?>
-                                    <option value="<?= (int) $mapping['id'] ?>" <?= (int) ($step['reference_id'] ?? 0) === (int) $mapping['id'] ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars((string) $mapping['name'], ENT_QUOTES, 'UTF-8') ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                            <textarea class="form-control form-control-sm mt-2" name="config_json" rows="2" placeholder="Optionale JSON-Konfiguration"><?= htmlspecialchars((string) ($step['config_json'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
-                        </td>
-                        <td class="text-center"><input class="form-check-input" type="checkbox" name="is_enabled" value="1" <?= (int) $step['is_enabled'] === 1 ? 'checked' : '' ?>></td>
-                        <td class="text-center"><input class="form-check-input" type="checkbox" name="continue_on_error" value="1" <?= (int) $step['continue_on_error'] === 1 ? 'checked' : '' ?>></td>
-                        <td>
-                            <div class="d-flex flex-wrap gap-2">
-                                <button class="btn btn-sm btn-primary" type="submit">Speichern</button>
-                    </form>
-                                <form method="post" action="/admin/processes/<?= (int) $process['id'] ?>/steps/<?= (int) $step['id'] ?>/delete">
-                                    <button class="btn btn-sm btn-outline-danger" type="submit">Löschen</button>
-                                </form>
-                            </div>
-                        </td>
+                    <td><form id="step-update-<?= (int) $step['id'] ?>" method="post" action="/admin/processes/<?= (int) $process['id'] ?>/steps/<?= (int) $step['id'] ?>"><input class="form-control form-control-sm" name="position" value="<?= (int) $step['position'] ?>"></td>
+                    <td><input class="form-control form-control-sm" name="name" value="<?= htmlspecialchars((string) $step['name'], ENT_QUOTES, 'UTF-8') ?>"></td>
+                    <td>
+                        <select class="form-select form-select-sm" name="step_type">
+                            <option value="mapping_run" <?= (string) $step['step_type'] === 'mapping_run' ? 'selected' : '' ?>>Mapping ausführen</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select class="form-select form-select-sm" name="reference_id">
+                            <?php foreach ($mappings ?? [] as $mapping): ?>
+                                <option value="<?= (int) $mapping['id'] ?>" <?= (int) ($step['reference_id'] ?? 0) === (int) $mapping['id'] ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars((string) $mapping['name'], ENT_QUOTES, 'UTF-8') ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <textarea class="form-control form-control-sm mt-2" name="config_json" rows="2" placeholder="Optionale JSON-Konfiguration"><?= htmlspecialchars((string) ($step['config_json'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
+                    </td>
+                    <td class="text-center"><input class="form-check-input" type="checkbox" name="is_enabled" value="1" <?= (int) $step['is_enabled'] === 1 ? 'checked' : '' ?>></td>
+                    <td class="text-center"><input class="form-check-input" type="checkbox" name="continue_on_error" value="1" <?= (int) $step['continue_on_error'] === 1 ? 'checked' : '' ?>></td>
+                    <td>
+                        </form>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button class="btn btn-sm btn-primary" form="step-update-<?= (int) $step['id'] ?>" type="submit">Speichern</button>
+                            <form method="post" action="/admin/processes/<?= (int) $process['id'] ?>/steps/<?= (int) $step['id'] ?>/delete">
+                                <button class="btn btn-sm btn-outline-danger" type="submit">Löschen</button>
+                            </form>
+                        </div>
+                    </td>
                 </tr>
             <?php endforeach; ?>
             <?php if (($steps ?? []) === []): ?>
@@ -188,6 +338,7 @@ foreach ($mappings ?? [] as $mapping) {
                     <th>Status</th>
                     <th>Modus</th>
                     <th>Trigger</th>
+                    <th>Quelle</th>
                     <th>Start</th>
                     <th>Ende</th>
                     <th>Dauer</th>
@@ -200,7 +351,8 @@ foreach ($mappings ?? [] as $mapping) {
                     <td><a href="/admin/processes/runs/<?= (int) $run['id'] ?>">#<?= (int) $run['id'] ?></a></td>
                     <td><?= htmlspecialchars((string) $run['status'], ENT_QUOTES, 'UTF-8') ?></td>
                     <td><?= htmlspecialchars((string) $run['mode'], ENT_QUOTES, 'UTF-8') ?></td>
-                    <td><?= htmlspecialchars((string) $run['trigger_type'], ENT_QUOTES, 'UTF-8') ?></td>
+                    <td><?= htmlspecialchars((string) $run['trigger_type'], ENT_QUOTES, 'UTF-8') ?><?= ! empty($run['trigger_ref']) ? ' / ' . htmlspecialchars((string) $run['trigger_ref'], ENT_QUOTES, 'UTF-8') : '' ?></td>
+                    <td><?= htmlspecialchars((string) ($run['trigger_source'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
                     <td><?= htmlspecialchars((string) ($run['started_at'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
                     <td><?= htmlspecialchars((string) ($run['finished_at'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
                     <td><?= htmlspecialchars((string) ($run['duration_ms'] ?? '-'), ENT_QUOTES, 'UTF-8') ?> ms</td>
@@ -208,7 +360,7 @@ foreach ($mappings ?? [] as $mapping) {
                 </tr>
             <?php endforeach; ?>
             <?php if (($runs ?? []) === []): ?>
-                <tr><td colspan="8" class="text-body-secondary">Noch keine Läufe vorhanden.</td></tr>
+                <tr><td colspan="9" class="text-body-secondary">Noch keine Läufe vorhanden.</td></tr>
             <?php endif; ?>
             </tbody>
         </table>

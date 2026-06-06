@@ -35,6 +35,10 @@ use Luna\Mapping\MappingFieldResolver;
 use Luna\Mapping\PdoLookupValueProvider;
 use Luna\Process\MappingRunStepRunner;
 use Luna\Process\ProcessRunner;
+use Luna\Process\ProcessTriggerRunner;
+use Luna\Process\ProcessTriggerService;
+use Luna\Process\TriggerConfigValidator;
+use Luna\Process\TriggerUrlBuilder;
 use Luna\Reports\ReportEngine;
 use Luna\Reports\ReportMailer;
 use Luna\Repository\AuditLogRepository;
@@ -48,6 +52,7 @@ use Luna\Repository\JobRunRepository;
 use Luna\Repository\MappingRepository;
 use Luna\Repository\ProcessRepository;
 use Luna\Repository\ProcessRunRepository;
+use Luna\Repository\ProcessTriggerRepository;
 use Luna\Repository\ReportRepository;
 use Luna\Repository\SchemaMetadataRepository;
 use Luna\Repository\WorkspaceRepository;
@@ -151,6 +156,7 @@ final class Application
         $this->services->set(JobRunRepository::class, new JobRunRepository($systemDatabase));
         $this->services->set(ProcessRepository::class, new ProcessRepository($systemDatabase));
         $this->services->set(ProcessRunRepository::class, new ProcessRunRepository($systemDatabase));
+        $this->services->set(ProcessTriggerRepository::class, new ProcessTriggerRepository($systemDatabase));
         $this->services->set(ReportRepository::class, new ReportRepository($systemDatabase));
         $this->services->set(EndpointRepository::class, new EndpointRepository(
             $systemDatabase,
@@ -217,6 +223,21 @@ final class Application
             $this->services->get(ProcessRepository::class),
             $this->services->get(ProcessRunRepository::class),
             [$this->services->get(MappingRunStepRunner::class)],
+        ));
+        $this->services->set(TriggerConfigValidator::class, new TriggerConfigValidator());
+        $this->services->set(ProcessTriggerService::class, new ProcessTriggerService(
+            $this->services->get(ProcessRepository::class),
+            $this->services->get(ProcessTriggerRepository::class),
+            $this->services->get(TriggerConfigValidator::class),
+        ));
+        $this->services->set(ProcessTriggerRunner::class, new ProcessTriggerRunner(
+            $this->services->get(ProcessTriggerRepository::class),
+            $this->services->get(ProcessRepository::class),
+            $this->services->get(ProcessRunner::class),
+        ));
+        $this->services->set(TriggerUrlBuilder::class, new TriggerUrlBuilder(
+            $this->services->get(DeploymentTargetRepository::class),
+            $this->services->get(DeploymentTargetUrlBuilder::class),
         ));
         $this->services->set(ReportEngine::class, new ReportEngine(
             $this->services->get(JobRunRepository::class),
@@ -328,6 +349,7 @@ final class Application
         $this->services->set('repository.job_runs', $this->services->get(JobRunRepository::class));
         $this->services->set('repository.processes', $this->services->get(ProcessRepository::class));
         $this->services->set('repository.process_runs', $this->services->get(ProcessRunRepository::class));
+        $this->services->set('repository.process_triggers', $this->services->get(ProcessTriggerRepository::class));
         $this->services->set('repository.reports', $this->services->get(ReportRepository::class));
         $this->services->set('repository.endpoints', $this->services->get(EndpointRepository::class));
         $this->services->set('repository.woocommerce_integrations', $this->services->get(WooCommerceIntegrationRepository::class));
@@ -338,6 +360,9 @@ final class Application
         $this->services->set('mapping.executor', $this->services->get(MappingExecutor::class));
         $this->services->set('transfer.mapping_executor', $this->services->get(MappingExecutor::class));
         $this->services->set('process.runner', $this->services->get(ProcessRunner::class));
+        $this->services->set('process.trigger_service', $this->services->get(ProcessTriggerService::class));
+        $this->services->set('process.trigger_runner', $this->services->get(ProcessTriggerRunner::class));
+        $this->services->set('process.trigger_url_builder', $this->services->get(TriggerUrlBuilder::class));
         $this->services->set('jobs.runner', $this->services->get(JobRunner::class));
         $this->services->set('reports.engine', $this->services->get(ReportEngine::class));
         $this->services->set('reports.mailer', $this->services->get(ReportMailer::class));

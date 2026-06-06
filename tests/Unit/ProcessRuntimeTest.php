@@ -172,6 +172,9 @@ final class ProcessRuntimeTest extends TestCase
             mode TEXT NOT NULL DEFAULT "run",
             trigger_type TEXT NOT NULL DEFAULT "manual",
             trigger_ref TEXT NULL,
+            trigger_id INTEGER NULL,
+            trigger_source TEXT NULL,
+            trigger_payload_meta TEXT NULL,
             started_at TEXT NULL,
             finished_at TEXT NULL,
             duration_ms INTEGER NULL,
@@ -187,6 +190,20 @@ final class ProcessRuntimeTest extends TestCase
             message TEXT NOT NULL,
             context_json TEXT NULL,
             created_at TEXT NOT NULL
+        )');
+        $pdo->exec('CREATE TABLE luna_process_triggers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            process_id INTEGER NOT NULL,
+            workspace_id INTEGER NULL,
+            name TEXT NOT NULL,
+            trigger_type TEXT NOT NULL,
+            trigger_key TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            config_json TEXT NULL,
+            secret_hash TEXT NULL,
+            last_triggered_at TEXT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
         )');
 
         return $pdo;
