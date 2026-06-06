@@ -1,288 +1,581 @@
 # Luna V3 Roadmap
 
-## Kurzüberblick
+Stand: nach `v2.2.0`  
+Ziel dieses Dokuments: Die Versionsfolge sauber ordnen, widersprüchliche alte Planungen bereinigen und die nächsten Schritte so definieren, dass Luna nicht in WooCommerce-, Webhook-, Export- und Transfer-Sonderlogik zerfällt.
 
-Luna V3 bleibt die zentrale Serverkomponente für Integrationen.
+---
 
-Die aktuelle Planung trennt die Schichten bewusst:
+## 1. Produktprinzip
+
+Luna V3 ist eine Open-Source-Workbench für Integrationen, Mappings, Datenflüsse, Endpunkte und spätere Prozessausführung.
+
+Der Kern ist nicht „ein einzelner Endpoint“ und auch nicht „nur WooCommerce“, sondern:
 
 ```text
-WooCommerce -> Luna Ingestion -> TransferDB/Staging -> Transferbetrieb -> Export -> Zielsystemadapter
+Idee -> Planung -> Umsetzung
 ```
 
-Die fachliche Architektur ist in `docs/ARCHITECTURE.md` beschrieben.
+Technisch bedeutet das:
 
-Wichtige Grundsätze:
+```text
+Workspace
+  -> Connections
+  -> Datasets
+  -> Mappings
+  -> Endpoints
+  -> Export Packages
+  -> Processes
+  -> Triggers
+  -> Adapters / Target Actions
+```
 
-- WooCommerce-Webhooks rufen Luna auf.
-- Luna verarbeitet Webhook-Events und schreibt in die Luna-TransferDB/Staging-Schicht.
-- Export-Endpunkte gehören zu Luna.
-- Export liest aus Luna-TransferDB/Staging, nicht direkt aus WooCommerce.
-- Webhook und Export haben unterschiedliche Richtungen.
-- Es entsteht kein WP-Plugin, das lokale Luna-Transferdaten im Shop speichert.
+Ein Endpoint ist nur eine Auslieferungsform. Ein Transfer ist eine Aktion. Ein Webhook ist nur ein externer Trigger. Afterbuy, ERP, WooCommerce, Amazon, PIM und Lager sind Ziel- oder Quellsysteme, aber keine eigenen Architekturwelten.
 
-## Abgeschlossene Versionen
+---
 
-### v2.0.0 - WooCommerce HPOS Integration
+## 2. Grundregeln der Architektur
+
+Diese Regeln gelten für alle kommenden Versionen:
+
+- Luna Core bleibt generisch.
+- WooCommerce, Afterbuy, ERP, Amazon, PIM und Lager werden als Adapter, Prozesse oder konkrete Module gedacht.
+- Ein Endpoint liefert Daten aus Luna heraus.
+- Ein Webhook ruft Luna von außen auf und startet später einen Prozess.
+- Ein Prozess beschreibt eine ausführbare Abfolge von Schritten.
+- Ein Trigger beschreibt, wodurch ein Prozess gestartet wird.
+- Ein Adapter beschreibt, wie Luna mit einem Ziel- oder Quellsystem spricht.
+- Exportpakete enthalten keine Secrets.
+- Exportpakete beschreiben Konfiguration, Schema, Mapping, Endpoint/Process und Target-Metadaten.
+- Deployment Targets beschreiben Umgebungen und öffentliche URLs, aber keine Zugangsdaten.
+- PRO-/Lizenzlogik wird höchstens durch Metadaten vorbereitet, aber nicht hart in den Core eingebaut.
+
+---
+
+## 3. Aktueller Versionsstand
+
+| Version | Status | Schwerpunkt |
+|---|---|---|
+| `v1.4.0` | abgeschlossen | JSON Endpoint Builder v2 |
+| `v1.5.0` | abgeschlossen | Mapping-Erweiterungen / `first_non_empty` |
+| `v1.6.0` | abgeschlossen | Integration Modules / Export CLI Foundation |
+| `v1.7.0` | abgeschlossen | Dataset-Schicht |
+| `v1.8.0` | abgeschlossen | Dataset UI / Runtime |
+| `v1.9.0` | abgeschlossen | Transfer Layer v1 / Single Target Table / Upsert |
+| `v2.0.0` | abgeschlossen | WooCommerce-/Transfer-Grundlagen aus Main |
+| `v2.1.0` | abgeschlossen | Roadmap-/Architektur-Bereinigung als Übergang |
+| `v2.2.0` | abgeschlossen | Deployment Targets & Endpoint Export Packages |
+| `v2.3.0` | nächster Meilenstein | Process Runtime Foundation |
+
+---
+
+## 4. Abgeschlossene Versionen
+
+### v1.4.0 - JSON Endpoint Builder v2
 
 Status: abgeschlossen
 
-Umfang:
+Kern:
 
-- WooCommerce `>= 10.7.0` Validierung
-- HPOS authoritative Prüfung
-- HPOS Data Caching nicht produktiv genutzt
-- HPOS Initialimport
-- Luna-Staging-/TransferDB-Tabellen für WooCommerce
-- Transfer Queue
-- Transfer Runner
-- Transfer Runs
-- Webhook-Grundlage
-- Webhook-UI für lokale Prüfkonfiguration und Secrets
-- keine WooCommerce-Schreibzugriffe
+- Endpoints an Workspaces/Mappings anbinden.
+- GET-JSON-Endpunkte erzeugen.
+- Endpoint-Ausgabe mit `success`, `generated_at`, `count` und `items`.
+- Delete-Funktionen für zentrale Entitäten ergänzen.
+- Performance der Endpoint-Ausgabe stabilisieren.
+- ISR-Preis-/Bestandsendpoint als realer Referenzfall.
 
 Abgrenzung:
 
-- kein Zielsystem-Adapter
-- kein Afterbuy
-- kein generischer Export-Layer
-- kein WP-Plugin mit eigener Transferdatenhaltung
+- keine generische Prozesslaufzeit.
+- keine Webhook-Verarbeitung.
+- keine Zielsystemadapter.
 
-## Aktive Version
+---
+
+### v1.5.0 - Mapping-Erweiterungen
+
+Status: abgeschlossen
+
+Kern:
+
+- `first_non_empty` als Mapping-Regel.
+- Berechnete Felder als Template-Quellen nutzbar machen.
+- ISR-Sonderfälle abbildbar machen, ohne Quellsysteme zu verändern.
+
+Abgrenzung:
+
+- keine neue Runtime-Schicht.
+- keine Zielsystemadapter.
+
+---
+
+### v1.6.0 - Integration Modules / Export CLI Foundation
+
+Status: abgeschlossen
+
+Kern:
+
+- Grundlage für exportierbare Integrationsmodule.
+- CLI-Struktur für Integrationsexporte.
+- Manifest-Grundlagen.
+- Modulregistrierung und Export-Runtime vorbereiten.
+
+Abgrenzung:
+
+- noch keine vollständige Process Runtime.
+- noch keine Trigger-Schicht.
+
+---
+
+### v1.7.0 - Dataset-Schicht
+
+Status: abgeschlossen
+
+Kern:
+
+- Dataset-Konzepte einführen.
+- Ergebnisse von Mappings/Endpoints intern als Datenquellen nutzbar machen.
+- Grundlage für spätere Transfers und Prozesse schaffen.
+
+Abgrenzung:
+
+- keine Schreiblogik als Hauptziel.
+- keine Prozess-Orchestrierung.
+
+---
+
+### v1.8.0 - Dataset UI / Runtime
+
+Status: abgeschlossen
+
+Kern:
+
+- Dataset-Endpunkte sichtbar machen.
+- Dataset Preview/Dry-Run ermöglichen.
+- Output-Felder sichtbar machen.
+- Dataset-Ergebnisse besser prüfbar machen.
+
+Abgrenzung:
+
+- keine Zielsystemadapter.
+- keine Prozesslaufzeit.
+
+---
+
+### v1.9.0 - Transfer Layer v1: Single Target Table / Upsert
+
+Status: abgeschlossen
+
+Kern:
+
+- Dataset als Transfer Source verwenden.
+- Target Connection und Target Table auswählen.
+- Dataset-Felder Zielspalten zuordnen.
+- Insert/Update/Upsert unterstützen.
+- Upsert-Key definieren.
+- Dry-Run mit Write Plan.
+- echter Run in eine einzelne Ziel-Tabelle.
+
+Abgrenzung:
+
+- kein allgemeiner Prozess-Builder.
+- kein mehrstufiger Prozess.
+- kein externer API-Adapter.
+- keine Webhook Runtime.
+
+---
+
+### v2.0.0 - WooCommerce-/Transfer-Grundlagen aus Main
+
+Status: abgeschlossen
+
+Kern:
+
+- WooCommerce-nahe Export-/Transfer-Grundlagen aus dem Main-Zweig übernehmen.
+- Bestehende CLI-Kommandos wie `export:woocommerce:list` und `export:woocommerce:run` berücksichtigen.
+- Bestehende Transfer- und Exportlogik nicht durch neue Roadmap-Punkte überschreiben.
+
+Abgrenzung:
+
+- WooCommerce bleibt ein konkreter Anwendungsfall, nicht die Kernarchitektur.
+- keine Vermischung von WooCommerce-Sonderlogik mit generischer Luna Runtime.
+
+Hinweis:
+
+Diese Version ist als bestehender Main-Stand zu behandeln. Spätere generische Prozess- und Adapterlogik darf vorhandene WooCommerce-Bausteine integrieren, aber nicht blind ersetzen.
+
+---
 
 ### v2.1.0 - Roadmap & Architecture Reset
 
-Status: in Umsetzung
+Status: abgeschlossen
+
+Kern:
+
+- Roadmap und Architektur wieder konsolidieren.
+- Widersprüchliche Planungen entfernen.
+- Klare Schichtentrennung herstellen.
+- WooCommerce, Afterbuy, ERP und Webhooks wieder als Spezialfälle der generischen Luna-Architektur einordnen.
+
+Abgrenzung:
+
+- keine großen PHP-Features.
+- keine neue Runtime-Schicht.
+- keine PRO-/Lizenzprüfung.
+
+---
+
+### v2.2.0 - Deployment Targets & Endpoint Export Packages
+
+Status: abgeschlossen
 
 Ziel:
 
-Die Architektur und Roadmap werden bereinigt, damit Ingestion, TransferDB, Transferbetrieb, Export und Zielsystemadapter nicht mehr vermischt werden.
+Luna kann Endpoints nicht nur ausführen, sondern mit korrekten Ziel-URLs beschreiben und als reproduzierbares, secret-freies Exportpaket ausgeben.
 
-Umfang:
+Kern:
 
-- `docs/ROADMAP.md` neu/konsolidiert
-- `docs/ARCHITECTURE.md` neu/konsolidiert
-- klare Schichtentrennung
-- klare Versionsfolge ab v2.0.0
-- alte widersprüchliche Roadmap-Abschnitte bereinigt oder in Historie verschoben
+- Deployment Targets je Workspace.
+- Environment-Typen wie `local`, `staging`, `production`.
+- Public Base URL.
+- Endpoint Base URL.
+- optionale Webhook Base URL als Metadatum.
+- Production-Validierung gegen `localhost` und `127.0.0.1`.
+- Endpoint-Detailansicht mit Exportpaket-Aktion.
+- Target-Auswahl beim Endpoint-Export.
+- Exportpaket mit:
+  - `manifest.json`
+  - `endpoint.json`
+  - `mapping.json`
+  - `schema.json`
+  - `checksums.json`
+  - `README.md`
+- Exportpakete unter `storage/exports/...`.
+- Exportpakete enthalten keine Secrets.
+- Exportpakete beschreiben die produktive URL, sofern ein Target gewählt wurde.
+- Legacy-/öffentliche Endpoint-Pfade müssen korrekt beschreibbar sein.
+
+Definition of Done:
+
+- `composer check` ist grün.
+- Migrationen laufen sauber.
+- Deployment Target für den relevanten Workspace kann angelegt werden.
+- Production Target enthält kein `localhost`.
+- ISR-Endpoint kann mit Target exportiert werden.
+- Exportpaket enthält Manifest, Endpoint, Mapping, Schema, Checksums und README.
+- Exportpaket enthält keine `.env`-Werte, Passwörter, Tokens oder API-Keys.
+- Generierte Exportpakete werden nicht versehentlich committed.
+
+Abgrenzung:
+
+- keine Process Runtime.
+- keine Webhook Runtime.
+- keine WooCommerce-Schreibzugriffe.
+- keine Afterbuy-/ERP-Adapter.
+- keine PRO-/Lizenzserver-Prüfung.
+- keine zentrale Luna-Hub-Kommunikation.
+
+---
+
+## 5. Nächster Meilenstein
+
+### v2.3.0 - Process Runtime Foundation
+
+Status: geplant / nächster Meilenstein
+
+Ziel:
+
+Luna soll ausführbare Prozesse beschreiben, starten, protokollieren und nachvollziehbar auswerten können.
+
+Ein Prozess ist eine kontrollierte Ausführungseinheit. Er kann später manuell, per CLI, per Zeitplan, per API oder per Webhook gestartet werden. Webhooks selbst werden in dieser Version noch nicht als vollständige externe Runtime ausgebaut, sondern nur als späterer Trigger-Typ vorbereitet.
+
+Geplante Begriffe:
+
+- `processes`
+- `process_steps`
+- `process_runs`
+- `process_run_logs`
+- `process_run_items` optional, falls Datensatzebene nötig ist
+
+Geplanter Scope:
+
+- Prozesse in Luna anlegen und verwalten.
+- Prozess einem Workspace zuordnen.
+- Prozess-Schritte definieren.
+- Erster sinnvoller Step-Typ: bestehendes Mapping/Dataset/Endpoint-Ergebnis ausführen oder referenzieren.
+- Manuelle Ausführung über UI.
+- CLI-Ausführung über `php bin/luna process:run <process-id>`.
+- Prozesslauf protokollieren.
+- Status je Lauf:
+  - `queued`
+  - `running`
+  - `success`
+  - `failed`
+  - `cancelled`
+- Startzeit, Endzeit, Dauer und Fehlertext speichern.
+- Dry-Run-Modus, wenn die verwendete Quelle das unterstützt.
+- Keine Secrets im Prozess-Export.
+- Grundstruktur so bauen, dass spätere Trigger und Adapter sauber andocken können.
 
 Nicht-Ziele:
 
-- keine neuen PHP-Features
-- keine Migrationen
-- keine UI-Änderungen
-- keine Endpoint-Implementierung
-- kein Export-Layer in dieser Aufgabe
-- kein Transferbetrieb-Ausbau in dieser Aufgabe
+- keine vollständige Webhook-Verarbeitung.
+- kein Scheduler/Cron als produktive Runtime.
+- kein Afterbuy-Adapter.
+- kein ERP-Adapter.
+- kein WooCommerce-Schreiben.
+- keine externe API-Schreibaktion als Pflichtumfang.
+- keine PRO-/Lizenzlogik.
 
-## Geplante Versionen
+Akzeptanzkriterien:
 
-### v2.2.0 - WooCommerce Ingestion Runtime
+- `composer check` ist grün.
+- Migrationen für Prozess-Tabellen laufen sauber.
+- Ein Prozess kann in der UI angelegt werden.
+- Ein Prozess kann mindestens einen ausführbaren Schritt besitzen.
+- Ein Prozess kann manuell gestartet werden.
+- Ein Prozess kann per CLI gestartet werden.
+- Jeder Lauf erzeugt einen Run-Eintrag.
+- Fehler werden nachvollziehbar gespeichert.
+- Ein fehlgeschlagener Prozess zerstört keine bestehende Endpoint-/Mapping-Funktion.
+- Bestehende Kommandos wie `endpoint:export`, `integration:export`, `export:woocommerce:list` und `export:woocommerce:run` bleiben erhalten.
+
+---
+
+## 6. Geplante Versionen nach v2.3.0
+
+### v2.4.0 - Trigger Layer
 
 Status: geplant
 
 Ziel:
 
-Der WooCommerce -> Luna Eingang wird betriebssicher gemacht.
+Prozesse sollen über definierte Trigger gestartet werden können.
 
-Umfang:
+Trigger-Typen:
 
-- öffentlicher Luna-Serverendpunkt für WooCommerce-Webhooks
-- Delivery URL aus Luna korrekt generieren
-- Secrets/HMAC-Signaturprüfung
-- Webhook-Events protokollieren
-- `order.created`, `order.updated` und `order.deleted` verarbeiten
-- Event -> Queue-Eintrag
-- Queue-Eintrag -> HPOS-Nachladen -> TransferDB
-- Statusänderungen und Zahlungsstatusänderungen zeitnah übernehmen
-- lokale Webhook-Konfiguration in Luna
-- optionale manuelle Anleitung für WooCommerce-Webhook-Anlage
+- `manual`
+- `cli`
+- `api`
+- `schedule`
+- `webhook`
 
-Wichtige Architekturregel:
+Geplanter Scope:
+
+- Trigger einem Prozess zuordnen.
+- Trigger aktiv/inaktiv schalten.
+- Trigger-Konfiguration speichern.
+- API-Trigger vorbereiten.
+- Webhook-Trigger als Konzept vorbereiten.
+- Webhook Base URL aus Deployment Target ableiten.
+- Noch keine komplexe WooCommerce-Webhook-Fachverarbeitung als Pflichtumfang.
+
+Abgrenzung:
+
+- Ein Webhook ist nur ein Trigger, kein eigenes Hauptsystem.
+- Fachliche Verarbeitung liegt im Prozess oder Adapter, nicht im Trigger selbst.
+
+---
+
+### v2.5.0 - Adapter / Target Actions Foundation
+
+Status: geplant
+
+Ziel:
+
+Prozesse sollen kontrolliert Aktionen gegen Zielsysteme ausführen können.
+
+Mögliche Action-/Adapter-Typen:
+
+- `http_get`
+- `http_post`
+- `http_put`
+- `file_export`
+- `database_insert`
+- `database_upsert`
+- `custom_php` nur falls wirklich nötig und abgesichert
+- später spezifisch:
+  - `woocommerce_api`
+  - `afterbuy_api`
+  - `erp_api`
+  - `amazon_sp_api`
+
+Geplanter Scope:
+
+- Adapter-Konfiguration ohne Secrets im Export.
+- Target Action als Prozess-Schritt nutzbar machen.
+- Dry-Run/Preview soweit möglich.
+- Fehler und Antwortdaten protokollieren.
+- Retry-Grundlagen vorbereiten.
+
+Nicht-Ziele:
+
+- nicht direkt alle Zielsysteme bauen.
+- kein hart codierter Afterbuy-Sonderweg.
+- kein ERP-Sonderweg im Core.
+
+---
+
+### v2.6.0 - Schema Registry & Validation
+
+Status: geplant
+
+Ziel:
+
+Luna soll Schemas nicht nur im Exportpaket erzeugen, sondern versioniert verwalten und gegen Ergebnisse validieren können.
+
+Geplanter Scope:
+
+- Schema Registry je Workspace.
+- `schema_key` und Versionierung.
+- Feldtypen, Pflichtfelder und verschachtelte Strukturen.
+- Beispielwerte.
+- Validierung von Mapping-/Endpoint-/Process-Ergebnissen gegen ein Schema.
+- Schema im Exportpaket referenzieren.
+- Schema-Änderungen nachvollziehbar machen.
+
+Abgrenzung:
+
+- Keine vollständige OpenAPI-Generatorpflicht.
+- JSON Schema kann vorbereitet werden, aber Luna muss nicht sofort jeden JSON-Schema-Sonderfall vollständig unterstützen.
+
+---
+
+### v2.7.0 - WooCommerce Runtime Module
+
+Status: geplant / nach generischer Runtime
+
+Ziel:
+
+WooCommerce wird als konkretes Modul auf Basis von Process Runtime, Trigger Layer und Adapter Foundation umgesetzt oder bereinigt.
+
+Geplanter Scope:
+
+- WooCommerce-Webhooks als Trigger.
+- HMAC-/Secret-Prüfung.
+- Order-Events verarbeiten.
+- Event -> Prozesslauf.
+- Prozesslauf -> TransferDB/Staging oder Exportprofil.
+- Statusänderungen nachvollziehbar übernehmen.
+- WooCommerce-spezifische Exportprofile ordnen.
+
+Wichtige Regel:
 
 ```text
 WooCommerce ruft Luna auf.
-Luna schreibt in die TransferDB.
-Es gibt keine Luna-TransferDB im WooCommerce-Plugin.
+Luna verarbeitet den Prozess.
+WooCommerce-Sonderlogik darf nicht die generische Luna-Architektur ersetzen.
 ```
 
 Nicht-Ziele:
 
-- kein Afterbuy
-- kein Export nach außen
-- kein Schreiben in WooCommerce
-- kein WP-Plugin als Pflichtkomponente
+- keine lokale Luna-TransferDB im WordPress-Plugin.
+- kein Pflicht-WP-Plugin.
+- keine ungeprüften Schreibzugriffe in WooCommerce.
 
-### v2.3.0 - Transferbetrieb
+---
 
-Status: geplant
+### v2.8.0 - External System Modules: Afterbuy / ERP / weitere Systeme
+
+Status: geplant / später
 
 Ziel:
 
-Transfers im Betrieb kontrollieren.
+Afterbuy, ERP und weitere Systeme werden als konkrete Module oder Adapter umgesetzt, sobald Process Runtime, Trigger Layer, Adapter Foundation und Schema Registry stabil sind.
 
-Umfang:
+Geplanter Scope:
 
-- Job-Ausführung
-- Batching
-- Retry
-- Fehler je Datensatz / Order
-- Transfer-Historie
-- letzter erfolgreicher Lauf
-- idempotente Wiederholung
-- Queue-Betrieb
-- Runner/Worker-Betrieb
-- Monitoring-Ansicht
+- Afterbuy als erster externer Zielsystemkandidat.
+- ERP-Export oder ERP-Import als weiteres Zielsystem.
+- Pro System klare Schemas.
+- Pro System klare Adapter-Konfiguration.
+- Pro System klare Prozessdefinitionen.
+- Exportpakete für diese Integrationen.
 
 Abgrenzung:
 
-Transferbetrieb arbeitet auf Luna-Queue und Luna-TransferDB. Transferbetrieb ist nicht der Export-Layer.
+- Keine Sonderarchitektur pro Zielsystem.
+- Keine Vermischung von Adapter, Trigger und Prozesslogik.
 
-### v2.4.0 - Export Layer
+---
 
-Status: geplant
-
-Ziel:
-
-Importierte und stabilisierte Luna-Schichten über geschützte Export-Endpunkte bereitstellen.
-
-Umfang:
-
-- Exportprofile
-- JSON-Export
-- geschützte Export-Endpunkte
-- Token/HMAC-Auth
-- Export-Runs
-- Export-Historie
-- Watermark/Delta-Export
-- WooCommerce-Exportprofile:
-  - `orders`
-  - `order_addresses`
-  - `order_items`
-  - `order_meta_raw`
-  - `order_itemmeta_raw`
-  - `orders_full`
-
-Wichtige Architekturregel:
-
-```text
-Export liest aus Luna-TransferDB/Staging.
-Export liest nicht direkt aus WooCommerce.
-Export schreibt nicht nach WooCommerce.
-Export ist Luna -> extern.
-```
-
-Nicht-Ziele:
-
-- kein Afterbuy-Adapter
-- kein aktives Schreiben in externe Systeme
-- keine WooCommerce-Webhook-Ingestion
-
-### v2.5.0 - Zielsystem-Adapter
-
-Status: geplant
-
-Ziel:
-
-Auf Basis stabiler TransferDB und Export-Schicht externe Zielsysteme anbinden.
-
-Beispiele:
-
-- TransferDB/Export -> Afterbuy
-- TransferDB/Export -> weitere Systeme
-- später API-Writer
-
-Abgrenzung:
-
-Zielsystem-Adapter werden erst gebaut, wenn Ingestion, Transferbetrieb und Export stabil sind.
-
-### v2.6.0 - Optionales WooCommerce Helper Plugin
+### v2.9.0 - Official Modules / Entitlement Metadata Preparation
 
 Status: optional / später
 
 Ziel:
 
-Falls nötig, ein kleines WooCommerce-Helfer-Plugin zur einfacheren Konfiguration bereitstellen.
+Die spätere PRO-/Service-Ebene wird vorbereitet, ohne den Open-Source-Core hart zu verriegeln.
 
-Erlaubt:
+Mögliche Metadaten:
 
-- Delivery URL anzeigen
-- Secret-Feld verwalten
-- Webhook-Anlage im Shop erleichtern
-- Status anzeigen
+- `origin`
+- `support_status`
+- `module_key`
+- `requires_entitlement`
+- `verified_at`
+- `modified_from_official`
 
-Nicht erlaubt:
+Wichtige Regel:
 
-- keine eigene TransferDB im Shop
-- keine lokale Kopie aller Luna-Transferdaten im Plugin
-- keine fachliche Verarbeitung im Shop, die eigentlich nach Luna gehört
+Diese Version ist keine harte Lizenzprüfung. Der Core bleibt lauffähig. Offizielle Module, Supportstatus und spätere Freigaben werden nur sauber beschreibbar.
 
-Architekturregel:
+Nicht-Ziele:
 
-Das Plugin ist optionaler Konfigurationshelfer. Die zentrale Integration bleibt Luna.
+- kein externer Lizenzserverzwang.
+- kein Luna-Hub-Zwang.
+- kein Blockieren selbst erstellter Mappings.
 
-## Historie / archivierte Roadmap-Abschnitte
+---
 
-### v1.5.0 / v1.6.0 - MVP-Fundament
+## 7. Dauerhafte Nicht-Ziele
 
-Status: abgeschlossen / Grundlage erfüllt
+Diese Punkte sollen nicht versehentlich in die falsche Version rutschen:
 
-Kern:
+- keine lokale Luna-TransferDB in einem WordPress-Plugin.
+- kein Pflicht-WooCommerce-Plugin für den Core.
+- keine Secrets in Exportpaketen.
+- keine produktiven Schreibzugriffe ohne Dry-Run/Preview/Bestätigung.
+- keine Webhook-Fachlogik ohne Process Runtime.
+- keine Zielsystemadapter vor stabiler Prozess- und Adapter-Grundlage.
+- keine harte PRO-/Lizenzsperre im Open-Source-Core.
+- keine Vermischung von Deployment Target und Modul-/Lizenzstatus.
+- keine unklaren `localhost`-URLs in Production-Kontexten.
 
-- JSON Endpoint Builder
-- Endpoint Export Runtime
-- Admin-Export
-- ZIP-Erzeugung und Download
-- exportierbare Runtime ohne öffentliche Workbench
-- AsfInStockRings / `isr_prices` als erster realer Referenzfall
+---
 
-Historische MVP-Definition:
+## 8. Commit-/Release-Regeln
 
-```text
-Luna kann den konkreten ISR-Endpoint kontrolliert erzeugen, exportieren und betreiben.
-```
+Für jeden Meilenstein gilt:
 
-### v1.7.0 - Stabilisierung bestehender Workbench-Funktionen
+- Branch nach Schema `feature/<version>-<kurzer-name>`.
+- `composer check` muss grün sein.
+- Migrationen müssen sauber laufen.
+- Keine generierten Exportpakete committen.
+- Keine `.env` oder Secrets committen.
+- Neue CLI-Kommandos müssen in `bin/luna` Usage sichtbar sein.
+- Bestehende CLI-Kommandos dürfen bei Merges nicht entfernt werden.
+- Nach Merge in `main` kann ein Tag gesetzt werden, z. B. `v2.3.0`.
 
-Status: historisch / abgeschlossen
+---
 
-Kern:
+## 9. Nächste konkrete Entscheidung
 
-- exportierbare Endpunkte stabilisieren
-- Mapping-/Endpoint-UI absichern
-- Export nachvollziehbar machen
-- keine unnötige neue Architektur
+Der nächste Codex-Prompt sollte auf `v2.3.0 - Process Runtime Foundation` gehen.
 
-### v1.8.0 - Dataset Sources
+Er soll ausdrücklich nicht bauen:
 
-Status: abgeschlossen
+- WooCommerce Webhook Runtime,
+- Afterbuy Adapter,
+- ERP Adapter,
+- Scheduler,
+- PRO-/Lizenzserver,
+- externe Schreibaktionen als Hauptumfang.
 
-Kern:
+Er soll bauen:
 
-- Endpoint-/Mapping-Ergebnisse intern als Dataset Sources verfügbar machen
-- Output-Felder sichtbar machen
-- Dataset Preview/Dry-Run ermöglichen
-- keine Schreiblogik
-
-### v1.9.0 - Transfer Layer v1: Single Target Table
-
-Status: abgeschlossen
-
-Kern:
-
-- Dataset als Transfer Source verwenden
-- Target Connection und Target Table auswählen
-- Dataset-Felder Zielspalten zuordnen
-- Insert/Update/Upsert
-- Upsert Key
-- Dry-Run mit Write Plan
-- echter Run in eine einzelne Ziel-Tabelle
-
-## Nicht-Ziele der aktuellen Roadmap
-
-- keine öffentliche Luna-Workbench
-- keine WooCommerce-Schreibzugriffe
-- keine produktive Nutzung von HPOS Data Caching
-- keine lokale Luna-TransferDB in einem WordPress-Plugin
-- keine Vermischung von Webhook-Ingestion und Export
-- keine Zielsystemadapter vor stabiler Ingestion, stabilem Transferbetrieb und stabilem Export
+- Prozess-Tabellen,
+- Prozess-UI,
+- manuelle Prozessausführung,
+- CLI-Prozessausführung,
+- Prozesslauf-Protokollierung,
+- saubere Anschlussstellen für spätere Trigger und Adapter.
