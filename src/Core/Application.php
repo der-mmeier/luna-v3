@@ -33,6 +33,8 @@ use Luna\Jobs\JobRunner;
 use Luna\Mapping\MappingValidator;
 use Luna\Mapping\MappingFieldResolver;
 use Luna\Mapping\PdoLookupValueProvider;
+use Luna\Process\MappingRunStepRunner;
+use Luna\Process\ProcessRunner;
 use Luna\Reports\ReportEngine;
 use Luna\Reports\ReportMailer;
 use Luna\Repository\AuditLogRepository;
@@ -44,6 +46,8 @@ use Luna\Repository\ExportProfileRepository;
 use Luna\Repository\JobRepository;
 use Luna\Repository\JobRunRepository;
 use Luna\Repository\MappingRepository;
+use Luna\Repository\ProcessRepository;
+use Luna\Repository\ProcessRunRepository;
 use Luna\Repository\ReportRepository;
 use Luna\Repository\SchemaMetadataRepository;
 use Luna\Repository\WorkspaceRepository;
@@ -145,6 +149,8 @@ final class Application
         $this->services->set(AuditLogRepository::class, new AuditLogRepository($systemDatabase));
         $this->services->set(JobRepository::class, new JobRepository($systemDatabase));
         $this->services->set(JobRunRepository::class, new JobRunRepository($systemDatabase));
+        $this->services->set(ProcessRepository::class, new ProcessRepository($systemDatabase));
+        $this->services->set(ProcessRunRepository::class, new ProcessRunRepository($systemDatabase));
         $this->services->set(ReportRepository::class, new ReportRepository($systemDatabase));
         $this->services->set(EndpointRepository::class, new EndpointRepository(
             $systemDatabase,
@@ -202,6 +208,15 @@ final class Application
             $this->services->get(MappingRowTransformer::class),
             $this->services->get(TargetWriter::class),
             $this->services->get(MappingSourceRowProvider::class),
+        ));
+        $this->services->set(MappingRunStepRunner::class, new MappingRunStepRunner(
+            $this->services->get(MappingExecutor::class),
+            $this->services->get(ProcessRunRepository::class),
+        ));
+        $this->services->set(ProcessRunner::class, new ProcessRunner(
+            $this->services->get(ProcessRepository::class),
+            $this->services->get(ProcessRunRepository::class),
+            [$this->services->get(MappingRunStepRunner::class)],
         ));
         $this->services->set(ReportEngine::class, new ReportEngine(
             $this->services->get(JobRunRepository::class),
@@ -311,6 +326,8 @@ final class Application
         $this->services->set('repository.audit_log', $this->services->get(AuditLogRepository::class));
         $this->services->set('repository.jobs', $this->services->get(JobRepository::class));
         $this->services->set('repository.job_runs', $this->services->get(JobRunRepository::class));
+        $this->services->set('repository.processes', $this->services->get(ProcessRepository::class));
+        $this->services->set('repository.process_runs', $this->services->get(ProcessRunRepository::class));
         $this->services->set('repository.reports', $this->services->get(ReportRepository::class));
         $this->services->set('repository.endpoints', $this->services->get(EndpointRepository::class));
         $this->services->set('repository.woocommerce_integrations', $this->services->get(WooCommerceIntegrationRepository::class));
@@ -320,6 +337,7 @@ final class Application
         $this->services->set('mapping.validator', $this->services->get(MappingValidator::class));
         $this->services->set('mapping.executor', $this->services->get(MappingExecutor::class));
         $this->services->set('transfer.mapping_executor', $this->services->get(MappingExecutor::class));
+        $this->services->set('process.runner', $this->services->get(ProcessRunner::class));
         $this->services->set('jobs.runner', $this->services->get(JobRunner::class));
         $this->services->set('reports.engine', $this->services->get(ReportEngine::class));
         $this->services->set('reports.mailer', $this->services->get(ReportMailer::class));

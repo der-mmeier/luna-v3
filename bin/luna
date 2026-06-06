@@ -14,10 +14,12 @@ use Luna\Export\EndpointRuntimeExporter;
 use Luna\Export\WooCommerceExportService;
 use Luna\Integration\ExportRuntimeBuilder;
 use Luna\Jobs\JobRunner;
+use Luna\Process\ProcessRunner;
 use Luna\Repository\ConnectionProfileRepository;
 use Luna\Transfer\DatasetTransferRunner;
 use Luna\Repository\JobRunRepository;
 use Luna\Repository\ExportProfileRepository;
+use Luna\Repository\ProcessRunRepository;
 use Luna\WooCommerce\WooCommerceTransferRunner;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -48,8 +50,9 @@ function exitCodeForRun(array $run): int
 
 if ($command === null) {
 
-    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|endpoint:export|integration:export>\n");
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|export:woocommerce:list|export:woocommerce:run|process:run|endpoint:export|integration:export>\n");
     fwrite(STDERR, "Endpoint contract: php bin/luna endpoint:export <endpoint-id> [--target=<environment>] [--output=<directory>]\n");
+    fwrite(STDERR, "Process runtime: php bin/luna process:run <process-id> [--dry-run]\n");
 
     exit(2);
 }
@@ -338,6 +341,48 @@ try {
 
         echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
         exit(! empty($result['success']) ? 0 : 1);
+    }
+
+    if ($command === 'process:run') {
+        $processId = isset($argv[2]) ? (int) $argv[2] : 0;
+        $mode = in_array('--dry-run', $argv, true) ? 'dry_run' : 'run';
+
+        foreach ($argv as $argument) {
+            if (str_starts_with($argument, '--mode=')) {
+                $requestedMode = substr($argument, strlen('--mode='));
+                if (in_array($requestedMode, ['run', 'dry_run'], true)) {
+                    $mode = $requestedMode;
+                }
+            }
+        }
+
+        if ($processId <= 0) {
+            fwrite(STDERR, "Usage: php bin/luna process:run <process-id> [--dry-run]\n");
+            exit(2);
+        }
+
+        /** @var ProcessRunner $runner */
+        $runner = $app->services()->get(ProcessRunner::class);
+        $runId = $runner->run($processId, $mode, 'cli');
+
+        /** @var ProcessRunRepository $runs */
+        $runs = $app->services()->get(ProcessRunRepository::class);
+        $run = $runs->findRun($runId);
+        if ($run === null) {
+            fwrite(STDERR, "Process run could not be loaded.\n");
+            exit(1);
+        }
+
+        echo 'Process: ' . (int) $processId . "\n";
+        echo 'Run: ' . (int) $runId . "\n";
+        echo 'Status: ' . (string) $run['status'] . "\n";
+        echo 'Mode: ' . (string) $run['mode'] . "\n";
+        echo 'Duration ms: ' . (string) ($run['duration_ms'] ?? '') . "\n";
+        if (! empty($run['error_message'])) {
+            echo 'Error: ' . (string) $run['error_message'] . "\n";
+        }
+
+        exit((string) $run['status'] === 'success' ? 0 : 1);
     }
 
     if ($command === 'endpoint:export') {
