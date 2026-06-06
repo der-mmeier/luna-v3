@@ -1,4 +1,4 @@
-<?php /** @var array<int, array<string, mixed>> $processes */ ?>
+﻿<?php /** @var array<int, array<string, mixed>> $processes */ ?>
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h1 class="h3 mb-1">Prozesse</h1>
@@ -17,6 +17,7 @@
                     <th>Key</th>
                     <th>Status</th>
                     <th>Schritte</th>
+                    <th>Trigger</th>
                     <th>Letzter Lauf</th>
                     <th>Aktionen</th>
                 </tr>
@@ -29,6 +30,7 @@
                     <td><code><?= htmlspecialchars((string) $process['process_key'], ENT_QUOTES, 'UTF-8') ?></code></td>
                     <td><span class="badge text-bg-secondary"><?= htmlspecialchars((string) $process['status'], ENT_QUOTES, 'UTF-8') ?></span></td>
                     <td><?= (int) ($process['step_count'] ?? 0) ?></td>
+                    <td><?= (int) ($process['trigger_count'] ?? 0) ?></td>
                     <td><?= htmlspecialchars((string) ($process['last_run_status'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
                     <td>
                         <div class="d-flex flex-wrap gap-2">
@@ -44,7 +46,7 @@
                 </tr>
             <?php endforeach; ?>
             <?php if (($processes ?? []) === []): ?>
-                <tr><td colspan="7" class="text-body-secondary">Noch keine Prozesse angelegt.</td></tr>
+                <tr><td colspan="8" class="text-body-secondary">Noch keine Prozesse angelegt.</td></tr>
             <?php endif; ?>
             </tbody>
         </table>

@@ -1,15 +1,15 @@
-# Luna V3 Roadmap
+﻿# Luna V3 Roadmap
 
-Stand: nach `v2.3.0`  
-Ziel dieses Dokuments: Die Versionsfolge sauber ordnen, widersprüchliche alte Planungen bereinigen und die nächsten Schritte so definieren, dass Luna nicht in WooCommerce-, Webhook-, Export- und Transfer-Sonderlogik zerfällt.
+Stand: nach `v2.4.0`  
+Ziel dieses Dokuments: Die Versionsfolge sauber ordnen, widersprÃ¼chliche alte Planungen bereinigen und die nÃ¤chsten Schritte so definieren, dass Luna nicht in WooCommerce-, Webhook-, Export- und Transfer-Sonderlogik zerfÃ¤llt.
 
 ---
 
 ## 1. Produktprinzip
 
-Luna V3 ist eine Open-Source-Workbench für Integrationen, Mappings, Datenflüsse, Endpunkte und spätere Prozessausführung.
+Luna V3 ist eine Open-Source-Workbench fÃ¼r Integrationen, Mappings, DatenflÃ¼sse, Endpunkte und spÃ¤tere ProzessausfÃ¼hrung.
 
-Der Kern ist nicht „ein einzelner Endpoint“ und auch nicht „nur WooCommerce“, sondern:
+Der Kern ist nicht â€žein einzelner Endpointâ€œ und auch nicht â€žnur WooCommerceâ€œ, sondern:
 
 ```text
 Idee -> Planung -> Umsetzung
@@ -35,19 +35,19 @@ Ein Endpoint ist nur eine Auslieferungsform. Ein Transfer ist eine Aktion. Ein W
 
 ## 2. Grundregeln der Architektur
 
-Diese Regeln gelten für alle kommenden Versionen:
+Diese Regeln gelten fÃ¼r alle kommenden Versionen:
 
 - Luna Core bleibt generisch.
 - WooCommerce, Afterbuy, ERP, Amazon, PIM und Lager werden als Adapter, Prozesse oder konkrete Module gedacht.
 - Ein Endpoint liefert Daten aus Luna heraus.
-- Ein Webhook ruft Luna von außen auf und startet später einen Prozess.
-- Ein Prozess beschreibt eine ausführbare Abfolge von Schritten.
+- Ein Webhook ruft Luna von auÃŸen auf und startet spÃ¤ter einen Prozess.
+- Ein Prozess beschreibt eine ausfÃ¼hrbare Abfolge von Schritten.
 - Ein Trigger beschreibt, wodurch ein Prozess gestartet wird.
 - Ein Adapter beschreibt, wie Luna mit einem Ziel- oder Quellsystem spricht.
 - Exportpakete enthalten keine Secrets.
 - Exportpakete beschreiben Konfiguration, Schema, Mapping, Endpoint/Process und Target-Metadaten.
-- Deployment Targets beschreiben Umgebungen und öffentliche URLs, aber keine Zugangsdaten.
-- PRO-/Lizenzlogik wird höchstens durch Metadaten vorbereitet, aber nicht hart in den Core eingebaut.
+- Deployment Targets beschreiben Umgebungen und Ã¶ffentliche URLs, aber keine Zugangsdaten.
+- PRO-/Lizenzlogik wird hÃ¶chstens durch Metadaten vorbereitet, aber nicht hart in den Core eingebaut.
 
 ---
 
@@ -62,10 +62,10 @@ Diese Regeln gelten für alle kommenden Versionen:
 | `v1.8.0` | abgeschlossen | Dataset UI / Runtime |
 | `v1.9.0` | abgeschlossen | Transfer Layer v1 / Single Target Table / Upsert |
 | `v2.0.0` | abgeschlossen | WooCommerce-/Transfer-Grundlagen aus Main |
-| `v2.1.0` | abgeschlossen | Roadmap-/Architektur-Bereinigung als Übergang |
+| `v2.1.0` | abgeschlossen | Roadmap-/Architektur-Bereinigung als Ãœbergang |
 | `v2.2.0` | abgeschlossen | Deployment Targets & Endpoint Export Packages |
 | `v2.3.0` | abgeschlossen | Process Runtime Foundation |
-| `v2.4.0` | nächster Meilenstein | Trigger Layer |
+| `v2.4.0` | abgeschlossen | Trigger Layer |
 
 ---
 
@@ -80,7 +80,7 @@ Kern:
 - Endpoints an Workspaces/Mappings anbinden.
 - GET-JSON-Endpunkte erzeugen.
 - Endpoint-Ausgabe mit `success`, `generated_at`, `count` und `items`.
-- Delete-Funktionen für zentrale Entitäten ergänzen.
+- Delete-Funktionen fÃ¼r zentrale EntitÃ¤ten ergÃ¤nzen.
 - Performance der Endpoint-Ausgabe stabilisieren.
 - ISR-Preis-/Bestandsendpoint als realer Referenzfall.
 
@@ -100,7 +100,7 @@ Kern:
 
 - `first_non_empty` als Mapping-Regel.
 - Berechnete Felder als Template-Quellen nutzbar machen.
-- ISR-Sonderfälle abbildbar machen, ohne Quellsysteme zu verändern.
+- ISR-SonderfÃ¤lle abbildbar machen, ohne Quellsysteme zu verÃ¤ndern.
 
 Abgrenzung:
 
@@ -115,14 +115,14 @@ Status: abgeschlossen
 
 Kern:
 
-- Grundlage für exportierbare Integrationsmodule.
-- CLI-Struktur für Integrationsexporte.
+- Grundlage fÃ¼r exportierbare Integrationsmodule.
+- CLI-Struktur fÃ¼r Integrationsexporte.
 - Manifest-Grundlagen.
 - Modulregistrierung und Export-Runtime vorbereiten.
 
 Abgrenzung:
 
-- noch keine vollständige Process Runtime.
+- noch keine vollstÃ¤ndige Process Runtime.
 - noch keine Trigger-Schicht.
 
 ---
@@ -133,9 +133,9 @@ Status: abgeschlossen
 
 Kern:
 
-- Dataset-Konzepte einführen.
+- Dataset-Konzepte einfÃ¼hren.
 - Ergebnisse von Mappings/Endpoints intern als Datenquellen nutzbar machen.
-- Grundlage für spätere Transfers und Prozesse schaffen.
+- Grundlage fÃ¼r spÃ¤tere Transfers und Prozesse schaffen.
 
 Abgrenzung:
 
@@ -151,9 +151,9 @@ Status: abgeschlossen
 Kern:
 
 - Dataset-Endpunkte sichtbar machen.
-- Dataset Preview/Dry-Run ermöglichen.
+- Dataset Preview/Dry-Run ermÃ¶glichen.
 - Output-Felder sichtbar machen.
-- Dataset-Ergebnisse besser prüfbar machen.
+- Dataset-Ergebnisse besser prÃ¼fbar machen.
 
 Abgrenzung:
 
@@ -169,9 +169,9 @@ Status: abgeschlossen
 Kern:
 
 - Dataset als Transfer Source verwenden.
-- Target Connection und Target Table auswählen.
+- Target Connection und Target Table auswÃ¤hlen.
 - Dataset-Felder Zielspalten zuordnen.
-- Insert/Update/Upsert unterstützen.
+- Insert/Update/Upsert unterstÃ¼tzen.
 - Upsert-Key definieren.
 - Dry-Run mit Write Plan.
 - echter Run in eine einzelne Ziel-Tabelle.
@@ -191,9 +191,9 @@ Status: abgeschlossen
 
 Kern:
 
-- WooCommerce-nahe Export-/Transfer-Grundlagen aus dem Main-Zweig übernehmen.
-- Bestehende CLI-Kommandos wie `export:woocommerce:list` und `export:woocommerce:run` berücksichtigen.
-- Bestehende Transfer- und Exportlogik nicht durch neue Roadmap-Punkte überschreiben.
+- WooCommerce-nahe Export-/Transfer-Grundlagen aus dem Main-Zweig Ã¼bernehmen.
+- Bestehende CLI-Kommandos wie `export:woocommerce:list` und `export:woocommerce:run` berÃ¼cksichtigen.
+- Bestehende Transfer- und Exportlogik nicht durch neue Roadmap-Punkte Ã¼berschreiben.
 
 Abgrenzung:
 
@@ -202,7 +202,7 @@ Abgrenzung:
 
 Hinweis:
 
-Diese Version ist als bestehender Main-Stand zu behandeln. Spätere generische Prozess- und Adapterlogik darf vorhandene WooCommerce-Bausteine integrieren, aber nicht blind ersetzen.
+Diese Version ist als bestehender Main-Stand zu behandeln. SpÃ¤tere generische Prozess- und Adapterlogik darf vorhandene WooCommerce-Bausteine integrieren, aber nicht blind ersetzen.
 
 ---
 
@@ -213,15 +213,15 @@ Status: abgeschlossen
 Kern:
 
 - Roadmap und Architektur wieder konsolidieren.
-- Widersprüchliche Planungen entfernen.
+- WidersprÃ¼chliche Planungen entfernen.
 - Klare Schichtentrennung herstellen.
-- WooCommerce, Afterbuy, ERP und Webhooks wieder als Spezialfälle der generischen Luna-Architektur einordnen.
+- WooCommerce, Afterbuy, ERP und Webhooks wieder als SpezialfÃ¤lle der generischen Luna-Architektur einordnen.
 
 Abgrenzung:
 
-- keine großen PHP-Features.
+- keine groÃŸen PHP-Features.
 - keine neue Runtime-Schicht.
-- keine PRO-/Lizenzprüfung.
+- keine PRO-/LizenzprÃ¼fung.
 
 ---
 
@@ -231,7 +231,7 @@ Status: abgeschlossen
 
 Ziel:
 
-Luna kann Endpoints nicht nur ausführen, sondern mit korrekten Ziel-URLs beschreiben und als reproduzierbares, secret-freies Exportpaket ausgeben.
+Luna kann Endpoints nicht nur ausfÃ¼hren, sondern mit korrekten Ziel-URLs beschreiben und als reproduzierbares, secret-freies Exportpaket ausgeben.
 
 Kern:
 
@@ -252,18 +252,18 @@ Kern:
   - `README.md`
 - Exportpakete unter `storage/exports/...`.
 - Exportpakete enthalten keine Secrets.
-- Exportpakete beschreiben die produktive URL, sofern ein Target gewählt wurde.
-- Legacy-/öffentliche Endpoint-Pfade müssen korrekt beschreibbar sein.
+- Exportpakete beschreiben die produktive URL, sofern ein Target gewÃ¤hlt wurde.
+- Legacy-/Ã¶ffentliche Endpoint-Pfade mÃ¼ssen korrekt beschreibbar sein.
 
 Definition of Done:
 
-- `composer check` ist grün.
+- `composer check` ist grÃ¼n.
 - Migrationen laufen sauber.
-- Deployment Target für den relevanten Workspace kann angelegt werden.
-- Production Target enthält kein `localhost`.
+- Deployment Target fÃ¼r den relevanten Workspace kann angelegt werden.
+- Production Target enthÃ¤lt kein `localhost`.
 - ISR-Endpoint kann mit Target exportiert werden.
-- Exportpaket enthält Manifest, Endpoint, Mapping, Schema, Checksums und README.
-- Exportpaket enthält keine `.env`-Werte, Passwörter, Tokens oder API-Keys.
+- Exportpaket enthÃ¤lt Manifest, Endpoint, Mapping, Schema, Checksums und README.
+- Exportpaket enthÃ¤lt keine `.env`-Werte, PasswÃ¶rter, Tokens oder API-Keys.
 - Generierte Exportpakete werden nicht versehentlich committed.
 
 Abgrenzung:
@@ -272,7 +272,7 @@ Abgrenzung:
 - keine Webhook Runtime.
 - keine WooCommerce-Schreibzugriffe.
 - keine Afterbuy-/ERP-Adapter.
-- keine PRO-/Lizenzserver-Prüfung.
+- keine PRO-/Lizenzserver-PrÃ¼fung.
 - keine zentrale Luna-Hub-Kommunikation.
 
 ---
@@ -285,34 +285,34 @@ Status: abgeschlossen
 
 Ziel:
 
-Luna kann ausführbare Prozesse beschreiben, manuell oder per CLI starten, protokollieren und nachvollziehbar auswerten.
+Luna kann ausfÃ¼hrbare Prozesse beschreiben, manuell oder per CLI starten, protokollieren und nachvollziehbar auswerten.
 
-Ein Prozess ist eine kontrollierte Ausführungseinheit. Trigger-Typen wie API, Schedule und Webhook bleiben spätere Konzepte; in v2.3.0 sind nur manuelle Ausführung und CLI-Ausführung produktiv nutzbar.
+Ein Prozess ist eine kontrollierte AusfÃ¼hrungseinheit. Trigger-Typen wie API, Schedule und Webhook bleiben spÃ¤tere Konzepte; in v2.3.0 sind nur manuelle AusfÃ¼hrung und CLI-AusfÃ¼hrung produktiv nutzbar.
 
 Umgesetzt:
 
-- Migrationen für `luna_processes`, `luna_process_steps`, `luna_process_runs` und `luna_process_run_logs`.
+- Migrationen fÃ¼r `luna_processes`, `luna_process_steps`, `luna_process_runs` und `luna_process_run_logs`.
 - Prozessdefinitionen mit Workspace, Name, Key, Status, Beschreibung und Standardmodus.
 - Prozess-Schritte mit Position, Step-Typ, Mapping-Referenz, Aktiv-Flag und optionalem `continue_on_error`.
-- Erster real ausführbarer Step-Typ: `mapping_run`.
-- `mapping_run` nutzt die vorhandene Mapping-Ausführung direkt über Services, nicht über einen HTTP-Call gegen Luna selbst.
+- Erster real ausfÃ¼hrbarer Step-Typ: `mapping_run`.
+- `mapping_run` nutzt die vorhandene Mapping-AusfÃ¼hrung direkt Ã¼ber Services, nicht Ã¼ber einen HTTP-Call gegen Luna selbst.
 - Dry-Run wird an die vorhandene Mapping-Dry-Run-Mechanik durchgereicht.
-- Manuelle Prozessausführung über die Admin-UI.
-- CLI-Ausführung über `php bin/luna process:run <process-id>` und `--dry-run`.
-- Prozessläufe mit Status, Modus, Trigger-Typ, Startzeit, Endzeit, Dauer, Fehlertext und sicherem Kontext.
+- Manuelle ProzessausfÃ¼hrung Ã¼ber die Admin-UI.
+- CLI-AusfÃ¼hrung Ã¼ber `php bin/luna process:run <process-id>` und `--dry-run`.
+- ProzesslÃ¤ufe mit Status, Modus, Trigger-Typ, Startzeit, Endzeit, Dauer, Fehlertext und sicherem Kontext.
 - Prozess-Logs pro Lauf mit Level, Nachricht und kleinem JSON-Kontext.
 - Run-Detailansicht mit chronologischen Logs.
-- `bin/luna` Usage enthält weiterhin bestehende Kommandos wie `endpoint:export`, `integration:export`, `export:woocommerce:list` und `export:woocommerce:run`.
+- `bin/luna` Usage enthÃ¤lt weiterhin bestehende Kommandos wie `endpoint:export`, `integration:export`, `export:woocommerce:list` und `export:woocommerce:run`.
 
 Bewusst offen:
 
-- `process_run_items` wurde nicht umgesetzt; Datensatzprotokollierung bleibt optional für spätere Versionen.
-- Dataset-/Endpoint-spezifische Step-Typen bleiben spätere Erweiterungen.
+- `process_run_items` wurde nicht umgesetzt; Datensatzprotokollierung bleibt optional fÃ¼r spÃ¤tere Versionen.
+- Dataset-/Endpoint-spezifische Step-Typen bleiben spÃ¤tere Erweiterungen.
 - Trigger-Konfiguration und Scheduler sind nicht Teil von v2.3.0.
 
 Nicht-Ziele:
 
-- keine vollständige Webhook-Verarbeitung.
+- keine vollstÃ¤ndige Webhook-Verarbeitung.
 - kein Scheduler/Cron als produktive Runtime.
 - kein Afterbuy-Adapter.
 - kein ERP-Adapter.
@@ -322,28 +322,28 @@ Nicht-Ziele:
 
 Akzeptanzkriterien:
 
-- `composer check` ist grün.
-- Migrationen für Prozess-Tabellen laufen sauber.
+- `composer check` ist grÃ¼n.
+- Migrationen fÃ¼r Prozess-Tabellen laufen sauber.
 - Ein Prozess kann in der UI angelegt werden.
-- Ein Prozess kann mindestens einen ausführbaren Schritt besitzen.
+- Ein Prozess kann mindestens einen ausfÃ¼hrbaren Schritt besitzen.
 - Ein Prozess kann manuell gestartet werden.
 - Ein Prozess kann per CLI gestartet werden.
 - Jeder Lauf erzeugt einen Run-Eintrag.
 - Fehler werden nachvollziehbar gespeichert.
-- Ein fehlgeschlagener Prozess zerstört keine bestehende Endpoint-/Mapping-Funktion.
+- Ein fehlgeschlagener Prozess zerstÃ¶rt keine bestehende Endpoint-/Mapping-Funktion.
 - Bestehende Kommandos wie `endpoint:export`, `integration:export`, `export:woocommerce:list` und `export:woocommerce:run` bleiben erhalten.
 
 ---
 
-## 6. Nächster Meilenstein
+## 6. Abgeschlossene Version
 
 ### v2.4.0 - Trigger Layer
 
-Status: geplant / nächster Meilenstein
+Status: abgeschlossen
 
 Ziel:
 
-Prozesse sollen über definierte Trigger gestartet werden können.
+Prozesse sollen Ã¼ber definierte Trigger gestartet werden kÃ¶nnen.
 
 Trigger-Typen:
 
@@ -353,15 +353,18 @@ Trigger-Typen:
 - `schedule`
 - `webhook`
 
-Geplanter Scope:
+Umgesetzt:
 
-- Trigger einem Prozess zuordnen.
+- Trigger-Tabelle und Trigger-Verwaltung für Prozesse.
+- Trigger-Typen `manual`, `cli`, `api`, `schedule` und `webhook`.
 - Trigger aktiv/inaktiv schalten.
-- Trigger-Konfiguration speichern.
-- API-Trigger vorbereiten.
-- Webhook-Trigger als Konzept vorbereiten.
-- Webhook Base URL aus Deployment Target ableiten.
-- Noch keine komplexe WooCommerce-Webhook-Fachverarbeitung als Pflichtumfang.
+- Trigger-Konfiguration speichern und anzeigen.
+- API-/Webhook-URL-Vorschau über Deployment Targets.
+- Webhook Base URL wird bevorzugt verwendet, sonst Public Base URL mit `/api/webhooks/{trigger_key}`.
+- Generische API- und Webhook-Auslösung ohne Fachverarbeitung.
+- Prozessläufe speichern Trigger-Kontext, Trigger-Quelle und sichere Request-Metadaten.
+- CLI-Ausführung bleibt über `process:run <process-id>` kompatibel und unterstützt zusätzlich `--trigger=<trigger-id-or-key>`.
+- Schedule-Trigger werden konfiguriert, aber noch nicht automatisch produktiv ausgeführt.
 
 Abgrenzung:
 
@@ -370,15 +373,17 @@ Abgrenzung:
 
 ---
 
+## 7. Nächster Meilenstein
+
 ### v2.5.0 - Adapter / Target Actions Foundation
 
-Status: geplant
+Status: geplant / nächster Meilenstein
 
 Ziel:
 
-Prozesse sollen kontrolliert Aktionen gegen Zielsysteme ausführen können.
+Prozesse sollen kontrolliert Aktionen gegen Zielsysteme ausfÃ¼hren kÃ¶nnen.
 
-Mögliche Action-/Adapter-Typen:
+MÃ¶gliche Action-/Adapter-Typen:
 
 - `http_get`
 - `http_post`
@@ -386,8 +391,8 @@ Mögliche Action-/Adapter-Typen:
 - `file_export`
 - `database_insert`
 - `database_upsert`
-- `custom_php` nur falls wirklich nötig und abgesichert
-- später spezifisch:
+- `custom_php` nur falls wirklich nÃ¶tig und abgesichert
+- spÃ¤ter spezifisch:
   - `woocommerce_api`
   - `afterbuy_api`
   - `erp_api`
@@ -397,7 +402,7 @@ Geplanter Scope:
 
 - Adapter-Konfiguration ohne Secrets im Export.
 - Target Action als Prozess-Schritt nutzbar machen.
-- Dry-Run/Preview soweit möglich.
+- Dry-Run/Preview soweit mÃ¶glich.
 - Fehler und Antwortdaten protokollieren.
 - Retry-Grundlagen vorbereiten.
 
@@ -415,7 +420,7 @@ Status: geplant
 
 Ziel:
 
-Luna soll Schemas nicht nur im Exportpaket erzeugen, sondern versioniert verwalten und gegen Ergebnisse validieren können.
+Luna soll Schemas nicht nur im Exportpaket erzeugen, sondern versioniert verwalten und gegen Ergebnisse validieren kÃ¶nnen.
 
 Geplanter Scope:
 
@@ -425,12 +430,12 @@ Geplanter Scope:
 - Beispielwerte.
 - Validierung von Mapping-/Endpoint-/Process-Ergebnissen gegen ein Schema.
 - Schema im Exportpaket referenzieren.
-- Schema-Änderungen nachvollziehbar machen.
+- Schema-Ã„nderungen nachvollziehbar machen.
 
 Abgrenzung:
 
-- Keine vollständige OpenAPI-Generatorpflicht.
-- JSON Schema kann vorbereitet werden, aber Luna muss nicht sofort jeden JSON-Schema-Sonderfall vollständig unterstützen.
+- Keine vollstÃ¤ndige OpenAPI-Generatorpflicht.
+- JSON Schema kann vorbereitet werden, aber Luna muss nicht sofort jeden JSON-Schema-Sonderfall vollstÃ¤ndig unterstÃ¼tzen.
 
 ---
 
@@ -445,11 +450,11 @@ WooCommerce wird als konkretes Modul auf Basis von Process Runtime, Trigger Laye
 Geplanter Scope:
 
 - WooCommerce-Webhooks als Trigger.
-- HMAC-/Secret-Prüfung.
+- HMAC-/Secret-PrÃ¼fung.
 - Order-Events verarbeiten.
 - Event -> Prozesslauf.
 - Prozesslauf -> TransferDB/Staging oder Exportprofil.
-- Statusänderungen nachvollziehbar übernehmen.
+- StatusÃ¤nderungen nachvollziehbar Ã¼bernehmen.
 - WooCommerce-spezifische Exportprofile ordnen.
 
 Wichtige Regel:
@@ -464,13 +469,13 @@ Nicht-Ziele:
 
 - keine lokale Luna-TransferDB im WordPress-Plugin.
 - kein Pflicht-WP-Plugin.
-- keine ungeprüften Schreibzugriffe in WooCommerce.
+- keine ungeprÃ¼ften Schreibzugriffe in WooCommerce.
 
 ---
 
 ### v2.8.0 - External System Modules: Afterbuy / ERP / weitere Systeme
 
-Status: geplant / später
+Status: geplant / spÃ¤ter
 
 Ziel:
 
@@ -483,7 +488,7 @@ Geplanter Scope:
 - Pro System klare Schemas.
 - Pro System klare Adapter-Konfiguration.
 - Pro System klare Prozessdefinitionen.
-- Exportpakete für diese Integrationen.
+- Exportpakete fÃ¼r diese Integrationen.
 
 Abgrenzung:
 
@@ -494,13 +499,13 @@ Abgrenzung:
 
 ### v2.9.0 - Official Modules / Entitlement Metadata Preparation
 
-Status: optional / später
+Status: optional / spÃ¤ter
 
 Ziel:
 
-Die spätere PRO-/Service-Ebene wird vorbereitet, ohne den Open-Source-Core hart zu verriegeln.
+Die spÃ¤tere PRO-/Service-Ebene wird vorbereitet, ohne den Open-Source-Core hart zu verriegeln.
 
-Mögliche Metadaten:
+MÃ¶gliche Metadaten:
 
 - `origin`
 - `support_status`
@@ -511,7 +516,7 @@ Mögliche Metadaten:
 
 Wichtige Regel:
 
-Diese Version ist keine harte Lizenzprüfung. Der Core bleibt lauffähig. Offizielle Module, Supportstatus und spätere Freigaben werden nur sauber beschreibbar.
+Diese Version ist keine harte LizenzprÃ¼fung. Der Core bleibt lauffÃ¤hig. Offizielle Module, Supportstatus und spÃ¤tere Freigaben werden nur sauber beschreibbar.
 
 Nicht-Ziele:
 
@@ -521,14 +526,14 @@ Nicht-Ziele:
 
 ---
 
-## 7. Dauerhafte Nicht-Ziele
+## 8. Dauerhafte Nicht-Ziele
 
 Diese Punkte sollen nicht versehentlich in die falsche Version rutschen:
 
 - keine lokale Luna-TransferDB in einem WordPress-Plugin.
-- kein Pflicht-WooCommerce-Plugin für den Core.
+- kein Pflicht-WooCommerce-Plugin fÃ¼r den Core.
 - keine Secrets in Exportpaketen.
-- keine produktiven Schreibzugriffe ohne Dry-Run/Preview/Bestätigung.
+- keine produktiven Schreibzugriffe ohne Dry-Run/Preview/BestÃ¤tigung.
 - keine Webhook-Fachlogik ohne Process Runtime.
 - keine Zielsystemadapter vor stabiler Prozess- und Adapter-Grundlage.
 - keine harte PRO-/Lizenzsperre im Open-Source-Core.
@@ -537,37 +542,38 @@ Diese Punkte sollen nicht versehentlich in die falsche Version rutschen:
 
 ---
 
-## 8. Commit-/Release-Regeln
+## 9. Commit-/Release-Regeln
 
-Für jeden Meilenstein gilt:
+FÃ¼r jeden Meilenstein gilt:
 
 - Branch nach Schema `feature/<version>-<kurzer-name>`.
-- `composer check` muss grün sein.
-- Migrationen müssen sauber laufen.
+- `composer check` muss grÃ¼n sein.
+- Migrationen mÃ¼ssen sauber laufen.
 - Keine generierten Exportpakete committen.
 - Keine `.env` oder Secrets committen.
-- Neue CLI-Kommandos müssen in `bin/luna` Usage sichtbar sein.
-- Bestehende CLI-Kommandos dürfen bei Merges nicht entfernt werden.
+- Neue CLI-Kommandos mÃ¼ssen in `bin/luna` Usage sichtbar sein.
+- Bestehende CLI-Kommandos dÃ¼rfen bei Merges nicht entfernt werden.
 - Nach Merge in `main` kann ein Tag gesetzt werden, z. B. `v2.3.0`.
 
 ---
 
-## 9. Nächste konkrete Entscheidung
+## 10. Nächste konkrete Entscheidung
 
-Der nächste Codex-Prompt sollte auf `v2.4.0 - Trigger Layer` gehen.
+Der nächste Codex-Prompt sollte auf `v2.5.0 - Adapter / Target Actions Foundation` gehen.
 
 Er soll ausdrücklich nicht bauen:
 
-- Afterbuy Adapter,
-- ERP Adapter,
-- WooCommerce-Schreiblogik,
+- vollständige WooCommerce-Webhook-Fachverarbeitung,
+- Afterbuy- oder ERP-Sonderarchitektur im Core,
 - PRO-/Lizenzserver,
-- externe Schreibaktionen als Hauptumfang.
+- unkontrollierte externe Schreibaktionen ohne Dry-Run/Preview.
 
 Er soll bauen:
 
-- Trigger-Definitionen für Prozesse,
-- Trigger-Aktivierung und -Deaktivierung,
-- erste sichere Trigger-Konfigurationen,
-- klare Abgrenzung zwischen Trigger und Prozesslogik,
-- Anschluss an die bestehende Process Runtime aus v2.3.0.
+- Adapter-/Target-Action-Grundlage als Prozess-Schritte,
+- sichere Adapter-Konfiguration ohne Secrets in Exporten,
+- kontrollierte Ausführung und Protokollierung,
+- klare Trennung zwischen Trigger, Prozess und Zielsystemlogik.
+
+
+

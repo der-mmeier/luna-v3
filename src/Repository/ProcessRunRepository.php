@@ -15,12 +15,20 @@ final class ProcessRunRepository
     ) {
     }
 
-    public function createRun(int $processId, string $mode, string $triggerType, ?string $triggerRef = null, array $context = []): int
-    {
+    public function createRun(
+        int $processId,
+        string $mode,
+        string $triggerType,
+        ?string $triggerRef = null,
+        array $context = [],
+        ?int $triggerId = null,
+        ?string $triggerSource = null,
+        array $triggerPayloadMeta = [],
+    ): int {
         $statement = $this->pdo()->prepare(
             'INSERT INTO luna_process_runs
-             (process_id, status, mode, trigger_type, trigger_ref, context_json, created_at, updated_at)
-             VALUES (:process_id, :status, :mode, :trigger_type, :trigger_ref, :context_json, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
+             (process_id, status, mode, trigger_type, trigger_ref, trigger_id, trigger_source, trigger_payload_meta, context_json, created_at, updated_at)
+             VALUES (:process_id, :status, :mode, :trigger_type, :trigger_ref, :trigger_id, :trigger_source, :trigger_payload_meta, :context_json, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
         );
         $statement->execute([
             'process_id' => $processId,
@@ -28,6 +36,9 @@ final class ProcessRunRepository
             'mode' => $mode,
             'trigger_type' => $triggerType,
             'trigger_ref' => $triggerRef,
+            'trigger_id' => $triggerId,
+            'trigger_source' => $triggerSource,
+            'trigger_payload_meta' => json_encode($this->maskSecrets($triggerPayloadMeta), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'context_json' => json_encode($this->maskSecrets($context), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ]);
 

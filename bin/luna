@@ -15,11 +15,13 @@ use Luna\Export\WooCommerceExportService;
 use Luna\Integration\ExportRuntimeBuilder;
 use Luna\Jobs\JobRunner;
 use Luna\Process\ProcessRunner;
+use Luna\Process\ProcessTriggerRunner;
 use Luna\Repository\ConnectionProfileRepository;
 use Luna\Transfer\DatasetTransferRunner;
 use Luna\Repository\JobRunRepository;
 use Luna\Repository\ExportProfileRepository;
 use Luna\Repository\ProcessRunRepository;
+use Luna\Repository\ProcessTriggerRepository;
 use Luna\WooCommerce\WooCommerceTransferRunner;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -50,9 +52,10 @@ function exitCodeForRun(array $run): int
 
 if ($command === null) {
 
-    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|export:woocommerce:list|export:woocommerce:run|process:run|endpoint:export|integration:export>\n");
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|export:woocommerce:list|export:woocommerce:run|process:run|trigger:list|trigger:run|endpoint:export|integration:export>\n");
     fwrite(STDERR, "Endpoint contract: php bin/luna endpoint:export <endpoint-id> [--target=<environment>] [--output=<directory>]\n");
-    fwrite(STDERR, "Process runtime: php bin/luna process:run <process-id> [--dry-run]\n");
+    fwrite(STDERR, "Process runtime: php bin/luna process:run <process-id> [--dry-run] [--trigger=<trigger-id-or-key>]\n");
+    fwrite(STDERR, "Trigger runtime: php bin/luna trigger:list <process-id> | trigger:run <trigger-id-or-key> [--dry-run]\n");
 
     exit(2);
 }
@@ -346,6 +349,7 @@ try {
     if ($command === 'process:run') {
         $processId = isset($argv[2]) ? (int) $argv[2] : 0;
         $mode = in_array('--dry-run', $argv, true) ? 'dry_run' : 'run';
+        $triggerIdentifier = null;
 
         foreach ($argv as $argument) {
             if (str_starts_with($argument, '--mode=')) {
@@ -354,16 +358,25 @@ try {
                     $mode = $requestedMode;
                 }
             }
+            if (str_starts_with($argument, '--trigger=')) {
+                $triggerIdentifier = trim((string) substr($argument, strlen('--trigger=')));
+            }
         }
 
         if ($processId <= 0) {
-            fwrite(STDERR, "Usage: php bin/luna process:run <process-id> [--dry-run]\n");
+            fwrite(STDERR, "Usage: php bin/luna process:run <process-id> [--dry-run] [--trigger=<trigger-id-or-key>]\n");
             exit(2);
         }
 
-        /** @var ProcessRunner $runner */
-        $runner = $app->services()->get(ProcessRunner::class);
-        $runId = $runner->run($processId, $mode, 'cli');
+        if ($triggerIdentifier !== null && $triggerIdentifier !== '') {
+            /** @var ProcessTriggerRunner $runner */
+            $runner = $app->services()->get(ProcessTriggerRunner::class);
+            $runId = $runner->runByIdentifier($triggerIdentifier, $mode, 'cli', null, [], $processId);
+        } else {
+            /** @var ProcessRunner $runner */
+            $runner = $app->services()->get(ProcessRunner::class);
+            $runId = $runner->run($processId, $mode, 'cli');
+        }
 
         /** @var ProcessRunRepository $runs */
         $runs = $app->services()->get(ProcessRunRepository::class);
@@ -382,6 +395,54 @@ try {
             echo 'Error: ' . (string) $run['error_message'] . "\n";
         }
 
+        exit((string) $run['status'] === 'success' ? 0 : 1);
+    }
+
+    if ($command === 'trigger:list') {
+        $processId = isset($argv[2]) ? (int) $argv[2] : 0;
+        if ($processId <= 0) {
+            fwrite(STDERR, "Usage: php bin/luna trigger:list <process-id>\n");
+            exit(2);
+        }
+
+        /** @var ProcessTriggerRepository $triggers */
+        $triggers = $app->services()->get(ProcessTriggerRepository::class);
+        foreach ($triggers->forProcess($processId) as $trigger) {
+            echo (int) $trigger['id'] . "\t"
+                . (string) $trigger['trigger_key'] . "\t"
+                . (string) $trigger['trigger_type'] . "\t"
+                . (! empty($trigger['is_active']) ? 'active' : 'inactive') . "\t"
+                . (string) $trigger['name'] . "\n";
+        }
+
+        exit(0);
+    }
+
+    if ($command === 'trigger:run') {
+        $identifier = isset($argv[2]) ? trim((string) $argv[2]) : '';
+        $mode = in_array('--dry-run', $argv, true) ? 'dry_run' : 'run';
+        if ($identifier === '') {
+            fwrite(STDERR, "Usage: php bin/luna trigger:run <trigger-id-or-key> [--dry-run]\n");
+            exit(2);
+        }
+
+        /** @var ProcessTriggerRunner $runner */
+        $runner = $app->services()->get(ProcessTriggerRunner::class);
+        $runId = $runner->runByIdentifier($identifier, $mode, 'cli');
+
+        /** @var ProcessRunRepository $runs */
+        $runs = $app->services()->get(ProcessRunRepository::class);
+        $run = $runs->findRun($runId);
+        if ($run === null) {
+            fwrite(STDERR, "Process run could not be loaded.\n");
+            exit(1);
+        }
+
+        echo 'Trigger: ' . $identifier . "\n";
+        echo 'Process: ' . (int) $run['process_id'] . "\n";
+        echo 'Run: ' . (int) $runId . "\n";
+        echo 'Status: ' . (string) $run['status'] . "\n";
+        echo 'Mode: ' . (string) $run['mode'] . "\n";
         exit((string) $run['status'] === 'success' ? 0 : 1);
     }
 

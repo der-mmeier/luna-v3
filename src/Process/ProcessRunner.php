@@ -21,8 +21,16 @@ final class ProcessRunner
     ) {
     }
 
-    public function run(int $processId, string $mode = 'run', string $triggerType = 'manual', ?string $triggerRef = null): int
-    {
+    public function run(
+        int $processId,
+        string $mode = 'run',
+        string $triggerType = 'manual',
+        ?string $triggerRef = null,
+        array $initialContext = [],
+        ?int $triggerId = null,
+        ?string $triggerSource = null,
+        array $triggerPayloadMeta = [],
+    ): int {
         $process = $this->processes->find($processId);
         if ($process === null) {
             throw new RuntimeException('Process not found.');
@@ -34,7 +42,7 @@ final class ProcessRunner
 
         $mode = in_array($mode, ['run', 'dry_run'], true) ? $mode : 'run';
         $triggerType = in_array($triggerType, ['manual', 'cli', 'api', 'schedule', 'webhook'], true) ? $triggerType : 'manual';
-        $runId = $this->runs->createRun($processId, $mode, $triggerType, $triggerRef);
+        $runId = $this->runs->createRun($processId, $mode, $triggerType, $triggerRef, $initialContext, $triggerId, $triggerSource, $triggerPayloadMeta);
         $started = microtime(true);
         $this->runs->markRunning($runId);
         $this->runs->addLog($runId, 'info', 'Prozesslauf gestartet.', [
@@ -43,7 +51,7 @@ final class ProcessRunner
             'trigger_type' => $triggerType,
         ]);
 
-        $context = [
+        $context = $initialContext + [
             'steps_total' => 0,
             'steps_executed' => 0,
             'steps_skipped' => 0,

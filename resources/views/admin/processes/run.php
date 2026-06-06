@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /** @var array<string, mixed> $run */
 /** @var array<int, array<string, mixed>> $logs */
 
@@ -11,6 +11,7 @@ $badge = match ($status) {
     default => 'secondary',
 };
 $context = json_decode((string) ($run['context_json'] ?? '{}'), true) ?: [];
+$payloadMeta = json_decode((string) ($run['trigger_payload_meta'] ?? '{}'), true) ?: [];
 ?>
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
@@ -38,10 +39,10 @@ $context = json_decode((string) ($run['context_json'] ?? '{}'), true) ?: [];
         <div class="card admin-card"><div class="card-body"><div class="small text-body-secondary">Trigger</div><strong><?= htmlspecialchars((string) $run['trigger_type'], ENT_QUOTES, 'UTF-8') ?></strong></div></div>
     </div>
     <div class="col-md-2">
-        <div class="card admin-card"><div class="card-body"><div class="small text-body-secondary">Start</div><strong><?= htmlspecialchars((string) ($run['started_at'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></strong></div></div>
+        <div class="card admin-card"><div class="card-body"><div class="small text-body-secondary">Trigger-Quelle</div><strong><?= htmlspecialchars((string) ($run['trigger_source'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></strong></div></div>
     </div>
     <div class="col-md-2">
-        <div class="card admin-card"><div class="card-body"><div class="small text-body-secondary">Ende</div><strong><?= htmlspecialchars((string) ($run['finished_at'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></strong></div></div>
+        <div class="card admin-card"><div class="card-body"><div class="small text-body-secondary">Start</div><strong><?= htmlspecialchars((string) ($run['started_at'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></strong></div></div>
     </div>
     <div class="col-md-2">
         <div class="card admin-card"><div class="card-body"><div class="small text-body-secondary">Dauer</div><strong><?= htmlspecialchars((string) ($run['duration_ms'] ?? '-'), ENT_QUOTES, 'UTF-8') ?> ms</strong></div></div>
@@ -51,6 +52,11 @@ $context = json_decode((string) ($run['context_json'] ?? '{}'), true) ?: [];
 <div class="card admin-card mb-4">
     <div class="card-header">Kontext</div>
     <pre class="p-3 mb-0"><?= htmlspecialchars(json_encode($context, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?></pre>
+</div>
+
+<div class="card admin-card mb-4">
+    <div class="card-header">Trigger-Metadaten</div>
+    <pre class="p-3 mb-0"><?= htmlspecialchars(json_encode($payloadMeta, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?></pre>
 </div>
 
 <div class="card admin-card">
