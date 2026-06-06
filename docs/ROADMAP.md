@@ -1,6 +1,6 @@
 # Luna V3 Roadmap
 
-Stand: nach `v2.2.0`  
+Stand: nach `v2.3.0`  
 Ziel dieses Dokuments: Die Versionsfolge sauber ordnen, widersprüchliche alte Planungen bereinigen und die nächsten Schritte so definieren, dass Luna nicht in WooCommerce-, Webhook-, Export- und Transfer-Sonderlogik zerfällt.
 
 ---
@@ -64,7 +64,8 @@ Diese Regeln gelten für alle kommenden Versionen:
 | `v2.0.0` | abgeschlossen | WooCommerce-/Transfer-Grundlagen aus Main |
 | `v2.1.0` | abgeschlossen | Roadmap-/Architektur-Bereinigung als Übergang |
 | `v2.2.0` | abgeschlossen | Deployment Targets & Endpoint Export Packages |
-| `v2.3.0` | nächster Meilenstein | Process Runtime Foundation |
+| `v2.3.0` | abgeschlossen | Process Runtime Foundation |
+| `v2.4.0` | nächster Meilenstein | Trigger Layer |
 
 ---
 
@@ -276,45 +277,38 @@ Abgrenzung:
 
 ---
 
-## 5. Nächster Meilenstein
+## 5. Abgeschlossene Version
 
 ### v2.3.0 - Process Runtime Foundation
 
-Status: geplant / nächster Meilenstein
+Status: abgeschlossen
 
 Ziel:
 
-Luna soll ausführbare Prozesse beschreiben, starten, protokollieren und nachvollziehbar auswerten können.
+Luna kann ausführbare Prozesse beschreiben, manuell oder per CLI starten, protokollieren und nachvollziehbar auswerten.
 
-Ein Prozess ist eine kontrollierte Ausführungseinheit. Er kann später manuell, per CLI, per Zeitplan, per API oder per Webhook gestartet werden. Webhooks selbst werden in dieser Version noch nicht als vollständige externe Runtime ausgebaut, sondern nur als späterer Trigger-Typ vorbereitet.
+Ein Prozess ist eine kontrollierte Ausführungseinheit. Trigger-Typen wie API, Schedule und Webhook bleiben spätere Konzepte; in v2.3.0 sind nur manuelle Ausführung und CLI-Ausführung produktiv nutzbar.
 
-Geplante Begriffe:
+Umgesetzt:
 
-- `processes`
-- `process_steps`
-- `process_runs`
-- `process_run_logs`
-- `process_run_items` optional, falls Datensatzebene nötig ist
+- Migrationen für `luna_processes`, `luna_process_steps`, `luna_process_runs` und `luna_process_run_logs`.
+- Prozessdefinitionen mit Workspace, Name, Key, Status, Beschreibung und Standardmodus.
+- Prozess-Schritte mit Position, Step-Typ, Mapping-Referenz, Aktiv-Flag und optionalem `continue_on_error`.
+- Erster real ausführbarer Step-Typ: `mapping_run`.
+- `mapping_run` nutzt die vorhandene Mapping-Ausführung direkt über Services, nicht über einen HTTP-Call gegen Luna selbst.
+- Dry-Run wird an die vorhandene Mapping-Dry-Run-Mechanik durchgereicht.
+- Manuelle Prozessausführung über die Admin-UI.
+- CLI-Ausführung über `php bin/luna process:run <process-id>` und `--dry-run`.
+- Prozessläufe mit Status, Modus, Trigger-Typ, Startzeit, Endzeit, Dauer, Fehlertext und sicherem Kontext.
+- Prozess-Logs pro Lauf mit Level, Nachricht und kleinem JSON-Kontext.
+- Run-Detailansicht mit chronologischen Logs.
+- `bin/luna` Usage enthält weiterhin bestehende Kommandos wie `endpoint:export`, `integration:export`, `export:woocommerce:list` und `export:woocommerce:run`.
 
-Geplanter Scope:
+Bewusst offen:
 
-- Prozesse in Luna anlegen und verwalten.
-- Prozess einem Workspace zuordnen.
-- Prozess-Schritte definieren.
-- Erster sinnvoller Step-Typ: bestehendes Mapping/Dataset/Endpoint-Ergebnis ausführen oder referenzieren.
-- Manuelle Ausführung über UI.
-- CLI-Ausführung über `php bin/luna process:run <process-id>`.
-- Prozesslauf protokollieren.
-- Status je Lauf:
-  - `queued`
-  - `running`
-  - `success`
-  - `failed`
-  - `cancelled`
-- Startzeit, Endzeit, Dauer und Fehlertext speichern.
-- Dry-Run-Modus, wenn die verwendete Quelle das unterstützt.
-- Keine Secrets im Prozess-Export.
-- Grundstruktur so bauen, dass spätere Trigger und Adapter sauber andocken können.
+- `process_run_items` wurde nicht umgesetzt; Datensatzprotokollierung bleibt optional für spätere Versionen.
+- Dataset-/Endpoint-spezifische Step-Typen bleiben spätere Erweiterungen.
+- Trigger-Konfiguration und Scheduler sind nicht Teil von v2.3.0.
 
 Nicht-Ziele:
 
@@ -341,11 +335,11 @@ Akzeptanzkriterien:
 
 ---
 
-## 6. Geplante Versionen nach v2.3.0
+## 6. Nächster Meilenstein
 
 ### v2.4.0 - Trigger Layer
 
-Status: geplant
+Status: geplant / nächster Meilenstein
 
 Ziel:
 
@@ -560,22 +554,20 @@ Für jeden Meilenstein gilt:
 
 ## 9. Nächste konkrete Entscheidung
 
-Der nächste Codex-Prompt sollte auf `v2.3.0 - Process Runtime Foundation` gehen.
+Der nächste Codex-Prompt sollte auf `v2.4.0 - Trigger Layer` gehen.
 
 Er soll ausdrücklich nicht bauen:
 
-- WooCommerce Webhook Runtime,
 - Afterbuy Adapter,
 - ERP Adapter,
-- Scheduler,
+- WooCommerce-Schreiblogik,
 - PRO-/Lizenzserver,
 - externe Schreibaktionen als Hauptumfang.
 
 Er soll bauen:
 
-- Prozess-Tabellen,
-- Prozess-UI,
-- manuelle Prozessausführung,
-- CLI-Prozessausführung,
-- Prozesslauf-Protokollierung,
-- saubere Anschlussstellen für spätere Trigger und Adapter.
+- Trigger-Definitionen für Prozesse,
+- Trigger-Aktivierung und -Deaktivierung,
+- erste sichere Trigger-Konfigurationen,
+- klare Abgrenzung zwischen Trigger und Prozesslogik,
+- Anschluss an die bestehende Process Runtime aus v2.3.0.

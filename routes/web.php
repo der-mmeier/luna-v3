@@ -19,6 +19,7 @@ use Luna\Jobs\JobRunner;
 use Luna\Mapping\LookupKeyTemplateRenderer;
 use Luna\Mapping\MappingValidator;
 use Luna\Mapping\TransformType;
+use Luna\Process\ProcessRunner;
 use Luna\Reports\ReportMailer;
 use Luna\Repository\AuditLogRepository;
 use Luna\Repository\ConnectionProfileRepository;
@@ -29,6 +30,8 @@ use Luna\Repository\ExportProfileRepository;
 use Luna\Repository\JobRepository;
 use Luna\Repository\JobRunRepository;
 use Luna\Repository\MappingRepository;
+use Luna\Repository\ProcessRepository;
+use Luna\Repository\ProcessRunRepository;
 use Luna\Repository\ReportRepository;
 use Luna\Repository\SchemaMetadataRepository;
 use Luna\Repository\WorkspaceRepository;
@@ -139,6 +142,82 @@ if (! function_exists('endpointTargetRows')) {
         }
 
         return $rows;
+    }
+}
+
+if (! function_exists('processValues')) {
+    function processValues(Request $request): array
+    {
+        return [
+            'workspace_id' => $request->post('workspace_id'),
+            'name' => (string) $request->post('name', ''),
+            'process_key' => (string) $request->post('process_key', ''),
+            'description' => (string) $request->post('description', ''),
+            'status' => (string) $request->post('status', 'draft'),
+            'default_mode' => (string) $request->post('default_mode', 'run'),
+        ];
+    }
+}
+
+if (! function_exists('processErrors')) {
+    function processErrors(array $values): array
+    {
+        $errors = [];
+        if (empty($values['workspace_id'])) {
+            $errors[] = 'Workspace ist erforderlich.';
+        }
+        if (trim((string) ($values['name'] ?? '')) === '') {
+            $errors[] = 'Name ist erforderlich.';
+        }
+        if (! in_array((string) ($values['status'] ?? ''), ['draft', 'active', 'inactive'], true)) {
+            $errors[] = 'Status ist ungültig.';
+        }
+        if (! in_array((string) ($values['default_mode'] ?? ''), ['run', 'dry_run'], true)) {
+            $errors[] = 'Standardmodus ist ungültig.';
+        }
+        $key = trim((string) ($values['process_key'] ?? ''));
+        if ($key !== '' && preg_match('/^[a-z0-9_\\-]+$/', $key) !== 1) {
+            $errors[] = 'Key darf nur Kleinbuchstaben, Zahlen, Bindestriche und Unterstriche enthalten.';
+        }
+
+        return $errors;
+    }
+}
+
+if (! function_exists('processStepValues')) {
+    function processStepValues(Request $request): array
+    {
+        return [
+            'position' => (int) $request->post('position', 10),
+            'name' => (string) $request->post('name', ''),
+            'step_type' => (string) $request->post('step_type', 'mapping_run'),
+            'reference_id' => $request->post('reference_id'),
+            'config_json' => (string) $request->post('config_json', ''),
+            'is_enabled' => $request->post('is_enabled') !== null ? '1' : '',
+            'continue_on_error' => $request->post('continue_on_error') !== null ? '1' : '',
+        ];
+    }
+}
+
+if (! function_exists('processStepErrors')) {
+    function processStepErrors(array $values): array
+    {
+        $errors = [];
+        if (trim((string) ($values['name'] ?? '')) === '') {
+            $errors[] = 'Schrittname ist erforderlich.';
+        }
+        if (! in_array((string) ($values['step_type'] ?? ''), ['mapping_run'], true)) {
+            $errors[] = 'Step-Typ ist ungültig.';
+        }
+        if ((int) ($values['reference_id'] ?? 0) <= 0) {
+            $errors[] = 'Ein Mapping muss ausgewählt werden.';
+        }
+        $configJson = trim((string) ($values['config_json'] ?? ''));
+        if ($configJson !== '' && json_decode($configJson, true) === null && json_last_error() !== JSON_ERROR_NONE) {
+            $errors[] = 'Konfiguration muss gültiges JSON sein.';
+        }
+
+        return $errors;
     }
 }
 
@@ -1279,6 +1358,8 @@ return static function (RouteCollection $routes, Application $app): void {
     $audit = static fn (): AuditLogRepository => $app->services()->get('repository.audit_log');
     $jobs = static fn (): JobRepository => $app->services()->get('repository.jobs');
     $runs = static fn (): JobRunRepository => $app->services()->get('repository.job_runs');
+    $processes = static fn (): ProcessRepository => $app->services()->get(ProcessRepository::class);
+    $processRuns = static fn (): ProcessRunRepository => $app->services()->get(ProcessRunRepository::class);
     $reports = static fn (): ReportRepository => $app->services()->get('repository.reports');
     $endpoints = static fn (): EndpointRepository => $app->services()->get('repository.endpoints');
     $woocommerce = static fn (): WooCommerceIntegrationRepository => $app->services()->get(WooCommerceIntegrationRepository::class);
@@ -1297,6 +1378,7 @@ return static function (RouteCollection $routes, Application $app): void {
     $targetUrlBuilder = static fn (): DeploymentTargetUrlBuilder => $app->services()->get(DeploymentTargetUrlBuilder::class);
     $sourceRows = static fn (): MappingSourceRowProvider => $app->services()->get(MappingSourceRowProvider::class);
     $jobRunner = static fn (): JobRunner => $app->services()->get('jobs.runner');
+    $processRunner = static fn (): ProcessRunner => $app->services()->get(ProcessRunner::class);
     $reportMailer = static fn (): ReportMailer => $app->services()->get('reports.mailer');
     $validator = static fn (): MappingValidator => $app->services()->get('mapping.validator');
     $pdoFactory = static fn (): ExternalPdoConnectionFactory => $app->services()->get('connections.pdo_factory');
@@ -2351,6 +2433,231 @@ return static function (RouteCollection $routes, Application $app): void {
         $runId = (int) $request->route('runId');
         return $admin('admin/jobs/run', ['title' => 'Job Run', 'active' => 'jobs', 'run' => $runs()->findRun($runId), 'logs' => $runs()->logsForRun($runId)]);
     }, 'admin.jobs.run_show', 'web');
+
+    $routes->get('/admin/processes', static fn (): Response => $admin('admin/processes/index', [
+        'title' => 'Prozesse',
+        'active' => 'processes',
+        'processes' => safeList($processes),
+    ]), 'admin.processes', 'web');
+
+    $routes->get('/admin/processes/create', static fn (): Response => $admin('admin/processes/create', [
+        'title' => 'Prozess anlegen',
+        'active' => 'processes',
+        'workspaces' => safeList($workspaces),
+        'values' => ['status' => 'draft', 'default_mode' => 'run'],
+        'errors' => [],
+    ]), 'admin.processes.create', 'web');
+
+    $routes->post('/admin/processes', static function (Request $request) use ($admin, $processes, $workspaces): Response {
+        $values = processValues($request);
+        $errors = processErrors($values);
+        if ($errors !== []) {
+            return $admin('admin/processes/create', [
+                'title' => 'Prozess anlegen',
+                'active' => 'processes',
+                'workspaces' => safeList($workspaces),
+                'values' => $values,
+                'errors' => $errors,
+            ]);
+        }
+
+        try {
+            $id = $processes()->create($values);
+        } catch (Throwable $exception) {
+            return $admin('admin/processes/create', [
+                'title' => 'Prozess anlegen',
+                'active' => 'processes',
+                'workspaces' => safeList($workspaces),
+                'values' => $values,
+                'errors' => [$exception->getMessage()],
+            ]);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
+    }, 'admin.processes.store', 'web');
+
+    $routes->get('/admin/processes/runs/{runId}', static function (Request $request) use ($admin, $processRuns): Response {
+        $runId = (int) $request->route('runId');
+        $run = $processRuns()->findRun($runId);
+        if ($run === null) {
+            return Response::notFound();
+        }
+
+        return $admin('admin/processes/run', [
+            'title' => 'Prozesslauf',
+            'active' => 'processes',
+            'run' => $run,
+            'logs' => $processRuns()->logsForRun($runId),
+        ]);
+    }, 'admin.processes.run_show', 'web');
+
+    $routes->get('/admin/processes/{id}', static function (Request $request) use ($admin, $processes, $processRuns, $workspaces, $mappings): Response {
+        $id = (int) $request->route('id');
+        $process = $processes()->find($id);
+        if ($process === null) {
+            return Response::notFound();
+        }
+
+        return $admin('admin/processes/show', [
+            'title' => 'Prozess',
+            'active' => 'processes',
+            'process' => $process,
+            'steps' => $processes()->stepsForProcess($id),
+            'runs' => $processRuns()->runsForProcess($id),
+            'workspaces' => safeList($workspaces),
+            'mappings' => safeList($mappings),
+            'values' => $process,
+            'stepValues' => ['position' => 10, 'step_type' => 'mapping_run', 'is_enabled' => '1'],
+            'errors' => [],
+            'stepErrors' => [],
+            'alert' => null,
+        ]);
+    }, 'admin.processes.show', 'web');
+
+    $routes->post('/admin/processes/{id}', static function (Request $request) use ($admin, $processes, $processRuns, $workspaces, $mappings): Response {
+        $id = (int) $request->route('id');
+        $process = $processes()->find($id);
+        if ($process === null) {
+            return Response::notFound();
+        }
+
+        $values = processValues($request);
+        $errors = processErrors($values);
+        if ($errors !== []) {
+            return $admin('admin/processes/show', [
+                'title' => 'Prozess',
+                'active' => 'processes',
+                'process' => $process,
+                'steps' => $processes()->stepsForProcess($id),
+                'runs' => $processRuns()->runsForProcess($id),
+                'workspaces' => safeList($workspaces),
+                'mappings' => safeList($mappings),
+                'values' => $values,
+                'stepValues' => ['position' => 10, 'step_type' => 'mapping_run', 'is_enabled' => '1'],
+                'errors' => $errors,
+                'stepErrors' => [],
+                'alert' => null,
+            ]);
+        }
+
+        try {
+            $processes()->update($id, $values);
+        } catch (Throwable $exception) {
+            return $admin('admin/processes/show', [
+                'title' => 'Prozess',
+                'active' => 'processes',
+                'process' => $process,
+                'steps' => $processes()->stepsForProcess($id),
+                'runs' => $processRuns()->runsForProcess($id),
+                'workspaces' => safeList($workspaces),
+                'mappings' => safeList($mappings),
+                'values' => $values,
+                'stepValues' => ['position' => 10, 'step_type' => 'mapping_run', 'is_enabled' => '1'],
+                'errors' => [$exception->getMessage()],
+                'stepErrors' => [],
+                'alert' => null,
+            ]);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
+    }, 'admin.processes.update', 'web');
+
+    $routes->post('/admin/processes/{id}/steps', static function (Request $request) use ($admin, $processes, $processRuns, $workspaces, $mappings): Response {
+        $id = (int) $request->route('id');
+        $process = $processes()->find($id);
+        if ($process === null) {
+            return Response::notFound();
+        }
+
+        $values = processStepValues($request);
+        $errors = processStepErrors($values);
+        if ($errors !== []) {
+            return $admin('admin/processes/show', [
+                'title' => 'Prozess',
+                'active' => 'processes',
+                'process' => $process,
+                'steps' => $processes()->stepsForProcess($id),
+                'runs' => $processRuns()->runsForProcess($id),
+                'workspaces' => safeList($workspaces),
+                'mappings' => safeList($mappings),
+                'values' => $process,
+                'stepValues' => $values,
+                'errors' => [],
+                'stepErrors' => $errors,
+                'alert' => null,
+            ]);
+        }
+
+        $processes()->addStep($id, $values);
+
+        return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
+    }, 'admin.processes.steps.store', 'web');
+
+    $routes->post('/admin/processes/{id}/steps/{stepId}', static function (Request $request) use ($processes): Response {
+        $id = (int) $request->route('id');
+        $stepId = (int) $request->route('stepId');
+        $step = $processes()->findStep($stepId);
+        if ($step === null || (int) $step['process_id'] !== $id) {
+            return Response::notFound();
+        }
+
+        $values = processStepValues($request);
+        $errors = processStepErrors($values);
+        if ($errors !== []) {
+            return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
+        }
+
+        $processes()->updateStep($stepId, $values);
+
+        return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
+    }, 'admin.processes.steps.update', 'web');
+
+    $routes->post('/admin/processes/{id}/steps/{stepId}/delete', static function (Request $request) use ($processes): Response {
+        $id = (int) $request->route('id');
+        $stepId = (int) $request->route('stepId');
+        $step = $processes()->findStep($stepId);
+        if ($step === null || (int) $step['process_id'] !== $id) {
+            return Response::notFound();
+        }
+
+        $processes()->deleteStep($stepId);
+
+        return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
+    }, 'admin.processes.steps.delete', 'web');
+
+    $routes->post('/admin/processes/{id}/run', static function (Request $request) use ($admin, $processRunner, $processes, $processRuns, $workspaces, $mappings): Response {
+        $id = (int) $request->route('id');
+        $mode = (string) $request->post('mode', 'run');
+        if (! in_array($mode, ['run', 'dry_run'], true)) {
+            $mode = 'run';
+        }
+
+        try {
+            $runId = $processRunner()->run($id, $mode, 'manual');
+
+            return new Response('', 302, ['Location' => '/admin/processes/runs/' . $runId]);
+        } catch (Throwable $exception) {
+            $process = $processes()->find($id);
+            if ($process === null) {
+                return Response::notFound();
+            }
+
+            return $admin('admin/processes/show', [
+                'title' => 'Prozess',
+                'active' => 'processes',
+                'process' => $process,
+                'steps' => $processes()->stepsForProcess($id),
+                'runs' => $processRuns()->runsForProcess($id),
+                'workspaces' => safeList($workspaces),
+                'mappings' => safeList($mappings),
+                'values' => $process,
+                'stepValues' => ['position' => 10, 'step_type' => 'mapping_run', 'is_enabled' => '1'],
+                'errors' => [],
+                'stepErrors' => [],
+                'alert' => ['type' => 'danger', 'message' => $exception->getMessage()],
+            ]);
+        }
+    }, 'admin.processes.run', 'web');
 
     $routes->get('/admin/transfers', static function () use ($admin, $datasetTransfers): Response {
         try {
