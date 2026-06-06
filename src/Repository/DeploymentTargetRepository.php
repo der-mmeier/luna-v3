@@ -199,19 +199,29 @@ final class DeploymentTargetRepository
 
     private function payload(array $data): array
     {
+        $environment = $this->normalizeEnvironment((string) ($data['environment'] ?? 'custom'));
         $publicBaseUrl = $this->urlBuilder->normalizeBaseUrl((string) ($data['public_base_url'] ?? ''));
         $endpointBaseUrl = trim((string) ($data['endpoint_base_url'] ?? ''));
         $webhookBaseUrl = trim((string) ($data['webhook_base_url'] ?? ''));
         $licenseServerUrl = trim((string) ($data['license_server_url'] ?? ''));
+        $normalizedEndpointBaseUrl = $endpointBaseUrl === '' ? null : $this->urlBuilder->normalizeBaseUrl($endpointBaseUrl);
+        $normalizedWebhookBaseUrl = $webhookBaseUrl === '' ? null : $this->urlBuilder->normalizeBaseUrl($webhookBaseUrl);
+        $normalizedLicenseServerUrl = $licenseServerUrl === '' ? null : $this->urlBuilder->normalizeBaseUrl($licenseServerUrl);
+
+        foreach ([$publicBaseUrl, $normalizedEndpointBaseUrl, $normalizedWebhookBaseUrl, $normalizedLicenseServerUrl] as $url) {
+            if ($url !== null) {
+                $this->urlBuilder->assertProductionUrlAllowed($environment, $url);
+            }
+        }
 
         return [
             'workspace_id' => empty($data['workspace_id']) ? null : (int) $data['workspace_id'],
             'name' => trim((string) ($data['name'] ?? '')),
-            'environment' => $this->normalizeEnvironment((string) ($data['environment'] ?? 'custom')),
+            'environment' => $environment,
             'public_base_url' => $publicBaseUrl,
-            'endpoint_base_url' => $endpointBaseUrl === '' ? null : $this->urlBuilder->normalizeBaseUrl($endpointBaseUrl),
-            'webhook_base_url' => $webhookBaseUrl === '' ? null : $this->urlBuilder->normalizeBaseUrl($webhookBaseUrl),
-            'license_server_url' => $licenseServerUrl === '' ? null : $this->urlBuilder->normalizeBaseUrl($licenseServerUrl),
+            'endpoint_base_url' => $normalizedEndpointBaseUrl,
+            'webhook_base_url' => $normalizedWebhookBaseUrl,
+            'license_server_url' => $normalizedLicenseServerUrl,
             'is_default' => ! empty($data['is_default']) ? 1 : 0,
             'is_active' => array_key_exists('is_active', $data) ? (! empty($data['is_active']) ? 1 : 0) : 1,
             'origin' => trim((string) ($data['origin'] ?? 'customer_created')) ?: 'customer_created',

@@ -68,6 +68,46 @@ final class DeploymentTargetRepositoryTest extends TestCase
         self::assertSame(1, (int) ($repository->find($secondId)['is_default'] ?? 0));
     }
 
+    public function testProductionRejectsLoopbackPublicUrl(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Production Targets dürfen keine localhost- oder Loopback-URL verwenden.');
+
+        $this->repository($this->pdo())->create([
+            'name' => 'Production Localhost',
+            'environment' => 'production',
+            'public_base_url' => 'http://localhost/luna',
+            'is_active' => '1',
+        ]);
+    }
+
+    public function testProductionRejectsLoopbackEndpointUrl(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Production Targets dürfen keine localhost- oder Loopback-URL verwenden.');
+
+        $this->repository($this->pdo())->create([
+            'name' => 'Production Endpoint Localhost',
+            'environment' => 'production',
+            'public_base_url' => 'https://toolbox.asf.gmbh/luna',
+            'endpoint_base_url' => 'http://127.0.0.1/luna/api/endpoints',
+            'is_active' => '1',
+        ]);
+    }
+
+    public function testLocalAllowsLocalhostAndNormalizesUrl(): void
+    {
+        $repository = $this->repository($this->pdo());
+        $id = $repository->create([
+            'name' => 'Local',
+            'environment' => 'local',
+            'public_base_url' => 'http://localhost/luna/',
+            'is_active' => '1',
+        ]);
+
+        self::assertSame('http://localhost/luna', $repository->find($id)['public_base_url'] ?? null);
+    }
+
     private function pdo(): PDO
     {
         $pdo = new PDO('sqlite::memory:');

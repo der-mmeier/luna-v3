@@ -49,6 +49,33 @@ final class DeploymentTargetUrlBuilder
         return $normalized;
     }
 
+    public function assertProductionUrlAllowed(string $environment, string $url): void
+    {
+        if (strtolower(trim($environment)) !== 'production') {
+            return;
+        }
+
+        if ($this->isLoopbackUrl($url)) {
+            throw new InvalidArgumentException('Production Targets dürfen keine localhost- oder Loopback-URL verwenden.');
+        }
+    }
+
+    public function isLoopbackUrl(string $url): bool
+    {
+        $parts = parse_url(trim($url));
+        if (! is_array($parts)) {
+            return false;
+        }
+
+        $host = strtolower(trim((string) ($parts['host'] ?? ''), '[]'));
+
+        return $host === 'localhost'
+            || $host === '127.0.0.1'
+            || str_starts_with($host, '127.')
+            || $host === '::1'
+            || $host === '0.0.0.0';
+    }
+
     /**
      * @param array<string, mixed> $target
      */

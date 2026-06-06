@@ -81,15 +81,20 @@ if (! function_exists('deploymentTargetErrors')) {
         if (trim((string) ($values['name'] ?? '')) === '') {
             $errors[] = 'Name ist erforderlich.';
         }
+        if (empty($values['workspace_id'])) {
+            $errors[] = 'Workspace ist erforderlich.';
+        }
         if (! in_array((string) ($values['environment'] ?? ''), ['local', 'staging', 'production', 'custom'], true)) {
             $errors[] = 'Environment ist ungültig.';
         }
 
+        $environment = (string) ($values['environment'] ?? 'custom');
         foreach (['public_base_url', 'endpoint_base_url', 'webhook_base_url', 'license_server_url'] as $field) {
             $value = trim((string) ($values[$field] ?? ''));
             if ($field === 'public_base_url' || $value !== '') {
                 try {
-                    $urlBuilder->normalizeBaseUrl($value);
+                    $normalized = $urlBuilder->normalizeBaseUrl($value);
+                    $urlBuilder->assertProductionUrlAllowed($environment, $normalized);
                 } catch (Throwable $exception) {
                     $errors[] = match ($field) {
                         'public_base_url' => 'Public Base URL: ' . $exception->getMessage(),

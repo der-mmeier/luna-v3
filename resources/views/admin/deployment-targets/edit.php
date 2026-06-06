@@ -6,7 +6,7 @@
 ?>
 <div class="mb-4">
     <h1 class="h3 mb-1">Deployment Target bearbeiten</h1>
-    <p class="text-body-secondary mb-0">URL- und Umgebungsmetadaten für Endpoint-Dokumentation und Exportpakete.</p>
+    <p class="text-body-secondary mb-0">Ein Deployment Target beschreibt öffentliche Ziel-URLs für eine Luna-Installation oder einen Workspace. Es enthält keine Zugangsdaten und keine Secrets.</p>
 </div>
 
 <?php if (($errors ?? []) !== []): ?>
