@@ -22,6 +22,7 @@ $navItems = [
     'jobs' => ['/admin/jobs', 'Jobs'],
     'reports' => ['/admin/reports', 'Reports'],
     'endpoints' => ['/admin/endpoints', 'Endpoints'],
+    'deployment-targets' => ['/admin/deployment-targets', 'Deployment Targets'],
     'audit' => ['/admin/audit', 'Audit'],
 ];
 ?>

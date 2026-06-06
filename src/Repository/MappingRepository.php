@@ -208,10 +208,10 @@ final class MappingRepository
             'INSERT INTO luna_mapping_fields
              (mapping_set_id, source_column, source_json_path, target_column, transform_type, default_value,
               lookup_connection_id, lookup_table, lookup_key_column, lookup_value_column, lookup_key_template, lookup_match_mode, lookup_result_mode, lookup_result_limit, lookup_result_key_column, lookup_result_key_transform, lookup_result_key_prefix_template, fallback_value, missing_behavior,
-              is_required, notes, sort_order, created_at, updated_at)
+              is_required, notes, schema_type, schema_required, schema_description, schema_example, sort_order, created_at, updated_at)
              VALUES (:mapping_set_id, :source_column, :source_json_path, :target_column, :transform_type, :default_value,
               :lookup_connection_id, :lookup_table, :lookup_key_column, :lookup_value_column, :lookup_key_template, :lookup_match_mode, :lookup_result_mode, :lookup_result_limit, :lookup_result_key_column, :lookup_result_key_transform, :lookup_result_key_prefix_template, :fallback_value, :missing_behavior,
-              :is_required, :notes, :sort_order, NOW(), NOW())',
+              :is_required, :notes, :schema_type, :schema_required, :schema_description, :schema_example, :sort_order, NOW(), NOW())',
         );
         $statement->execute($payload);
 
@@ -244,6 +244,10 @@ final class MappingRepository
                  missing_behavior = :missing_behavior,
                  is_required = :is_required,
                  notes = :notes,
+                 schema_type = :schema_type,
+                 schema_required = :schema_required,
+                 schema_description = :schema_description,
+                 schema_example = :schema_example,
                  sort_order = :sort_order,
                  updated_at = NOW()
              WHERE id = :id',
@@ -378,6 +382,12 @@ final class MappingRepository
                 : 'error',
             'is_required' => ! empty($data['is_required']) ? 1 : 0,
             'notes' => trim((string) ($data['notes'] ?? '')) ?: null,
+            'schema_type' => in_array((string) ($data['schema_type'] ?? 'auto'), ['auto', 'string', 'integer', 'number', 'boolean', 'object', 'array', 'null', 'mixed'], true)
+                ? (string) ($data['schema_type'] ?? 'auto')
+                : 'auto',
+            'schema_required' => ! empty($data['schema_required']) ? 1 : 0,
+            'schema_description' => trim((string) ($data['schema_description'] ?? '')) ?: null,
+            'schema_example' => trim((string) ($data['schema_example'] ?? '')) ?: null,
             'sort_order' => (int) ($data['sort_order'] ?? 0),
         ];
     }

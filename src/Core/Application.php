@@ -18,9 +18,13 @@ use Luna\Database\MigrationRunner;
 use Luna\Database\PdoConnectionFactory;
 use Luna\Database\SystemDatabase;
 use Luna\Dataset\DatasetRegistry;
+use Luna\Deployment\DeploymentTargetUrlBuilder;
 use Luna\Http\Response;
 use Luna\Export\EndpointExportArchiveService;
+use Luna\Export\EndpointExportContractService;
+use Luna\Export\EndpointExportSanitizer;
 use Luna\Export\EndpointRuntimeExporter;
+use Luna\Export\EndpointSchemaBuilder;
 use Luna\Export\WooCommerceExportService;
 use Luna\Integration\ExportModuleRegistry;
 use Luna\Integration\ExportRuntimeBuilder;
@@ -34,6 +38,7 @@ use Luna\Reports\ReportMailer;
 use Luna\Repository\AuditLogRepository;
 use Luna\Repository\ConnectionProfileRepository;
 use Luna\Repository\DatasetTransferRepository;
+use Luna\Repository\DeploymentTargetRepository;
 use Luna\Repository\EndpointRepository;
 use Luna\Repository\ExportProfileRepository;
 use Luna\Repository\JobRepository;
@@ -125,10 +130,15 @@ final class Application
         $externalPdoFactory = new ExternalPdoConnectionFactory();
         $this->services->set(ExternalPdoConnectionFactory::class, $externalPdoFactory);
         $this->services->set(ConnectionTester::class, new ConnectionTester($externalPdoFactory));
+        $this->services->set(DeploymentTargetUrlBuilder::class, new DeploymentTargetUrlBuilder());
         $this->services->set(WorkspaceRepository::class, new WorkspaceRepository($systemDatabase));
         $this->services->set(ConnectionProfileRepository::class, new ConnectionProfileRepository(
             $systemDatabase,
             $this->services->get(EncryptionService::class),
+        ));
+        $this->services->set(DeploymentTargetRepository::class, new DeploymentTargetRepository(
+            $systemDatabase,
+            $this->services->get(DeploymentTargetUrlBuilder::class),
         ));
         $this->services->set(MappingRepository::class, new MappingRepository($systemDatabase));
         $this->services->set(DatasetTransferRepository::class, new DatasetTransferRepository($systemDatabase));
@@ -246,6 +256,19 @@ final class Application
             $this->services->get(WorkspaceRepository::class),
             $this->paths->basePath(),
         ));
+        $this->services->set(EndpointSchemaBuilder::class, new EndpointSchemaBuilder());
+        $this->services->set(EndpointExportSanitizer::class, new EndpointExportSanitizer());
+        $this->services->set(EndpointExportContractService::class, new EndpointExportContractService(
+            $this->services->get(EndpointRepository::class),
+            $this->services->get(MappingRepository::class),
+            $this->services->get(ConnectionProfileRepository::class),
+            $this->services->get(WorkspaceRepository::class),
+            $this->services->get(DeploymentTargetRepository::class),
+            $this->services->get(DeploymentTargetUrlBuilder::class),
+            $this->services->get(EndpointSchemaBuilder::class),
+            $this->services->get(EndpointExportSanitizer::class),
+            $this->paths->basePath(),
+        ));
         $this->services->set(EndpointExportArchiveService::class, new EndpointExportArchiveService());
         $this->services->set(IsrPricesExportModule::class, new IsrPricesExportModule());
         $this->services->set(ExportModuleRegistry::class, new ExportModuleRegistry([
@@ -281,6 +304,7 @@ final class Application
         $this->services->set('connections.tester', $this->services->get(ConnectionTester::class));
         $this->services->set('repository.workspaces', $this->services->get(WorkspaceRepository::class));
         $this->services->set('repository.connections', $this->services->get(ConnectionProfileRepository::class));
+        $this->services->set('repository.deployment_targets', $this->services->get(DeploymentTargetRepository::class));
         $this->services->set('repository.schema_metadata', $this->services->get(SchemaMetadataRepository::class));
         $this->services->set('repository.mappings', $this->services->get(MappingRepository::class));
         $this->services->set('repository.dataset_transfers', $this->services->get(DatasetTransferRepository::class));
@@ -305,6 +329,8 @@ final class Application
         $this->services->set('api.endpoint_response_builder', $this->services->get(EndpointResponseBuilder::class));
         $this->services->set('api.endpoint_runtime', $this->services->get(EndpointRuntime::class));
         $this->services->set('export.endpoint_runtime', $this->services->get(EndpointRuntimeExporter::class));
+        $this->services->set('export.endpoint_contract', $this->services->get(EndpointExportContractService::class));
+        $this->services->set('deployment.target_url_builder', $this->services->get(DeploymentTargetUrlBuilder::class));
         $this->services->set('export.endpoint_archive', $this->services->get(EndpointExportArchiveService::class));
         $this->services->set('integration.export_modules', $this->services->get(ExportModuleRegistry::class));
         $this->services->set('integration.export_runtime_builder', $this->services->get(ExportRuntimeBuilder::class));

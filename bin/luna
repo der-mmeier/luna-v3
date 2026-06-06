@@ -9,6 +9,7 @@ use Luna\Database\MigrationRunner;
 use Luna\Database\SystemDatabase;
 use Luna\Dataset\DatasetRegistry;
 use Luna\Export\EndpointExportArchiveService;
+use Luna\Export\EndpointExportContractService;
 use Luna\Export\EndpointRuntimeExporter;
 use Luna\Export\WooCommerceExportService;
 use Luna\Integration\ExportRuntimeBuilder;
@@ -46,7 +47,10 @@ function exitCodeForRun(array $run): int
 }
 
 if ($command === null) {
-    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|export:woocommerce:list|export:woocommerce:run|endpoint:export|integration:export>\n");
+
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|endpoint:export|integration:export>\n");
+    fwrite(STDERR, "Endpoint contract: php bin/luna endpoint:export <endpoint-id> [--target=<environment>] [--output=<directory>]\n");
+
     exit(2);
 }
 
@@ -339,6 +343,7 @@ try {
     if ($command === 'endpoint:export') {
         $endpointKey = isset($argv[2]) ? (string) $argv[2] : '';
         $target = null;
+        $output = null;
         $force = in_array('--force', $argv, true);
         $localEnv = in_array('--local-env', $argv, true);
         $zip = in_array('--zip', $argv, true);
@@ -347,11 +352,27 @@ try {
             if (str_starts_with($argument, '--target=')) {
                 $target = substr($argument, strlen('--target='));
             }
+            if (str_starts_with($argument, '--output=')) {
+                $output = substr($argument, strlen('--output='));
+            }
         }
 
         if ($endpointKey === '') {
-            fwrite(STDERR, "Usage: php bin/luna endpoint:export <endpoint-key> [--target=<directory>] [--force] [--local-env] [--zip]\n");
+            fwrite(STDERR, "Usage runtime: php bin/luna endpoint:export <endpoint-key> [--target=<directory>] [--force] [--local-env] [--zip]\n");
+            fwrite(STDERR, "Usage contract: php bin/luna endpoint:export <endpoint-id> [--target=<environment>] [--output=<directory>]\n");
             exit(2);
+        }
+
+        if (ctype_digit($endpointKey) || $output !== null) {
+            /** @var EndpointExportContractService $contractExporter */
+            $contractExporter = $app->services()->get(EndpointExportContractService::class);
+            $manifest = $contractExporter->exportEndpoint((int) $endpointKey, $target, $output);
+
+            echo 'Endpoint contract export: ' . (string) ($manifest['endpoint']['slug'] ?? $endpointKey) . "\n";
+            echo 'Target: ' . (string) ($manifest['target_path'] ?? '') . "\n";
+            echo 'Files: ' . count((array) ($manifest['files'] ?? [])) . "\n";
+            echo "Manifest: manifest.json\n";
+            exit(0);
         }
 
         /** @var EndpointRuntimeExporter $exporter */
