@@ -10,6 +10,7 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- Adapter / Target Actions Foundation v2.5.0 ergänzt: `luna_target_actions`, generische Action-Typen `http_get`, `http_post`, `http_put`, `file_export`, `database_insert`, `database_upsert`, Target-Action-Step-Runner, Dry-Run-Schutz, sichere File-/DB-/HTTP-Ausführung und Admin-UI für Target Actions.
 - Trigger Layer v2.4.0 ergänzt: `luna_process_triggers`, Trigger-Typen `manual`, `cli`, `api`, `schedule`, `webhook`, Aktivierung/Deaktivierung, Trigger-Konfiguration, generische API-/Webhook-Auslösung, CLI-Trigger-Start und Prozessläufe mit sicherem Trigger-Kontext ohne Fachverarbeitung oder Secret-Leaks.
 
 - Dataset Sources 1.8.0 vorbereitet: `DatasetRegistry` leitet Datasets aus bestehenden Endpoints und JSON-Endpoint-Mappings ab, zeigt Output-Felder, Source Filter und eine limitierte Preview ohne Schreiblogik; Admin-UI und CLI-Diagnose `dataset:list` / `dataset:preview` ergÃ¤nzt.
