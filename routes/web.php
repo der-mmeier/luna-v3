@@ -39,12 +39,15 @@ use Luna\Repository\ProcessRunRepository;
 use Luna\Repository\ProcessTriggerRepository;
 use Luna\Repository\ReportRepository;
 use Luna\Repository\SchemaMetadataRepository;
+use Luna\Repository\SchemaRegistryRepository;
 use Luna\Repository\TargetActionRepository;
 use Luna\Repository\WorkspaceRepository;
 use Luna\Repository\WooCommerceIntegrationRepository;
 use Luna\Routing\RouteCollection;
 use Luna\Schema\SampleDataReader;
+use Luna\Schema\SchemaDefinitionValidator;
 use Luna\Schema\SchemaInspector;
+use Luna\Schema\SchemaValidator;
 use Luna\Schema\TableNameReader;
 use Luna\Transfer\DatasetTransferRunner;
 use Luna\Transfer\MappingSourceRowProvider;
@@ -207,14 +210,14 @@ if (! function_exists('processStepValues')) {
 }
 
 if (! function_exists('processStepErrors')) {
-    function processStepErrors(array $values, ?TargetActionRepository $targetActions = null): array
+    function processStepErrors(array $values, ?TargetActionRepository $targetActions = null, ?SchemaRegistryRepository $schemas = null): array
     {
         $errors = [];
         if (trim((string) ($values['name'] ?? '')) === '') {
             $errors[] = 'Schrittname ist erforderlich.';
         }
         $stepType = (string) ($values['step_type'] ?? '');
-        if (! in_array($stepType, ['mapping_run', 'target_action'], true)) {
+        if (! in_array($stepType, ['mapping_run', 'target_action', 'schema_validation'], true)) {
             $errors[] = 'Step-Typ ist ungültig.';
         }
         if ($stepType === 'mapping_run' && (int) ($values['reference_id'] ?? 0) <= 0) {
@@ -226,6 +229,14 @@ if (! function_exists('processStepErrors')) {
                 $errors[] = 'Eine Target Action muss ausgewählt werden.';
             } elseif ($targetActions !== null && $targetActions->find($actionId) === null) {
                 $errors[] = 'Target Action wurde nicht gefunden.';
+            }
+        }
+        if ($stepType === 'schema_validation') {
+            $schemaId = (int) ($values['reference_id'] ?? 0);
+            if ($schemaId <= 0) {
+                $errors[] = 'Ein Schema muss ausgewählt werden.';
+            } elseif ($schemas !== null && $schemas->find($schemaId) === null) {
+                $errors[] = 'Schema wurde nicht gefunden.';
             }
         }
         $configJson = trim((string) ($values['config_json'] ?? ''));
@@ -1275,6 +1286,7 @@ if (! function_exists('endpointValues')) {
             'source_type' => 'mapping',
             'mapping_set_id' => $request->post('mapping_set_id'),
             'job_id' => $request->post('job_id'),
+            'schema_id' => $request->post('schema_id'),
             'config_json' => $config === [] ? '' : (json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: ''),
             'cache_enabled' => $request->post('cache_enabled') !== null ? '1' : '',
             'cache_ttl_seconds' => $request->post('cache_ttl_seconds'),
@@ -1285,8 +1297,38 @@ if (! function_exists('endpointValues')) {
     }
 }
 
+if (! function_exists('schemaValues')) {
+    function schemaValues(Request $request): array
+    {
+        return [
+            'workspace_id' => $request->post('workspace_id'),
+            'name' => (string) $request->post('name', ''),
+            'schema_key' => SchemaRegistryRepository::normalizeKey((string) $request->post('schema_key', '')),
+            'version' => (string) $request->post('version', '1'),
+            'status' => (string) $request->post('status', 'draft'),
+            'description' => (string) $request->post('description', ''),
+            'definition_json' => (string) $request->post('definition_json', ''),
+            'example_json' => (string) $request->post('example_json', ''),
+            'change_summary' => (string) $request->post('change_summary', ''),
+            'validation_json' => (string) $request->post('validation_json', ''),
+        ];
+    }
+}
+
+if (! function_exists('schemaValidationPayload')) {
+    function schemaValidationPayload(array $schema, string $postedJson): string
+    {
+        $postedJson = trim($postedJson);
+        if ($postedJson !== '') {
+            return $postedJson;
+        }
+
+        return trim((string) ($schema['example_json'] ?? ''));
+    }
+}
+
 if (! function_exists('endpointErrors')) {
-    function endpointErrors(array $values, bool $requireSecret, string $staticResponse, MappingRepository $mappings): array
+    function endpointErrors(array $values, bool $requireSecret, string $staticResponse, MappingRepository $mappings, ?SchemaRegistryRepository $schemas = null): array
     {
         $errors = [];
         if (trim((string) $values['name']) === '') {
@@ -1324,6 +1366,14 @@ if (! function_exists('endpointErrors')) {
             $errors[] = 'Static Response JSON ist ungültig.';
         }
 
+        if (! empty($values['schema_id']) && $schemas !== null) {
+            $schema = $schemas->find((int) $values['schema_id']);
+            if ($schema === null) {
+                $errors[] = 'Schema wurde nicht gefunden.';
+            } elseif ((int) ($schema['workspace_id'] ?? 0) !== (int) ($values['workspace_id'] ?? 0)) {
+                $errors[] = 'Schema gehört nicht zum gewählten Workspace.';
+            }
+        }
         return $errors;
     }
 }
@@ -1395,6 +1445,9 @@ return static function (RouteCollection $routes, Application $app): void {
     $processTriggerRunner = static fn (): ProcessTriggerRunner => $app->services()->get(ProcessTriggerRunner::class);
     $targetActions = static fn (): TargetActionRepository => $app->services()->get(TargetActionRepository::class);
     $targetActionValidator = static fn (): TargetActionConfigValidator => $app->services()->get(TargetActionConfigValidator::class);
+    $schemas = static fn (): SchemaRegistryRepository => $app->services()->get(SchemaRegistryRepository::class);
+    $schemaDefinitionValidator = static fn (): SchemaDefinitionValidator => $app->services()->get(SchemaDefinitionValidator::class);
+    $schemaValidator = static fn (): SchemaValidator => $app->services()->get(SchemaValidator::class);
     $reports = static fn (): ReportRepository => $app->services()->get('repository.reports');
     $endpoints = static fn (): EndpointRepository => $app->services()->get('repository.endpoints');
     $woocommerce = static fn (): WooCommerceIntegrationRepository => $app->services()->get(WooCommerceIntegrationRepository::class);
@@ -1422,7 +1475,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return ExternalDatabaseConfig::fromProfile($profile, $connections()->secretsFor((int) $profile['id']));
     };
 
-    $processShowData = static function (array $process, array $extra = []) use ($processes, $processRuns, $processTriggers, $targetActions, $workspaces, $mappings, $triggerUrlBuilder): array {
+    $processShowData = static function (array $process, array $extra = []) use ($processes, $processRuns, $processTriggers, $targetActions, $schemas, $workspaces, $mappings, $triggerUrlBuilder): array {
         $processId = (int) $process['id'];
         $triggers = $processTriggers()->forProcess($processId);
         $target = $triggerUrlBuilder()->defaultTargetForWorkspace(empty($process['workspace_id']) ? null : (int) $process['workspace_id']);
@@ -1439,6 +1492,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'runs' => $processRuns()->runsForProcess($processId),
             'triggers' => $triggers,
             'targetActions' => $targetActions()->forWorkspace(empty($process['workspace_id']) ? null : (int) $process['workspace_id']),
+            'schemas' => $schemas()->forWorkspace(empty($process['workspace_id']) ? null : (int) $process['workspace_id']),
             'triggerTypes' => ProcessTriggerRepository::TYPES,
             'triggerValues' => [
                 'name' => '',
@@ -2508,6 +2562,139 @@ return static function (RouteCollection $routes, Application $app): void {
         return $admin('admin/jobs/run', ['title' => 'Job Run', 'active' => 'jobs', 'run' => $runs()->findRun($runId), 'logs' => $runs()->logsForRun($runId)]);
     }, 'admin.jobs.run_show', 'web');
 
+    $routes->get('/admin/schemas', static fn (): Response => $admin('admin/schemas/index', [
+        'title' => 'Schemas',
+        'active' => 'schemas',
+        'schemas' => $schemas()->all(),
+        'workspaces' => safeList($workspaces),
+        'values' => [
+            'status' => 'draft',
+            'version' => '1',
+            'definition_json' => "{\n  \"type\": \"object\",\n  \"fields\": {}\n}",
+        ],
+        'errors' => [],
+    ]), 'admin.schemas', 'web');
+
+    $routes->post('/admin/schemas', static function (Request $request) use ($admin, $schemas, $schemaDefinitionValidator, $workspaces): Response {
+        $values = schemaValues($request);
+        $errors = $schemaDefinitionValidator()->validateForm($values, $schemas());
+        if ($errors !== []) {
+            return $admin('admin/schemas/index', [
+                'title' => 'Schemas',
+                'active' => 'schemas',
+                'schemas' => $schemas()->all(),
+                'workspaces' => safeList($workspaces),
+                'values' => $values,
+                'errors' => $errors,
+            ]);
+        }
+
+        $id = $schemas()->create($values);
+
+        return new Response('', 302, ['Location' => '/admin/schemas/' . $id]);
+    }, 'admin.schemas.store', 'web');
+
+    $routes->get('/admin/schemas/{id}', static function (Request $request) use ($admin, $schemas, $workspaces): Response {
+        $id = (int) $request->route('id');
+        $schema = $schemas()->find($id);
+        if ($schema === null) {
+            return $admin('admin/schemas/show', ['title' => 'Schema', 'active' => 'schemas', 'schema' => null]);
+        }
+
+        return $admin('admin/schemas/show', [
+            'title' => 'Schema',
+            'active' => 'schemas',
+            'schema' => $schema,
+            'workspaces' => safeList($workspaces),
+            'values' => $schema,
+            'errors' => [],
+            'validationInput' => (string) ($schema['example_json'] ?? ''),
+            'validationResult' => null,
+            'revisions' => $schemas()->revisionsForSchema($id),
+        ]);
+    }, 'admin.schemas.show', 'web');
+
+    $routes->post('/admin/schemas/{id}', static function (Request $request) use ($admin, $schemas, $schemaDefinitionValidator, $workspaces): Response {
+        $id = (int) $request->route('id');
+        $schema = $schemas()->find($id);
+        if ($schema === null) {
+            return Response::text('Schema not found.', 404);
+        }
+        $values = schemaValues($request);
+        $errors = $schemaDefinitionValidator()->validateForm($values, $schemas(), $id);
+        if ($errors !== []) {
+            return $admin('admin/schemas/show', [
+                'title' => 'Schema',
+                'active' => 'schemas',
+                'schema' => $schema,
+                'workspaces' => safeList($workspaces),
+                'values' => $values,
+                'errors' => $errors,
+                'validationInput' => (string) ($values['validation_json'] ?? ''),
+                'validationResult' => null,
+                'revisions' => $schemas()->revisionsForSchema($id),
+            ]);
+        }
+
+        $schemas()->update($id, $values);
+
+        return new Response('', 302, ['Location' => '/admin/schemas/' . $id]);
+    }, 'admin.schemas.update', 'web');
+
+    $routes->post('/admin/schemas/{id}/validate', static function (Request $request) use ($admin, $schemas, $schemaValidator, $workspaces): Response {
+        $id = (int) $request->route('id');
+        $schema = $schemas()->find($id);
+        if ($schema === null) {
+            return Response::text('Schema not found.', 404);
+        }
+
+        $validationInput = schemaValidationPayload($schema, (string) $request->post('validation_json', ''));
+        $validationResult = null;
+        try {
+            $definition = json_decode((string) ($schema['definition_json'] ?? ''), true, 512, JSON_THROW_ON_ERROR);
+            $payload = json_decode($validationInput, true, 512, JSON_THROW_ON_ERROR);
+            $validationResult = is_array($definition) ? $schemaValidator()->validate($payload, $definition) : [
+                'valid' => false,
+                'errors' => [['path' => '$', 'message' => 'Schema-Definition ist ungültig.']],
+                'warnings' => [],
+            ];
+        } catch (Throwable $exception) {
+            $validationResult = [
+                'valid' => false,
+                'errors' => [['path' => '$', 'message' => 'JSON ist ungültig: ' . $exception->getMessage()]],
+                'warnings' => [],
+            ];
+        }
+
+        return $admin('admin/schemas/show', [
+            'title' => 'Schema',
+            'active' => 'schemas',
+            'schema' => $schema,
+            'workspaces' => safeList($workspaces),
+            'values' => $schema,
+            'errors' => [],
+            'validationInput' => $validationInput,
+            'validationResult' => $validationResult,
+            'revisions' => $schemas()->revisionsForSchema($id),
+        ]);
+    }, 'admin.schemas.validate', 'web');
+
+    $routes->post('/admin/schemas/{id}/status', static function (Request $request) use ($schemas): Response {
+        $id = (int) $request->route('id');
+        $schemas()->updateStatus($id, (string) $request->post('status', 'draft'));
+
+        return new Response('', 302, ['Location' => '/admin/schemas/' . $id]);
+    }, 'admin.schemas.status', 'web');
+
+    $routes->post('/admin/schemas/{id}/delete', static function (Request $request) use ($schemas): Response {
+        $id = (int) $request->route('id');
+        if ($request->post('confirm_delete') === '1') {
+            $schemas()->delete($id);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/schemas']);
+    }, 'admin.schemas.delete', 'web');
+
     $routes->get('/admin/target-actions', static fn (): Response => $admin('admin/target-actions/index', [
         'title' => 'Target Actions',
         'active' => 'target-actions',
@@ -2699,7 +2886,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
     }, 'admin.processes.update', 'web');
 
-    $routes->post('/admin/processes/{id}/steps', static function (Request $request) use ($admin, $processes, $targetActions, $processShowData): Response {
+    $routes->post('/admin/processes/{id}/steps', static function (Request $request) use ($admin, $processes, $targetActions, $schemas, $processShowData): Response {
         $id = (int) $request->route('id');
         $process = $processes()->find($id);
         if ($process === null) {
@@ -2707,7 +2894,7 @@ return static function (RouteCollection $routes, Application $app): void {
         }
 
         $values = processStepValues($request);
-        $errors = processStepErrors($values, $targetActions());
+        $errors = processStepErrors($values, $targetActions(), $schemas());
         if ($errors !== []) {
             return $admin('admin/processes/show', $processShowData($process, [
                 'stepValues' => $values,
@@ -2720,7 +2907,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
     }, 'admin.processes.steps.store', 'web');
 
-    $routes->post('/admin/processes/{id}/steps/{stepId}', static function (Request $request) use ($processes, $targetActions): Response {
+    $routes->post('/admin/processes/{id}/steps/{stepId}', static function (Request $request) use ($processes, $targetActions, $schemas): Response {
         $id = (int) $request->route('id');
         $stepId = (int) $request->route('stepId');
         $step = $processes()->findStep($stepId);
@@ -2729,7 +2916,7 @@ return static function (RouteCollection $routes, Application $app): void {
         }
 
         $values = processStepValues($request);
-        $errors = processStepErrors($values, $targetActions());
+        $errors = processStepErrors($values, $targetActions(), $schemas());
         if ($errors !== []) {
             return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
         }
@@ -3649,14 +3836,15 @@ return static function (RouteCollection $routes, Application $app): void {
         'workspaces' => safeList($workspaces),
         'mappings' => safeList($mappings),
         'jobs' => safeList($jobs),
+        'schemas' => $schemas()->all(),
             'values' => ['method' => 'GET', 'visibility' => 'public', 'status' => 'inactive', 'secret_mode' => 'none', 'source_type' => 'mapping', 'response_type' => 'json'],
         'errors' => [],
     ]), 'admin.endpoints.create', 'web');
 
-    $routes->post('/admin/endpoints', static function (Request $request) use ($admin, $endpoints, $audit, $workspaces, $mappings, $jobs): Response {
+    $routes->post('/admin/endpoints', static function (Request $request) use ($admin, $endpoints, $audit, $workspaces, $mappings, $jobs, $schemas): Response {
         $values = endpointValues($request);
         $secret = (string) $request->post('secret', '');
-        $errors = endpointErrors($values, $secret === '', (string) $values['static_response'], $mappings());
+        $errors = endpointErrors($values, $secret === '', (string) $values['static_response'], $mappings(), $schemas());
 
         if ($errors !== []) {
             return $admin('admin/endpoints/create', [
@@ -3665,6 +3853,7 @@ return static function (RouteCollection $routes, Application $app): void {
                 'workspaces' => safeList($workspaces),
                 'mappings' => safeList($mappings),
                 'jobs' => safeList($jobs),
+                'schemas' => $schemas()->all(),
                 'values' => $values,
                 'errors' => $errors,
             ]);
@@ -3679,7 +3868,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/endpoints/' . $id]);
     }, 'admin.endpoints.store', 'web');
 
-    $routes->get('/admin/endpoints/{id}', static function (Request $request) use ($admin, $endpoints, $endpointExporter, $deploymentTargets, $targetUrlBuilder, $workspaces, $mappings, $connections, $jobs): Response {
+    $routes->get('/admin/endpoints/{id}', static function (Request $request) use ($admin, $endpoints, $endpointExporter, $deploymentTargets, $targetUrlBuilder, $workspaces, $mappings, $connections, $jobs, $schemas): Response {
         $id = (int) $request->route('id');
         $endpoint = $endpoints()->find($id);
         $config = $endpoint === null ? [] : (json_decode((string) ($endpoint['config_json'] ?? '{}'), true) ?: []);
@@ -3692,6 +3881,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'workspaces' => safeList($workspaces),
             'mappings' => safeList($mappings),
             'jobs' => safeList($jobs),
+            'schemas' => $schemas()->all(),
             'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
             'hasSecret' => $endpoint !== null && $endpoints()->hasSecret((int) $endpoint['id']),
             'exportStatus' => $endpoint !== null ? $endpointExporter()->exportStatusForEndpoint((int) $endpoint['id']) : null,
@@ -3703,7 +3893,7 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.endpoints.show', 'web');
 
-    $routes->post('/admin/endpoints/{id}', static function (Request $request) use ($admin, $endpoints, $audit, $workspaces, $mappings, $connections, $jobs): Response {
+    $routes->post('/admin/endpoints/{id}', static function (Request $request) use ($admin, $endpoints, $audit, $workspaces, $mappings, $connections, $jobs, $schemas): Response {
         $id = (int) $request->route('id');
         $existing = $endpoints()->find($id);
         if ($existing === null) {
@@ -3712,7 +3902,7 @@ return static function (RouteCollection $routes, Application $app): void {
 
         $values = endpointValues($request);
         $secret = (string) $request->post('secret', '');
-        $errors = endpointErrors($values, $secret === '' && ! $endpoints()->hasSecret($id), (string) $values['static_response'], $mappings());
+        $errors = endpointErrors($values, $secret === '' && ! $endpoints()->hasSecret($id), (string) $values['static_response'], $mappings(), $schemas());
         if ($errors !== []) {
             return $admin('admin/endpoints/show', [
                 'title' => 'Endpoint',
@@ -3721,6 +3911,7 @@ return static function (RouteCollection $routes, Application $app): void {
                 'workspaces' => safeList($workspaces),
                 'mappings' => safeList($mappings),
                 'jobs' => safeList($jobs),
+                'schemas' => $schemas()->all(),
                 'staticResponse' => (string) $values['static_response'],
                 'hasSecret' => $endpoints()->hasSecret($id),
                 'exportStatus' => null,
@@ -3738,7 +3929,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/endpoints/' . $id]);
     }, 'admin.endpoints.update', 'web');
 
-    $routes->post('/admin/endpoints/{id}/export', static function (Request $request) use ($admin, $endpoints, $endpointExporter, $endpointArchive, $audit, $workspaces, $mappings, $connections, $jobs): Response {
+    $routes->post('/admin/endpoints/{id}/export', static function (Request $request) use ($admin, $endpoints, $endpointExporter, $endpointArchive, $audit, $workspaces, $mappings, $connections, $jobs, $schemas): Response {
         $id = (int) $request->route('id');
         $endpoint = $endpoints()->find($id);
 
@@ -3770,6 +3961,7 @@ return static function (RouteCollection $routes, Application $app): void {
                 'workspaces' => safeList($workspaces),
                 'mappings' => safeList($mappings),
                 'jobs' => safeList($jobs),
+                'schemas' => $schemas()->all(),
                 'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
                 'hasSecret' => $endpoints()->hasSecret($id),
                 'exportStatus' => $endpointExporter()->exportStatusForEndpoint($id),
@@ -3786,6 +3978,7 @@ return static function (RouteCollection $routes, Application $app): void {
                 'workspaces' => safeList($workspaces),
                 'mappings' => safeList($mappings),
                 'jobs' => safeList($jobs),
+                'schemas' => $schemas()->all(),
                 'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
                 'hasSecret' => $endpoints()->hasSecret($id),
                 'exportStatus' => $endpointExporter()->exportStatusForEndpoint($id),
@@ -3795,7 +3988,7 @@ return static function (RouteCollection $routes, Application $app): void {
         }
     }, 'admin.endpoints.export', 'web');
 
-    $routes->post('/admin/endpoints/{id}/contract-export', static function (Request $request) use ($admin, $endpoints, $endpointContractExporter, $deploymentTargets, $targetUrlBuilder, $endpointExporter, $workspaces, $mappings, $connections, $jobs): Response {
+    $routes->post('/admin/endpoints/{id}/contract-export', static function (Request $request) use ($admin, $endpoints, $endpointContractExporter, $deploymentTargets, $targetUrlBuilder, $endpointExporter, $workspaces, $mappings, $connections, $jobs, $schemas): Response {
         $id = (int) $request->route('id');
         $endpoint = $endpoints()->find($id);
         if ($endpoint === null) {
@@ -3821,6 +4014,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'workspaces' => safeList($workspaces),
             'mappings' => safeList($mappings),
             'jobs' => safeList($jobs),
+            'schemas' => $schemas()->all(),
             'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
             'hasSecret' => $endpoints()->hasSecret($id),
             'exportStatus' => $endpointExporter()->exportStatusForEndpoint($id),
@@ -3862,7 +4056,7 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.endpoints.export.download', 'web');
 
-    $routes->post('/admin/endpoints/{id}/delete', static function (Request $request) use ($admin, $endpoints, $audit, $workspaces, $mappings, $jobs): Response {
+    $routes->post('/admin/endpoints/{id}/delete', static function (Request $request) use ($admin, $endpoints, $audit, $workspaces, $mappings, $jobs, $schemas): Response {
         $id = (int) $request->route('id');
         $endpoint = $endpoints()->find($id);
 
@@ -3890,6 +4084,7 @@ return static function (RouteCollection $routes, Application $app): void {
                 'workspaces' => safeList($workspaces),
                 'mappings' => safeList($mappings),
                 'jobs' => safeList($jobs),
+                'schemas' => $schemas()->all(),
                 'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
                 'hasSecret' => false,
                 'alert' => ['type' => 'danger', 'message' => 'Endpoint konnte nicht gelöscht werden.'],
@@ -3915,6 +4110,54 @@ return static function (RouteCollection $routes, Application $app): void {
             'result' => $result,
         ]);
     }, 'admin.endpoints.test', 'web');
+
+    $routes->post('/admin/endpoints/{id}/validate-schema', static function (Request $request) use ($admin, $endpoints, $app, $schemas, $schemaValidator, $endpointExporter, $deploymentTargets, $targetUrlBuilder, $workspaces, $mappings, $connections, $jobs): Response {
+        $id = (int) $request->route('id');
+        $endpoint = $endpoints()->find($id);
+        if ($endpoint === null) {
+            return Response::notFound();
+        }
+        if (empty($endpoint['schema_id'])) {
+            return new Response('', 302, ['Location' => '/admin/endpoints/' . $id]);
+        }
+
+        $schema = $schemas()->find((int) $endpoint['schema_id']);
+        $config = json_decode((string) ($endpoint['config_json'] ?? '{}'), true) ?: [];
+        $alert = ['type' => 'danger', 'message' => 'Schema wurde nicht gefunden.'];
+        if ($schema !== null) {
+            try {
+                $payload = json_decode($app->services()->get('api.endpoint_response_builder')->build($endpoint)->body(), true, 512, JSON_THROW_ON_ERROR);
+                $definition = json_decode((string) ($schema['definition_json'] ?? ''), true, 512, JSON_THROW_ON_ERROR);
+                $result = is_array($definition) ? $schemaValidator()->validate($payload, $definition) : ['valid' => false, 'errors' => [], 'warnings' => []];
+                $alert = [
+                    'type' => ! empty($result['valid']) ? 'success' : 'danger',
+                    'message' => ! empty($result['valid'])
+                        ? 'Endpoint-Ergebnis ist schema-valide.'
+                        : 'Endpoint-Ergebnis ist nicht schema-valide: ' . count((array) ($result['errors'] ?? [])) . ' Fehler.',
+                ];
+            } catch (Throwable $exception) {
+                $alert = ['type' => 'danger', 'message' => 'Schema-Validierung fehlgeschlagen: ' . $exception->getMessage()];
+            }
+        }
+
+        return $admin('admin/endpoints/show', [
+            'title' => 'Endpoint',
+            'active' => 'endpoints',
+            'endpoint' => $endpoint,
+            'workspaces' => safeList($workspaces),
+            'mappings' => safeList($mappings),
+            'jobs' => safeList($jobs),
+            'schemas' => $schemas()->all(),
+            'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
+            'hasSecret' => $endpoints()->hasSecret($id),
+            'exportStatus' => $endpointExporter()->exportStatusForEndpoint($id),
+            'contractTargets' => endpointTargetRows($endpoint, $deploymentTargets(), $targetUrlBuilder()),
+            'currentEndpointUrl' => currentEndpointUrl($request, $targetUrlBuilder(), (string) $endpoint['endpoint_key']),
+            'contractExportStatus' => null,
+            'mappingSummary' => endpointMappingSummary($endpoint, $mappings, $connections),
+            'alert' => $alert,
+        ]);
+    }, 'admin.endpoints.validate_schema', 'web');
 
     $routes->get('/admin/audit', static fn (): Response => $admin('admin/audit/index', [
         'title' => 'Audit',

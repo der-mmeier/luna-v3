@@ -183,12 +183,21 @@ final class ProcessRepository
     private function stepPayload(array $data): array
     {
         $stepType = (string) ($data['step_type'] ?? 'mapping_run');
+        $defaultName = match ($stepType) {
+            'target_action' => 'Target Action ausführen',
+            'schema_validation' => 'Schema validieren',
+            default => 'Mapping ausführen',
+        };
 
         return [
             'position' => max(0, (int) ($data['position'] ?? 0)),
-            'name' => trim((string) ($data['name'] ?? '')) ?: ($stepType === 'target_action' ? 'Target Action ausführen' : 'Mapping ausführen'),
-            'step_type' => in_array($stepType, ['mapping_run', 'target_action'], true) ? $stepType : 'mapping_run',
-            'reference_type' => $stepType === 'target_action' ? 'target_action' : 'mapping_set',
+            'name' => trim((string) ($data['name'] ?? '')) ?: $defaultName,
+            'step_type' => in_array($stepType, ['mapping_run', 'target_action', 'schema_validation'], true) ? $stepType : 'mapping_run',
+            'reference_type' => match ($stepType) {
+                'target_action' => 'target_action',
+                'schema_validation' => 'schema',
+                default => 'mapping_set',
+            },
             'reference_id' => empty($data['reference_id']) ? null : (int) $data['reference_id'],
             'config_json' => trim((string) ($data['config_json'] ?? '')) ?: null,
             'is_enabled' => array_key_exists('is_enabled', $data) ? (! empty($data['is_enabled']) ? 1 : 0) : 1,

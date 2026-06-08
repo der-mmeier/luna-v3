@@ -1043,3 +1043,52 @@ Noch nicht committed.
 ### Abschlussprüfung
 
 UI-Umlautprüfung: durchgeführt
+
+---
+
+## 2026-06-08 - v2.6.0 Schema Registry & Validation
+
+### Ziel
+
+Schemas sollen als versionierte, workspace-bezogene Artefakte verwaltet, validiert und in Endpoint-Exportpaketen referenziert werden können, ohne vollständige OpenAPI-/JSON-Schema-Komplettabdeckung zu erzwingen.
+
+### Geänderte Dateien
+
+- database/migrations/2026_06_08_000019_create_schema_registry.sql
+- src/Core/Application.php
+- src/Export/EndpointExportContractService.php
+- src/Process/SchemaValidationStepRunner.php
+- src/Repository/EndpointRepository.php
+- src/Repository/ProcessRepository.php
+- src/Repository/SchemaRegistryRepository.php
+- src/Schema/SchemaDefinitionValidator.php
+- src/Schema/SchemaValidator.php
+- routes/web.php
+- bin/luna
+- resources/views/admin/schemas/index.php
+- resources/views/admin/schemas/show.php
+- resources/views/admin/endpoints/_form.php
+- resources/views/admin/endpoints/show.php
+- resources/views/admin/processes/show.php
+- resources/views/layouts/admin.php
+- tests/Unit/SchemaRegistryValidationTest.php
+- CHANGELOG.md
+- ROADMAP.md
+- docs/ROADMAP.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+`luna_schemas` und `luna_schema_revisions` speichern Schema Key, Version, Status, Definition, Beispiel und Änderungshistorie je Workspace. Der Validator prüft Root-Typen, Pflichtfelder, primitive Typen, verschachtelte Objekte, Arrays und `additional_properties` mit nachvollziehbaren Fehlerpfaden. Endpoints können optional ein Registry-Schema referenzieren; Exportpakete enthalten dann eine Schema-Referenz und das Registry-Schema in `schema.json`. Prozesse können über den Step-Typ `schema_validation` vorherige Step-Ergebnisse validieren. Die Admin-UI verwaltet Schemas und validiert Beispiel-/Payload-JSON. `schema:validate <schema-id> <json-file>` ergänzt die CLI, ohne bestehende Kommandos zu entfernen.
+
+### Offene Punkte
+
+Vollständige OpenAPI-/JSON-Schema-Abdeckung, WooCommerce-Fachlogik, externe Adapter und produktive Scheduler-Erweiterungen bleiben spätere Meilensteine.
+
+### Commit-Hash
+
+Noch nicht committed.
+
+### Abschlussprüfung
+
+UI-Umlautprüfung: durchgeführt
