@@ -23,8 +23,9 @@ $navItems = [
       'target-actions' => ['/admin/target-actions', 'Target Actions'],
       'jobs' => ['/admin/jobs', 'Jobs'],
     'reports' => ['/admin/reports', 'Reports'],
-    'endpoints' => ['/admin/endpoints', 'Endpoints'],
-    'deployment-targets' => ['/admin/deployment-targets', 'Deployment Targets'],
+      'endpoints' => ['/admin/endpoints', 'Endpoints'],
+      'schemas' => ['/admin/schemas', 'Schemas'],
+      'deployment-targets' => ['/admin/deployment-targets', 'Deployment Targets'],
     'audit' => ['/admin/audit', 'Audit'],
 ];
 ?>

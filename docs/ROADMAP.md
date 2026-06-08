@@ -67,7 +67,8 @@ Diese Regeln gelten fÃ¼r alle kommenden Versionen:
 | `v2.3.0` | abgeschlossen | Process Runtime Foundation |
 | `v2.4.0` | abgeschlossen | Trigger Layer |
 | `v2.5.0` | abgeschlossen | Adapter / Target Actions Foundation |
-| `v2.6.0` | nächster Meilenstein | Schema Registry & Validation |
+| `v2.6.0` | abgeschlossen | Schema Registry & Validation |
+| `v2.7.0` | nächster Meilenstein | WooCommerce Runtime Module |
 
 ---
 
@@ -422,17 +423,17 @@ Nicht-Ziele:
 
 ---
 
-## 8. Nächster Meilenstein
+## 8. Abgeschlossene Version
 
 ### v2.6.0 - Schema Registry & Validation
 
-Status: geplant / nächster Meilenstein
+Status: abgeschlossen
 
 Ziel:
 
 Luna soll Schemas nicht nur im Exportpaket erzeugen, sondern versioniert verwalten und gegen Ergebnisse validieren kÃ¶nnen.
 
-Geplanter Scope:
+Umgesetzt:
 
 - Schema Registry je Workspace.
 - `schema_key` und Versionierung.
@@ -441,6 +442,11 @@ Geplanter Scope:
 - Validierung von Mapping-/Endpoint-/Process-Ergebnissen gegen ein Schema.
 - Schema im Exportpaket referenzieren.
 - Schema-Ã„nderungen nachvollziehbar machen.
+- Admin-UI für Schema-Liste, Bearbeitung und JSON-Validierung.
+- Optionaler Endpoint-Bezug auf Registry-Schemas.
+- Process-Step `schema_validation` zur Validierung vorheriger Step-Ergebnisse.
+- CLI-Befehl `schema:validate <schema-id> <json-file>`.
+- Bestehende generierte Endpoint-Schemas ohne Registry-Referenz bleiben kompatibel.
 
 Abgrenzung:
 
@@ -451,7 +457,7 @@ Abgrenzung:
 
 ### v2.7.0 - WooCommerce Runtime Module
 
-Status: geplant / nach generischer Runtime
+Status: geplant / nächster Meilenstein
 
 Ziel:
 

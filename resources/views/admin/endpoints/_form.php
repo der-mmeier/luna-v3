@@ -24,6 +24,18 @@ $selected = static fn (string $key, string $value): string => (string) ($values[
         <label class="form-label">Beschreibung</label>
         <input class="form-control" name="description" value="<?= $field('description') ?>">
     </div>
+    <div class="col-md-6">
+        <label class="form-label">Schema</label>
+        <select class="form-select" name="schema_id">
+            <option value="">Ohne Schema</option>
+            <?php foreach ($schemas ?? [] as $schema): ?>
+                <option data-workspace-id="<?= (int) ($schema['workspace_id'] ?? 0) ?>" value="<?= (int) $schema['id'] ?>"<?= (string) ($values['schema_id'] ?? '') === (string) $schema['id'] ? ' selected' : '' ?>>
+                    <?= htmlspecialchars((string) $schema['schema_key'] . ' v' . (string) $schema['version'] . ' - ' . (string) $schema['name'], ENT_QUOTES, 'UTF-8') ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <div class="form-text">Optional. Wenn gesetzt, kann das Endpoint-Ergebnis gegen dieses Schema validiert und exportiert werden.</div>
+    </div>
     <div class="col-md-3">
         <label class="form-label">HTTP-Methode</label>
         <select class="form-select" name="method"><option value="GET"<?= $selected('method', 'GET') ?>>GET</option></select>

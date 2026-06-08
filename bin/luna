@@ -22,6 +22,8 @@ use Luna\Repository\JobRunRepository;
 use Luna\Repository\ExportProfileRepository;
 use Luna\Repository\ProcessRunRepository;
 use Luna\Repository\ProcessTriggerRepository;
+use Luna\Repository\SchemaRegistryRepository;
+use Luna\Schema\SchemaValidator;
 use Luna\WooCommerce\WooCommerceTransferRunner;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -52,10 +54,11 @@ function exitCodeForRun(array $run): int
 
 if ($command === null) {
 
-    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|export:woocommerce:list|export:woocommerce:run|process:run|trigger:list|trigger:run|endpoint:export|integration:export>\n");
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|export:woocommerce:list|export:woocommerce:run|process:run|trigger:list|trigger:run|schema:validate|endpoint:export|integration:export>\n");
     fwrite(STDERR, "Endpoint contract: php bin/luna endpoint:export <endpoint-id> [--target=<environment>] [--output=<directory>]\n");
     fwrite(STDERR, "Process runtime: php bin/luna process:run <process-id> [--dry-run] [--trigger=<trigger-id-or-key>]\n");
     fwrite(STDERR, "Trigger runtime: php bin/luna trigger:list <process-id> | trigger:run <trigger-id-or-key> [--dry-run]\n");
+    fwrite(STDERR, "Schema validation: php bin/luna schema:validate <schema-id> <json-file>\n");
 
     exit(2);
 }
@@ -444,6 +447,46 @@ try {
         echo 'Status: ' . (string) $run['status'] . "\n";
         echo 'Mode: ' . (string) $run['mode'] . "\n";
         exit((string) $run['status'] === 'success' ? 0 : 1);
+    }
+
+    if ($command === 'schema:validate') {
+        $schemaId = isset($argv[2]) ? (int) $argv[2] : 0;
+        $file = isset($argv[3]) ? (string) $argv[3] : '';
+        if ($schemaId <= 0 || $file === '') {
+            fwrite(STDERR, "Usage: php bin/luna schema:validate <schema-id> <json-file>\n");
+            exit(2);
+        }
+        if (! is_file($file)) {
+            fwrite(STDERR, "JSON file not found.\n");
+            exit(1);
+        }
+
+        /** @var SchemaRegistryRepository $schemas */
+        $schemas = $app->services()->get(SchemaRegistryRepository::class);
+        $schema = $schemas->find($schemaId);
+        if ($schema === null) {
+            fwrite(STDERR, "Schema not found.\n");
+            exit(1);
+        }
+
+        try {
+            $definition = json_decode((string) ($schema['definition_json'] ?? ''), true, 512, JSON_THROW_ON_ERROR);
+            $payload = json_decode((string) file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+        } catch (Throwable $exception) {
+            fwrite(STDERR, "Invalid JSON: " . $exception->getMessage() . "\n");
+            exit(1);
+        }
+
+        if (! is_array($definition)) {
+            fwrite(STDERR, "Schema definition is invalid.\n");
+            exit(1);
+        }
+
+        /** @var SchemaValidator $validator */
+        $validator = $app->services()->get(SchemaValidator::class);
+        $result = $validator->validate($payload, $definition);
+        echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
+        exit(! empty($result['valid']) ? 0 : 1);
     }
 
     if ($command === 'endpoint:export') {

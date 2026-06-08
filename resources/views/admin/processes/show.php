@@ -4,6 +4,7 @@
 /** @var array<int, array<string, mixed>> $runs */
 /** @var array<int, array<string, mixed>> $triggers */
 /** @var array<int, array<string, mixed>> $targetActions */
+/** @var array<int, array<string, mixed>> $schemas */
 /** @var array<int, string> $triggerTypes */
 /** @var array<int, array<string, mixed>> $workspaces */
 /** @var array<int, array<string, mixed>> $mappings */
@@ -27,6 +28,10 @@ $actionTypes = [];
 foreach ($targetActions ?? [] as $targetAction) {
     $actionNames[(int) $targetAction['id']] = (string) $targetAction['name'];
     $actionTypes[(int) $targetAction['id']] = (string) $targetAction['action_type'];
+}
+$schemaNames = [];
+foreach ($schemas ?? [] as $schema) {
+    $schemaNames[(int) $schema['id']] = (string) $schema['schema_key'] . ' v' . (string) $schema['version'];
 }
 
 $triggerLabels = [
@@ -253,6 +258,7 @@ $triggerLabels = [
                         <select class="form-select form-select-sm" name="step_type">
                             <option value="mapping_run" <?= (string) $step['step_type'] === 'mapping_run' ? 'selected' : '' ?>>Mapping ausführen</option>
                             <option value="target_action" <?= (string) $step['step_type'] === 'target_action' ? 'selected' : '' ?>>Target Action</option>
+                            <option value="schema_validation" <?= (string) $step['step_type'] === 'schema_validation' ? 'selected' : '' ?>>Schema Validation</option>
                         </select>
                     </td>
                     <td>
@@ -271,9 +277,19 @@ $triggerLabels = [
                                     </option>
                                 <?php endforeach; ?>
                             </optgroup>
+                            <optgroup label="Schemas">
+                                <?php foreach ($schemas ?? [] as $schema): ?>
+                                    <option value="<?= (int) $schema['id'] ?>" <?= (string) $step['step_type'] === 'schema_validation' && (int) ($step['reference_id'] ?? 0) === (int) $schema['id'] ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars((string) $schema['schema_key'] . ' v' . (string) $schema['version'] . ' - ' . (string) $schema['name'], ENT_QUOTES, 'UTF-8') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </optgroup>
                         </select>
                         <?php if ((string) $step['step_type'] === 'target_action'): ?>
                             <div class="small text-body-secondary mt-1">Action-Typ: <?= htmlspecialchars($actionTypes[(int) ($step['reference_id'] ?? 0)] ?? '-', ENT_QUOTES, 'UTF-8') ?></div>
+                        <?php endif; ?>
+                        <?php if ((string) $step['step_type'] === 'schema_validation'): ?>
+                            <div class="small text-body-secondary mt-1">Schema: <?= htmlspecialchars($schemaNames[(int) ($step['reference_id'] ?? 0)] ?? '-', ENT_QUOTES, 'UTF-8') ?></div>
                         <?php endif; ?>
                         <textarea class="form-control form-control-sm mt-2" name="config_json" rows="2" placeholder="Optionale JSON-Konfiguration"><?= htmlspecialchars((string) ($step['config_json'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
                     </td>
@@ -317,6 +333,7 @@ $triggerLabels = [
             <select class="form-select" name="step_type">
                 <option value="mapping_run" <?= (string) ($stepValues['step_type'] ?? 'mapping_run') === 'mapping_run' ? 'selected' : '' ?>>Mapping ausführen</option>
                 <option value="target_action" <?= (string) ($stepValues['step_type'] ?? '') === 'target_action' ? 'selected' : '' ?>>Target Action</option>
+                <option value="schema_validation" <?= (string) ($stepValues['step_type'] ?? '') === 'schema_validation' ? 'selected' : '' ?>>Schema Validation</option>
             </select>
         </div>
         <div class="col-md-3">
@@ -334,6 +351,13 @@ $triggerLabels = [
                     <?php foreach ($targetActions ?? [] as $targetAction): ?>
                         <option value="<?= (int) $targetAction['id'] ?>" <?= (string) ($stepValues['step_type'] ?? '') === 'target_action' && (int) ($stepValues['reference_id'] ?? 0) === (int) $targetAction['id'] ? 'selected' : '' ?>>
                             <?= htmlspecialchars((string) $targetAction['name'], ENT_QUOTES, 'UTF-8') ?> (<?= htmlspecialchars((string) $targetAction['action_type'], ENT_QUOTES, 'UTF-8') ?>)
+                        </option>
+                    <?php endforeach; ?>
+                </optgroup>
+                <optgroup label="Schemas">
+                    <?php foreach ($schemas ?? [] as $schema): ?>
+                        <option value="<?= (int) $schema['id'] ?>" <?= (string) ($stepValues['step_type'] ?? '') === 'schema_validation' && (int) ($stepValues['reference_id'] ?? 0) === (int) $schema['id'] ? 'selected' : '' ?>>
+                            <?= htmlspecialchars((string) $schema['schema_key'] . ' v' . (string) $schema['version'] . ' - ' . (string) $schema['name'], ENT_QUOTES, 'UTF-8') ?>
                         </option>
                     <?php endforeach; ?>
                 </optgroup>

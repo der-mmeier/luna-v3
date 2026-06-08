@@ -43,6 +43,11 @@
             <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>/test">
                 <button class="btn btn-outline-primary" type="submit">Preview ausführen</button>
             </form>
+            <?php if (! empty($endpoint['schema_id'])): ?>
+                <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>/validate-schema">
+                    <button class="btn btn-outline-primary" type="submit">Schema validieren</button>
+                </form>
+            <?php endif; ?>
             <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>/delete" onsubmit="return confirm('Diesen Eintrag wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.');">
                 <input type="hidden" name="confirm_delete" value="1">
                 <button class="btn btn-outline-danger" type="submit">Löschen</button>

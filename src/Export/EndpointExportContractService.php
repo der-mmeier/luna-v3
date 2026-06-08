@@ -10,6 +10,7 @@ use Luna\Repository\ConnectionProfileRepository;
 use Luna\Repository\DeploymentTargetRepository;
 use Luna\Repository\EndpointRepository;
 use Luna\Repository\MappingRepository;
+use Luna\Repository\SchemaRegistryRepository;
 use Luna\Repository\WorkspaceRepository;
 use RuntimeException;
 
@@ -25,6 +26,7 @@ final class EndpointExportContractService
         private readonly EndpointSchemaBuilder $schemaBuilder,
         private readonly EndpointExportSanitizer $sanitizer,
         private readonly string $basePath,
+        private readonly ?SchemaRegistryRepository $schemas = null,
     ) {
     }
 
@@ -66,8 +68,17 @@ final class EndpointExportContractService
             throw new RuntimeException('Exportverzeichnis konnte nicht erstellt werden.');
         }
 
-        $schema = $this->schemaBuilder->build($endpoint, $fields);
+        $registeredSchema = $this->registeredSchema($endpoint);
+        $schema = $registeredSchema === null ? $this->schemaBuilder->build($endpoint, $fields) : $this->schemaDocument($registeredSchema);
+        $schemaReference = $registeredSchema === null ? null : [
+            'schema_key' => (string) $registeredSchema['schema_key'],
+            'version' => (string) $registeredSchema['version'],
+            'id' => (int) $registeredSchema['id'],
+        ];
         $endpointDocument = $this->endpointDocument($endpoint);
+        if ($schemaReference !== null) {
+            $endpointDocument['schema'] = $schemaReference;
+        }
         $mappingDocument = $this->mappingDocument($mapping, $fields, $filters);
         $targetDocument = $target === null ? null : [
             'environment' => (string) $target['environment'],
@@ -101,6 +112,7 @@ final class EndpointExportContractService
                 'slug' => $slug,
                 'method' => (string) ($endpoint['method'] ?? 'GET'),
             ],
+            'schema' => $schemaReference,
             'mapping' => [
                 'id' => (int) $mapping['id'],
                 'name' => (string) $mapping['name'],
@@ -150,6 +162,40 @@ final class EndpointExportContractService
                 'ttl_seconds' => empty($endpoint['cache_ttl_seconds']) ? null : (int) $endpoint['cache_ttl_seconds'],
             ],
             'status' => (string) ($endpoint['status'] ?? 'draft'),
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $endpoint
+     * @return array<string, mixed>|null
+     */
+    private function registeredSchema(array $endpoint): ?array
+    {
+        if ($this->schemas === null || empty($endpoint['schema_id'])) {
+            return null;
+        }
+
+        return $this->schemas->find((int) $endpoint['schema_id']);
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function schemaDocument(array $schema): array
+    {
+        $definition = json_decode((string) ($schema['definition_json'] ?? ''), true);
+        if (! is_array($definition)) {
+            $definition = ['type' => 'mixed'];
+        }
+
+        return $this->sanitize([
+            'schema_key' => (string) ($schema['schema_key'] ?? ''),
+            'version' => (string) ($schema['version'] ?? ''),
+            'name' => (string) ($schema['name'] ?? ''),
+            'status' => (string) ($schema['status'] ?? ''),
+            'definition' => $definition,
+            'example' => $this->decodeOptionalJson((string) ($schema['example_json'] ?? '')),
         ]);
     }
 
@@ -295,6 +341,20 @@ final class EndpointExportContractService
         $sanitized = $this->sanitizer->sanitize($value);
 
         return is_array($sanitized) ? $sanitized : [];
+    }
+
+    private function decodeOptionalJson(string $json): mixed
+    {
+        $json = trim($json);
+        if ($json === '') {
+            return null;
+        }
+
+        try {
+            return json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
     }
 
     private function writeFile(string $path, mixed $content): void
