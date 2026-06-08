@@ -59,6 +59,7 @@ use Luna\Repository\ReportRepository;
 use Luna\Repository\SchemaMetadataRepository;
 use Luna\Repository\SchemaRegistryRepository;
 use Luna\Repository\TargetActionRepository;
+use Luna\Repository\WooCommerceRuntimeEventRepository;
 use Luna\Repository\WorkspaceRepository;
 use Luna\Repository\WooCommerceIntegrationRepository;
 use Luna\Security\EncryptionService;
@@ -79,7 +80,10 @@ use Luna\WooCommerce\WooCommerceHposValidator;
 use Luna\WooCommerce\WooCommerceHposOrderReader;
 use Luna\WooCommerce\WooCommerceTransferRunner;
 use Luna\WooCommerce\WooCommerceTransferWriter;
+use Luna\WooCommerce\WooCommerceRuntimeWebhookHandler;
+use Luna\WooCommerce\WooCommerceWebhookEventNormalizer;
 use Luna\WooCommerce\WooCommerceWebhookHandler;
+use Luna\WooCommerce\WooCommerceWebhookSignatureVerifier;
 
 final class Application
 {
@@ -166,7 +170,11 @@ final class Application
         $this->services->set(JobRunRepository::class, new JobRunRepository($systemDatabase));
         $this->services->set(ProcessRepository::class, new ProcessRepository($systemDatabase));
         $this->services->set(ProcessRunRepository::class, new ProcessRunRepository($systemDatabase));
-        $this->services->set(ProcessTriggerRepository::class, new ProcessTriggerRepository($systemDatabase));
+        $this->services->set(ProcessTriggerRepository::class, new ProcessTriggerRepository(
+            $systemDatabase,
+            null,
+            $this->services->get(EncryptionService::class),
+        ));
         $this->services->set(TargetActionRepository::class, new TargetActionRepository($systemDatabase));
         $this->services->set(SchemaRegistryRepository::class, new SchemaRegistryRepository($systemDatabase));
         $this->services->set(ReportRepository::class, new ReportRepository($systemDatabase));
@@ -178,6 +186,7 @@ final class Application
             $systemDatabase,
             $this->services->get(EncryptionService::class),
         ));
+        $this->services->set(WooCommerceRuntimeEventRepository::class, new WooCommerceRuntimeEventRepository($systemDatabase));
         $this->services->set(ExportProfileRepository::class, new ExportProfileRepository(
             $systemDatabase,
             $this->services->get(EncryptionService::class),
@@ -196,6 +205,8 @@ final class Application
         $this->services->set(WooCommerceWebhookHandler::class, new WooCommerceWebhookHandler(
             $this->services->get(WooCommerceIntegrationRepository::class),
         ));
+        $this->services->set(WooCommerceWebhookSignatureVerifier::class, new WooCommerceWebhookSignatureVerifier());
+        $this->services->set(WooCommerceWebhookEventNormalizer::class, new WooCommerceWebhookEventNormalizer());
         $this->services->set(WooCommerceExportService::class, new WooCommerceExportService(
             $this->services->get(ExportProfileRepository::class),
             $systemDatabase,
@@ -270,6 +281,14 @@ final class Application
             $this->services->get(ProcessTriggerRepository::class),
             $this->services->get(ProcessRepository::class),
             $this->services->get(ProcessRunner::class),
+        ));
+        $this->services->set(WooCommerceRuntimeWebhookHandler::class, new WooCommerceRuntimeWebhookHandler(
+            $this->services->get(ProcessTriggerRepository::class),
+            $this->services->get(ProcessTriggerRunner::class),
+            $this->services->get(ProcessRunRepository::class),
+            $this->services->get(WooCommerceRuntimeEventRepository::class),
+            $this->services->get(WooCommerceWebhookSignatureVerifier::class),
+            $this->services->get(WooCommerceWebhookEventNormalizer::class),
         ));
         $this->services->set(TriggerUrlBuilder::class, new TriggerUrlBuilder(
             $this->services->get(DeploymentTargetRepository::class),
@@ -392,6 +411,7 @@ final class Application
         $this->services->set('repository.reports', $this->services->get(ReportRepository::class));
         $this->services->set('repository.endpoints', $this->services->get(EndpointRepository::class));
         $this->services->set('repository.woocommerce_integrations', $this->services->get(WooCommerceIntegrationRepository::class));
+        $this->services->set('repository.woocommerce_runtime_events', $this->services->get(WooCommerceRuntimeEventRepository::class));
         $this->services->set('repository.export_profiles', $this->services->get(ExportProfileRepository::class));
         $this->services->set('dataset.registry', $this->services->get(DatasetRegistry::class));
         $this->services->set('dataset.transfer_runner', $this->services->get(DatasetTransferRunner::class));
@@ -425,6 +445,8 @@ final class Application
         $this->services->set('woocommerce.hpos_validator', $this->services->get(WooCommerceHposValidator::class));
         $this->services->set('woocommerce.transfer_runner', $this->services->get(WooCommerceTransferRunner::class));
         $this->services->set('woocommerce.webhook_handler', $this->services->get(WooCommerceWebhookHandler::class));
+        $this->services->set('woocommerce.runtime_webhook_handler', $this->services->get(WooCommerceRuntimeWebhookHandler::class));
+        $this->services->set('woocommerce.webhook_signature_verifier', $this->services->get(WooCommerceWebhookSignatureVerifier::class));
         $this->services->set('woocommerce.export_service', $this->services->get(WooCommerceExportService::class));
     }
 }

@@ -49,6 +49,33 @@ $payloadMeta = json_decode((string) ($run['trigger_payload_meta'] ?? '{}'), true
     </div>
 </div>
 
+<?php if (($payloadMeta['provider'] ?? '') === 'woocommerce'): ?>
+    <div class="card admin-card mb-4">
+        <div class="card-header">WooCommerce Webhook</div>
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-md-3">Provider</dt>
+                <dd class="col-md-9"><?= htmlspecialchars((string) ($payloadMeta['provider'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></dd>
+                <dt class="col-md-3">Topic / Event</dt>
+                <dd class="col-md-9">
+                    <?= htmlspecialchars((string) ($payloadMeta['topic'] ?? '-'), ENT_QUOTES, 'UTF-8') ?>
+                    <?= ! empty($payloadMeta['event']) ? ' / ' . htmlspecialchars((string) $payloadMeta['event'], ENT_QUOTES, 'UTF-8') : '' ?>
+                </dd>
+                <dt class="col-md-3">Delivery ID</dt>
+                <dd class="col-md-9"><?= htmlspecialchars((string) ($payloadMeta['delivery_id'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></dd>
+                <dt class="col-md-3">Shop / Quelle</dt>
+                <dd class="col-md-9"><?= htmlspecialchars((string) ($payloadMeta['source_domain'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></dd>
+                <dt class="col-md-3">Empfangen am</dt>
+                <dd class="col-md-9"><?= htmlspecialchars((string) ($payloadMeta['received_at'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></dd>
+                <dt class="col-md-3">Signaturstatus</dt>
+                <dd class="col-md-9"><?= ! empty($payloadMeta['signature_valid']) ? 'gültig' : 'ungültig' ?></dd>
+                <dt class="col-md-3">Payload Summary</dt>
+                <dd class="col-md-9"><pre class="mb-0"><?= htmlspecialchars(json_encode($payloadMeta['payload_summary'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?></pre></dd>
+            </dl>
+        </div>
+    </div>
+<?php endif; ?>
+
 <div class="card admin-card mb-4">
     <div class="card-header">Kontext</div>
     <pre class="p-3 mb-0"><?= htmlspecialchars(json_encode($context, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?></pre>

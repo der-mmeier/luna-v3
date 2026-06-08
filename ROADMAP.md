@@ -6,5 +6,5 @@ Die zentrale Architektur- und Schichtdefinition ist in [`docs/ARCHITECTURE.md`](
 
 Diese Root-Datei bleibt bewusst kurz, damit keine widersprÃ¼chlichen aktiven Roadmaps im Repository entstehen.
 
-Aktueller Stand: `v2.6.0 - Schema Registry & Validation` ist abgeschlossen. Nächster Meilenstein ist `v2.7.0 - WooCommerce Runtime Module`.
+Aktueller Stand: `v2.7.0 - WooCommerce Runtime Module` ist abgeschlossen. Nächster Meilenstein ist `v2.8.0 - External System Modules: Afterbuy / ERP / weitere Systeme`.
 

@@ -41,6 +41,12 @@ $triggerLabels = [
     'schedule' => 'Schedule',
     'webhook' => 'Webhook',
 ];
+
+$triggerConfig = static function (array $trigger): array {
+    $config = json_decode((string) ($trigger['config_json'] ?? ''), true);
+
+    return is_array($config) ? $config : [];
+};
 ?>
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
@@ -129,6 +135,7 @@ $triggerLabels = [
             <tbody>
             <?php foreach ($triggers ?? [] as $trigger): ?>
                 <?php $triggerType = (string) $trigger['trigger_type']; ?>
+                <?php $config = $triggerConfig($trigger); ?>
                 <tr>
                     <td>
                         <form id="trigger-update-<?= (int) $trigger['id'] ?>" method="post" action="/admin/processes/<?= (int) $process['id'] ?>/triggers/<?= (int) $trigger['id'] ?>">
@@ -150,11 +157,17 @@ $triggerLabels = [
                     <td>
                             <textarea class="form-control form-control-sm" name="config_json" rows="2"><?= htmlspecialchars((string) ($trigger['config_json'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
                             <input class="form-control form-control-sm mt-2" name="secret" value="" placeholder="Neues Secret setzen (optional)">
-                            <?php if (in_array($triggerType, ['api', 'webhook'], true)): ?>
+                            <?php if (in_array($triggerType, ['api', 'webhook'], true) && ! ($triggerType === 'webhook' && (string) ($config['provider'] ?? '') === 'woocommerce')): ?>
                                 <div class="small text-body-secondary mt-1">Secret wird nur als Hash gespeichert. Header: <code>X-Luna-Trigger-Secret</code></div>
                             <?php endif; ?>
                             <?php if ($triggerType === 'schedule'): ?>
                                 <div class="small text-body-secondary mt-1">Zeitplan-Trigger werden in v2.4.0 nur konfiguriert. Eine produktive Scheduler-Runtime folgt später.</div>
+                            <?php endif; ?>
+                            <?php if ($triggerType === 'webhook' && (string) ($config['provider'] ?? '') === 'woocommerce'): ?>
+                                <div class="small text-body-secondary mt-1">
+                                    WooCommerce-Webhook: Topic <code><?= htmlspecialchars((string) ($config['topic'] ?? 'generic'), ENT_QUOTES, 'UTF-8') ?></code>.
+                                    Das Webhook Secret muss identisch in WooCommerce und Luna hinterlegt sein und wird verschlüsselt gespeichert.
+                                </div>
                             <?php endif; ?>
                         </form>
                     </td>
@@ -163,7 +176,10 @@ $triggerLabels = [
                             <code>php bin/luna process:run <?= (int) $process['id'] ?> --trigger=<?= htmlspecialchars((string) $trigger['trigger_key'], ENT_QUOTES, 'UTF-8') ?></code>
                         <?php elseif (in_array($triggerType, ['api', 'webhook'], true)): ?>
                             <?php if (! empty($triggerUrls[(int) $trigger['id']])): ?>
-                                <code><?= htmlspecialchars((string) $triggerUrls[(int) $trigger['id']], ENT_QUOTES, 'UTF-8') ?></code>
+                                <input class="form-control form-control-sm font-monospace" readonly value="<?= htmlspecialchars((string) $triggerUrls[(int) $trigger['id']], ENT_QUOTES, 'UTF-8') ?>">
+                                <?php if ($triggerType === 'webhook' && (string) ($config['provider'] ?? '') === 'woocommerce'): ?>
+                                    <div class="small text-body-secondary mt-1">Diese Delivery URL wird in WooCommerce unter Einstellungen &gt; Erweitert &gt; Webhooks eingetragen.</div>
+                                <?php endif; ?>
                             <?php else: ?>
                                 <span class="text-body-secondary">URL-Vorschau nicht verfügbar.</span>
                             <?php endif; ?>
@@ -216,7 +232,7 @@ $triggerLabels = [
         </div>
         <div class="col-md-3">
             <label class="form-label">Konfiguration</label>
-            <textarea class="form-control" name="config_json" rows="1" placeholder='{"mode":"daily","time":"12:00","timezone":"Europe/Berlin"}'><?= htmlspecialchars((string) ($triggerValues['config_json'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
+            <textarea class="form-control" name="config_json" rows="1" placeholder='{"provider":"woocommerce","topic":"order.updated","allow_unsigned":false,"payload_log_mode":"summary"}'><?= htmlspecialchars((string) ($triggerValues['config_json'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
         </div>
         <div class="col-md-2">
             <label class="form-label">Secret</label>
