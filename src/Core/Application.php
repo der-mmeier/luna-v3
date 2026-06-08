@@ -37,6 +37,7 @@ use Luna\Process\MappingRunStepRunner;
 use Luna\Process\ProcessRunner;
 use Luna\Process\ProcessTriggerRunner;
 use Luna\Process\ProcessTriggerService;
+use Luna\Process\TargetActionStepRunner;
 use Luna\Process\TriggerConfigValidator;
 use Luna\Process\TriggerUrlBuilder;
 use Luna\Reports\ReportEngine;
@@ -55,9 +56,14 @@ use Luna\Repository\ProcessRunRepository;
 use Luna\Repository\ProcessTriggerRepository;
 use Luna\Repository\ReportRepository;
 use Luna\Repository\SchemaMetadataRepository;
+use Luna\Repository\TargetActionRepository;
 use Luna\Repository\WorkspaceRepository;
 use Luna\Repository\WooCommerceIntegrationRepository;
 use Luna\Security\EncryptionService;
+use Luna\TargetAction\NativeTargetActionHttpClient;
+use Luna\TargetAction\TargetActionConfigValidator;
+use Luna\TargetAction\TargetActionExecutor;
+use Luna\TargetAction\TargetActionHttpClientInterface;
 use Luna\Transfer\DatasetTransferRunner;
 use Luna\Transfer\MappingExecutor;
 use Luna\Transfer\MappingRowTransformer;
@@ -157,6 +163,7 @@ final class Application
         $this->services->set(ProcessRepository::class, new ProcessRepository($systemDatabase));
         $this->services->set(ProcessRunRepository::class, new ProcessRunRepository($systemDatabase));
         $this->services->set(ProcessTriggerRepository::class, new ProcessTriggerRepository($systemDatabase));
+        $this->services->set(TargetActionRepository::class, new TargetActionRepository($systemDatabase));
         $this->services->set(ReportRepository::class, new ReportRepository($systemDatabase));
         $this->services->set(EndpointRepository::class, new EndpointRepository(
             $systemDatabase,
@@ -219,11 +226,27 @@ final class Application
             $this->services->get(MappingExecutor::class),
             $this->services->get(ProcessRunRepository::class),
         ));
+        $this->services->set(TargetActionHttpClientInterface::class, new NativeTargetActionHttpClient());
+        $this->services->set(TargetActionExecutor::class, new TargetActionExecutor(
+            $this->paths,
+            $this->services->get(ConnectionProfileRepository::class),
+            $externalPdoFactory,
+            $this->services->get(TargetActionHttpClientInterface::class),
+        ));
+        $this->services->set(TargetActionStepRunner::class, new TargetActionStepRunner(
+            $this->services->get(TargetActionRepository::class),
+            $this->services->get(ProcessRunRepository::class),
+            $this->services->get(TargetActionExecutor::class),
+        ));
         $this->services->set(ProcessRunner::class, new ProcessRunner(
             $this->services->get(ProcessRepository::class),
             $this->services->get(ProcessRunRepository::class),
-            [$this->services->get(MappingRunStepRunner::class)],
+            [
+                $this->services->get(MappingRunStepRunner::class),
+                $this->services->get(TargetActionStepRunner::class),
+            ],
         ));
+        $this->services->set(TargetActionConfigValidator::class, new TargetActionConfigValidator());
         $this->services->set(TriggerConfigValidator::class, new TriggerConfigValidator());
         $this->services->set(ProcessTriggerService::class, new ProcessTriggerService(
             $this->services->get(ProcessRepository::class),
@@ -350,6 +373,7 @@ final class Application
         $this->services->set('repository.processes', $this->services->get(ProcessRepository::class));
         $this->services->set('repository.process_runs', $this->services->get(ProcessRunRepository::class));
         $this->services->set('repository.process_triggers', $this->services->get(ProcessTriggerRepository::class));
+        $this->services->set('repository.target_actions', $this->services->get(TargetActionRepository::class));
         $this->services->set('repository.reports', $this->services->get(ReportRepository::class));
         $this->services->set('repository.endpoints', $this->services->get(EndpointRepository::class));
         $this->services->set('repository.woocommerce_integrations', $this->services->get(WooCommerceIntegrationRepository::class));
@@ -360,6 +384,9 @@ final class Application
         $this->services->set('mapping.executor', $this->services->get(MappingExecutor::class));
         $this->services->set('transfer.mapping_executor', $this->services->get(MappingExecutor::class));
         $this->services->set('process.runner', $this->services->get(ProcessRunner::class));
+        $this->services->set('process.target_action_runner', $this->services->get(TargetActionStepRunner::class));
+        $this->services->set('target_actions.validator', $this->services->get(TargetActionConfigValidator::class));
+        $this->services->set('target_actions.executor', $this->services->get(TargetActionExecutor::class));
         $this->services->set('process.trigger_service', $this->services->get(ProcessTriggerService::class));
         $this->services->set('process.trigger_runner', $this->services->get(ProcessTriggerRunner::class));
         $this->services->set('process.trigger_url_builder', $this->services->get(TriggerUrlBuilder::class));

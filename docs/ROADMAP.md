@@ -1,6 +1,6 @@
 ﻿# Luna V3 Roadmap
 
-Stand: nach `v2.4.0`  
+Stand: nach `v2.5.0`
 Ziel dieses Dokuments: Die Versionsfolge sauber ordnen, widersprÃ¼chliche alte Planungen bereinigen und die nÃ¤chsten Schritte so definieren, dass Luna nicht in WooCommerce-, Webhook-, Export- und Transfer-Sonderlogik zerfÃ¤llt.
 
 ---
@@ -66,6 +66,8 @@ Diese Regeln gelten fÃ¼r alle kommenden Versionen:
 | `v2.2.0` | abgeschlossen | Deployment Targets & Endpoint Export Packages |
 | `v2.3.0` | abgeschlossen | Process Runtime Foundation |
 | `v2.4.0` | abgeschlossen | Trigger Layer |
+| `v2.5.0` | abgeschlossen | Adapter / Target Actions Foundation |
+| `v2.6.0` | nächster Meilenstein | Schema Registry & Validation |
 
 ---
 
@@ -373,11 +375,11 @@ Abgrenzung:
 
 ---
 
-## 7. Nächster Meilenstein
+## 7. Abgeschlossene Version
 
 ### v2.5.0 - Adapter / Target Actions Foundation
 
-Status: geplant / nächster Meilenstein
+Status: abgeschlossen
 
 Ziel:
 
@@ -398,13 +400,19 @@ MÃ¶gliche Action-/Adapter-Typen:
   - `erp_api`
   - `amazon_sp_api`
 
-Geplanter Scope:
+Umgesetzt:
 
 - Adapter-Konfiguration ohne Secrets im Export.
 - Target Action als Prozess-Schritt nutzbar machen.
-- Dry-Run/Preview soweit mÃ¶glich.
+- Dry-Run für HTTP-, File- und Database-Actions.
 - Fehler und Antwortdaten protokollieren.
 - Retry-Grundlagen vorbereiten.
+- Target-Action-Tabelle und Admin-UI.
+- Generische Action-Typen `http_get`, `http_post`, `http_put`, `file_export`, `database_insert`, `database_upsert`.
+- File Export nur in erlaubte Storage-Pfade.
+- Database Insert/Upsert ohne freie SQL-Strings aus UI-Konfiguration.
+- Step-Kontext mit `previous_result` und `step_results`.
+- Spätere systemspezifische Adapter bleiben nur vorbereitet und nicht fachlich implementiert.
 
 Nicht-Ziele:
 
@@ -414,9 +422,11 @@ Nicht-Ziele:
 
 ---
 
+## 8. Nächster Meilenstein
+
 ### v2.6.0 - Schema Registry & Validation
 
-Status: geplant
+Status: geplant / nächster Meilenstein
 
 Ziel:
 
@@ -526,7 +536,7 @@ Nicht-Ziele:
 
 ---
 
-## 8. Dauerhafte Nicht-Ziele
+## 9. Dauerhafte Nicht-Ziele
 
 Diese Punkte sollen nicht versehentlich in die falsche Version rutschen:
 
@@ -542,7 +552,7 @@ Diese Punkte sollen nicht versehentlich in die falsche Version rutschen:
 
 ---
 
-## 9. Commit-/Release-Regeln
+## 10. Commit-/Release-Regeln
 
 FÃ¼r jeden Meilenstein gilt:
 
@@ -557,9 +567,9 @@ FÃ¼r jeden Meilenstein gilt:
 
 ---
 
-## 10. Nächste konkrete Entscheidung
+## 11. Nächste konkrete Entscheidung
 
-Der nächste Codex-Prompt sollte auf `v2.5.0 - Adapter / Target Actions Foundation` gehen.
+Der nächste Codex-Prompt sollte auf `v2.6.0 - Schema Registry & Validation` gehen.
 
 Er soll ausdrücklich nicht bauen:
 
@@ -570,10 +580,10 @@ Er soll ausdrücklich nicht bauen:
 
 Er soll bauen:
 
-- Adapter-/Target-Action-Grundlage als Prozess-Schritte,
-- sichere Adapter-Konfiguration ohne Secrets in Exporten,
-- kontrollierte Ausführung und Protokollierung,
-- klare Trennung zwischen Trigger, Prozess und Zielsystemlogik.
+- Schema Registry je Workspace,
+- versionierte Schema-Definitionen,
+- Validierung von Mapping-/Endpoint-/Process-Ergebnissen,
+- exportierbare Schema-Metadaten ohne Secrets.
 
 
 

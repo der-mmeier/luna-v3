@@ -55,6 +55,7 @@ final class ProcessRunner
             'steps_total' => 0,
             'steps_executed' => 0,
             'steps_skipped' => 0,
+            'step_results' => [],
         ];
 
         try {
@@ -83,8 +84,12 @@ final class ProcessRunner
                     'step_type' => (string) $step['step_type'],
                     'position' => (int) ($step['position'] ?? 0),
                 ]);
-                $result = $runner->run($process, $step, $runId, $mode);
+                $result = $runner instanceof ProcessStepContextAwareRunnerInterface
+                    ? $runner->runWithContext($process, $step, $runId, $mode, $context)
+                    : $runner->run($process, $step, $runId, $mode);
                 $context['steps_executed']++;
+                $context['previous_result'] = $result->summary['result'] ?? $result->summary;
+                $context['step_results'][(string) $step['id']] = $result->summary;
 
                 if (! $result->success) {
                     $this->runs->addLog($runId, 'error', $result->message, [

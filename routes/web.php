@@ -39,6 +39,7 @@ use Luna\Repository\ProcessRunRepository;
 use Luna\Repository\ProcessTriggerRepository;
 use Luna\Repository\ReportRepository;
 use Luna\Repository\SchemaMetadataRepository;
+use Luna\Repository\TargetActionRepository;
 use Luna\Repository\WorkspaceRepository;
 use Luna\Repository\WooCommerceIntegrationRepository;
 use Luna\Routing\RouteCollection;
@@ -47,6 +48,7 @@ use Luna\Schema\SchemaInspector;
 use Luna\Schema\TableNameReader;
 use Luna\Transfer\DatasetTransferRunner;
 use Luna\Transfer\MappingSourceRowProvider;
+use Luna\TargetAction\TargetActionConfigValidator;
 use Luna\View\ViewRenderer;
 use Luna\WooCommerce\WooCommerceHposValidator;
 use Luna\WooCommerce\WooCommerceTransferRunner;
@@ -205,17 +207,26 @@ if (! function_exists('processStepValues')) {
 }
 
 if (! function_exists('processStepErrors')) {
-    function processStepErrors(array $values): array
+    function processStepErrors(array $values, ?TargetActionRepository $targetActions = null): array
     {
         $errors = [];
         if (trim((string) ($values['name'] ?? '')) === '') {
             $errors[] = 'Schrittname ist erforderlich.';
         }
-        if (! in_array((string) ($values['step_type'] ?? ''), ['mapping_run'], true)) {
+        $stepType = (string) ($values['step_type'] ?? '');
+        if (! in_array($stepType, ['mapping_run', 'target_action'], true)) {
             $errors[] = 'Step-Typ ist ungültig.';
         }
-        if ((int) ($values['reference_id'] ?? 0) <= 0) {
+        if ($stepType === 'mapping_run' && (int) ($values['reference_id'] ?? 0) <= 0) {
             $errors[] = 'Ein Mapping muss ausgewählt werden.';
+        }
+        if ($stepType === 'target_action') {
+            $actionId = (int) ($values['reference_id'] ?? 0);
+            if ($actionId <= 0) {
+                $errors[] = 'Eine Target Action muss ausgewählt werden.';
+            } elseif ($targetActions !== null && $targetActions->find($actionId) === null) {
+                $errors[] = 'Target Action wurde nicht gefunden.';
+            }
         }
         $configJson = trim((string) ($values['config_json'] ?? ''));
         if ($configJson !== '' && json_decode($configJson, true) === null && json_last_error() !== JSON_ERROR_NONE) {
@@ -223,6 +234,20 @@ if (! function_exists('processStepErrors')) {
         }
 
         return $errors;
+    }
+}
+
+if (! function_exists('targetActionValues')) {
+    function targetActionValues(Request $request): array
+    {
+        return [
+            'workspace_id' => $request->post('workspace_id'),
+            'name' => (string) $request->post('name', ''),
+            'action_key' => (string) $request->post('action_key', ''),
+            'action_type' => (string) $request->post('action_type', 'http_get'),
+            'is_active' => $request->post('is_active') !== null ? '1' : '',
+            'config_json' => (string) $request->post('config_json', ''),
+        ];
     }
 }
 
@@ -1368,6 +1393,8 @@ return static function (RouteCollection $routes, Application $app): void {
     $processTriggers = static fn (): ProcessTriggerRepository => $app->services()->get(ProcessTriggerRepository::class);
     $processTriggerService = static fn (): ProcessTriggerService => $app->services()->get(ProcessTriggerService::class);
     $processTriggerRunner = static fn (): ProcessTriggerRunner => $app->services()->get(ProcessTriggerRunner::class);
+    $targetActions = static fn (): TargetActionRepository => $app->services()->get(TargetActionRepository::class);
+    $targetActionValidator = static fn (): TargetActionConfigValidator => $app->services()->get(TargetActionConfigValidator::class);
     $reports = static fn (): ReportRepository => $app->services()->get('repository.reports');
     $endpoints = static fn (): EndpointRepository => $app->services()->get('repository.endpoints');
     $woocommerce = static fn (): WooCommerceIntegrationRepository => $app->services()->get(WooCommerceIntegrationRepository::class);
@@ -1395,7 +1422,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return ExternalDatabaseConfig::fromProfile($profile, $connections()->secretsFor((int) $profile['id']));
     };
 
-    $processShowData = static function (array $process, array $extra = []) use ($processes, $processRuns, $processTriggers, $workspaces, $mappings, $triggerUrlBuilder): array {
+    $processShowData = static function (array $process, array $extra = []) use ($processes, $processRuns, $processTriggers, $targetActions, $workspaces, $mappings, $triggerUrlBuilder): array {
         $processId = (int) $process['id'];
         $triggers = $processTriggers()->forProcess($processId);
         $target = $triggerUrlBuilder()->defaultTargetForWorkspace(empty($process['workspace_id']) ? null : (int) $process['workspace_id']);
@@ -1411,6 +1438,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'steps' => $processes()->stepsForProcess($processId),
             'runs' => $processRuns()->runsForProcess($processId),
             'triggers' => $triggers,
+            'targetActions' => $targetActions()->forWorkspace(empty($process['workspace_id']) ? null : (int) $process['workspace_id']),
             'triggerTypes' => ProcessTriggerRepository::TYPES,
             'triggerValues' => [
                 'name' => '',
@@ -2480,6 +2508,102 @@ return static function (RouteCollection $routes, Application $app): void {
         return $admin('admin/jobs/run', ['title' => 'Job Run', 'active' => 'jobs', 'run' => $runs()->findRun($runId), 'logs' => $runs()->logsForRun($runId)]);
     }, 'admin.jobs.run_show', 'web');
 
+    $routes->get('/admin/target-actions', static fn (): Response => $admin('admin/target-actions/index', [
+        'title' => 'Target Actions',
+        'active' => 'target-actions',
+        'actions' => safeList($targetActions),
+        'workspaces' => safeList($workspaces),
+        'types' => TargetActionRepository::ALL_TYPES,
+        'values' => ['action_type' => 'http_get', 'is_active' => '1'],
+        'errors' => [],
+    ]), 'admin.target_actions', 'web');
+
+    $routes->post('/admin/target-actions', static function (Request $request) use ($admin, $targetActions, $targetActionValidator, $workspaces): Response {
+        $values = targetActionValues($request);
+        $errors = $targetActionValidator()->validate($values);
+        if ($errors !== []) {
+            return $admin('admin/target-actions/index', [
+                'title' => 'Target Actions',
+                'active' => 'target-actions',
+                'actions' => safeList($targetActions),
+                'workspaces' => safeList($workspaces),
+                'types' => TargetActionRepository::ALL_TYPES,
+                'values' => $values,
+                'errors' => $errors,
+            ]);
+        }
+
+        $id = $targetActions()->create($values);
+
+        return new Response('', 302, ['Location' => '/admin/target-actions/' . $id]);
+    }, 'admin.target_actions.store', 'web');
+
+    $routes->get('/admin/target-actions/{id}', static function (Request $request) use ($admin, $targetActions, $workspaces): Response {
+        $action = $targetActions()->find((int) $request->route('id'));
+        if ($action === null) {
+            return Response::notFound();
+        }
+
+        return $admin('admin/target-actions/show', [
+            'title' => 'Target Action',
+            'active' => 'target-actions',
+            'action' => $action,
+            'workspaces' => safeList($workspaces),
+            'types' => TargetActionRepository::ALL_TYPES,
+            'values' => $action,
+            'errors' => [],
+        ]);
+    }, 'admin.target_actions.show', 'web');
+
+    $routes->post('/admin/target-actions/{id}', static function (Request $request) use ($admin, $targetActions, $targetActionValidator, $workspaces): Response {
+        $id = (int) $request->route('id');
+        $action = $targetActions()->find($id);
+        if ($action === null) {
+            return Response::notFound();
+        }
+
+        $values = targetActionValues($request);
+        $errors = $targetActionValidator()->validate($values);
+        if ($errors !== []) {
+            return $admin('admin/target-actions/show', [
+                'title' => 'Target Action',
+                'active' => 'target-actions',
+                'action' => $action,
+                'workspaces' => safeList($workspaces),
+                'types' => TargetActionRepository::ALL_TYPES,
+                'values' => $values,
+                'errors' => $errors,
+            ]);
+        }
+
+        $targetActions()->update($id, $values);
+
+        return new Response('', 302, ['Location' => '/admin/target-actions/' . $id]);
+    }, 'admin.target_actions.update', 'web');
+
+    $routes->post('/admin/target-actions/{id}/toggle', static function (Request $request) use ($targetActions): Response {
+        $id = (int) $request->route('id');
+        $action = $targetActions()->find($id);
+        if ($action === null) {
+            return Response::notFound();
+        }
+
+        $targetActions()->setActive($id, empty($action['is_active']));
+
+        return new Response('', 302, ['Location' => '/admin/target-actions']);
+    }, 'admin.target_actions.toggle', 'web');
+
+    $routes->post('/admin/target-actions/{id}/delete', static function (Request $request) use ($targetActions): Response {
+        $id = (int) $request->route('id');
+        if ($targetActions()->find($id) === null) {
+            return Response::notFound();
+        }
+
+        $targetActions()->delete($id);
+
+        return new Response('', 302, ['Location' => '/admin/target-actions']);
+    }, 'admin.target_actions.delete', 'web');
+
     $routes->get('/admin/processes', static fn (): Response => $admin('admin/processes/index', [
         'title' => 'Prozesse',
         'active' => 'processes',
@@ -2575,7 +2699,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
     }, 'admin.processes.update', 'web');
 
-    $routes->post('/admin/processes/{id}/steps', static function (Request $request) use ($admin, $processes, $processShowData): Response {
+    $routes->post('/admin/processes/{id}/steps', static function (Request $request) use ($admin, $processes, $targetActions, $processShowData): Response {
         $id = (int) $request->route('id');
         $process = $processes()->find($id);
         if ($process === null) {
@@ -2583,7 +2707,7 @@ return static function (RouteCollection $routes, Application $app): void {
         }
 
         $values = processStepValues($request);
-        $errors = processStepErrors($values);
+        $errors = processStepErrors($values, $targetActions());
         if ($errors !== []) {
             return $admin('admin/processes/show', $processShowData($process, [
                 'stepValues' => $values,
@@ -2596,7 +2720,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
     }, 'admin.processes.steps.store', 'web');
 
-    $routes->post('/admin/processes/{id}/steps/{stepId}', static function (Request $request) use ($processes): Response {
+    $routes->post('/admin/processes/{id}/steps/{stepId}', static function (Request $request) use ($processes, $targetActions): Response {
         $id = (int) $request->route('id');
         $stepId = (int) $request->route('stepId');
         $step = $processes()->findStep($stepId);
@@ -2605,7 +2729,7 @@ return static function (RouteCollection $routes, Application $app): void {
         }
 
         $values = processStepValues($request);
-        $errors = processStepErrors($values);
+        $errors = processStepErrors($values, $targetActions());
         if ($errors !== []) {
             return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
         }

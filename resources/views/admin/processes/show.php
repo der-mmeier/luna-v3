@@ -1,8 +1,9 @@
-﻿<?php
+<?php
 /** @var array<string, mixed> $process */
 /** @var array<int, array<string, mixed>> $steps */
 /** @var array<int, array<string, mixed>> $runs */
 /** @var array<int, array<string, mixed>> $triggers */
+/** @var array<int, array<string, mixed>> $targetActions */
 /** @var array<int, string> $triggerTypes */
 /** @var array<int, array<string, mixed>> $workspaces */
 /** @var array<int, array<string, mixed>> $mappings */
@@ -19,6 +20,13 @@
 $mappingNames = [];
 foreach ($mappings ?? [] as $mapping) {
     $mappingNames[(int) $mapping['id']] = (string) $mapping['name'];
+}
+
+$actionNames = [];
+$actionTypes = [];
+foreach ($targetActions ?? [] as $targetAction) {
+    $actionNames[(int) $targetAction['id']] = (string) $targetAction['name'];
+    $actionTypes[(int) $targetAction['id']] = (string) $targetAction['action_type'];
 }
 
 $triggerLabels = [
@@ -244,16 +252,29 @@ $triggerLabels = [
                     <td>
                         <select class="form-select form-select-sm" name="step_type">
                             <option value="mapping_run" <?= (string) $step['step_type'] === 'mapping_run' ? 'selected' : '' ?>>Mapping ausführen</option>
+                            <option value="target_action" <?= (string) $step['step_type'] === 'target_action' ? 'selected' : '' ?>>Target Action</option>
                         </select>
                     </td>
                     <td>
                         <select class="form-select form-select-sm" name="reference_id">
-                            <?php foreach ($mappings ?? [] as $mapping): ?>
-                                <option value="<?= (int) $mapping['id'] ?>" <?= (int) ($step['reference_id'] ?? 0) === (int) $mapping['id'] ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars((string) $mapping['name'], ENT_QUOTES, 'UTF-8') ?>
-                                </option>
-                            <?php endforeach; ?>
+                            <optgroup label="Mappings">
+                                <?php foreach ($mappings ?? [] as $mapping): ?>
+                                    <option value="<?= (int) $mapping['id'] ?>" <?= (string) $step['step_type'] === 'mapping_run' && (int) ($step['reference_id'] ?? 0) === (int) $mapping['id'] ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars((string) $mapping['name'], ENT_QUOTES, 'UTF-8') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </optgroup>
+                            <optgroup label="Target Actions">
+                                <?php foreach ($targetActions ?? [] as $targetAction): ?>
+                                    <option value="<?= (int) $targetAction['id'] ?>" <?= (string) $step['step_type'] === 'target_action' && (int) ($step['reference_id'] ?? 0) === (int) $targetAction['id'] ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars((string) $targetAction['name'], ENT_QUOTES, 'UTF-8') ?> (<?= htmlspecialchars((string) $targetAction['action_type'], ENT_QUOTES, 'UTF-8') ?>)
+                                    </option>
+                                <?php endforeach; ?>
+                            </optgroup>
                         </select>
+                        <?php if ((string) $step['step_type'] === 'target_action'): ?>
+                            <div class="small text-body-secondary mt-1">Action-Typ: <?= htmlspecialchars($actionTypes[(int) ($step['reference_id'] ?? 0)] ?? '-', ENT_QUOTES, 'UTF-8') ?></div>
+                        <?php endif; ?>
                         <textarea class="form-control form-control-sm mt-2" name="config_json" rows="2" placeholder="Optionale JSON-Konfiguration"><?= htmlspecialchars((string) ($step['config_json'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
                     </td>
                     <td class="text-center"><input class="form-check-input" type="checkbox" name="is_enabled" value="1" <?= (int) $step['is_enabled'] === 1 ? 'checked' : '' ?>></td>
@@ -294,18 +315,28 @@ $triggerLabels = [
         <div class="col-md-3">
             <label class="form-label">Step-Typ</label>
             <select class="form-select" name="step_type">
-                <option value="mapping_run">Mapping ausführen</option>
+                <option value="mapping_run" <?= (string) ($stepValues['step_type'] ?? 'mapping_run') === 'mapping_run' ? 'selected' : '' ?>>Mapping ausführen</option>
+                <option value="target_action" <?= (string) ($stepValues['step_type'] ?? '') === 'target_action' ? 'selected' : '' ?>>Target Action</option>
             </select>
         </div>
         <div class="col-md-3">
-            <label class="form-label">Mapping</label>
+            <label class="form-label">Referenz</label>
             <select class="form-select" name="reference_id" required>
                 <option value="">Bitte wählen</option>
-                <?php foreach ($mappings ?? [] as $mapping): ?>
-                    <option value="<?= (int) $mapping['id'] ?>" <?= (int) ($stepValues['reference_id'] ?? 0) === (int) $mapping['id'] ? 'selected' : '' ?>>
-                        <?= htmlspecialchars((string) $mapping['name'], ENT_QUOTES, 'UTF-8') ?>
-                    </option>
-                <?php endforeach; ?>
+                <optgroup label="Mappings">
+                    <?php foreach ($mappings ?? [] as $mapping): ?>
+                        <option value="<?= (int) $mapping['id'] ?>" <?= (string) ($stepValues['step_type'] ?? 'mapping_run') === 'mapping_run' && (int) ($stepValues['reference_id'] ?? 0) === (int) $mapping['id'] ? 'selected' : '' ?>>
+                            <?= htmlspecialchars((string) $mapping['name'], ENT_QUOTES, 'UTF-8') ?>
+                        </option>
+                    <?php endforeach; ?>
+                </optgroup>
+                <optgroup label="Target Actions">
+                    <?php foreach ($targetActions ?? [] as $targetAction): ?>
+                        <option value="<?= (int) $targetAction['id'] ?>" <?= (string) ($stepValues['step_type'] ?? '') === 'target_action' && (int) ($stepValues['reference_id'] ?? 0) === (int) $targetAction['id'] ? 'selected' : '' ?>>
+                            <?= htmlspecialchars((string) $targetAction['name'], ENT_QUOTES, 'UTF-8') ?> (<?= htmlspecialchars((string) $targetAction['action_type'], ENT_QUOTES, 'UTF-8') ?>)
+                        </option>
+                    <?php endforeach; ?>
+                </optgroup>
             </select>
         </div>
         <div class="col-12">

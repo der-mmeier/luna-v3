@@ -995,3 +995,51 @@ Noch nicht committed.
 ### Abschlussprüfung
 
 UI-Umlautprüfung: durchgeführt
+
+---
+
+## 2026-06-06 - v2.5.0 Adapter / Target Actions Foundation
+
+### Ziel
+
+Prozesse sollen generische Target Actions als Prozess-Schritte ausführen können, ohne Trigger-Logik, WooCommerce-Sonderlogik oder freie Code-/SQL-Ausführung in den Core zu verschieben.
+
+### Geänderte Dateien
+
+- database/migrations/2026_06_06_000018_create_target_actions.sql
+- src/Core/Application.php
+- src/Process/ProcessRunner.php
+- src/Process/ProcessStepContextAwareRunnerInterface.php
+- src/Process/TargetActionStepRunner.php
+- src/Repository/ProcessRepository.php
+- src/Repository/TargetActionRepository.php
+- src/TargetAction/NativeTargetActionHttpClient.php
+- src/TargetAction/TargetActionConfigValidator.php
+- src/TargetAction/TargetActionExecutor.php
+- src/TargetAction/TargetActionHttpClientInterface.php
+- routes/web.php
+- resources/views/admin/target-actions/index.php
+- resources/views/admin/target-actions/show.php
+- resources/views/admin/processes/show.php
+- resources/views/layouts/admin.php
+- tests/Unit/TargetActionFoundationTest.php
+- CHANGELOG.md
+- ROADMAP.md
+- docs/ROADMAP.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+`luna_target_actions` speichert workspace-bezogene Target Actions mit Key, Typ, Aktiv-Status und JSON-Konfiguration. Prozesse können Steps vom Typ `target_action` referenzieren. Der neue Step-Runner nutzt einen einfachen Step-Kontext mit `previous_result` und `step_results`. HTTP Actions unterstützen Dry-Run ohne echten Request, File Export schreibt nur unter `storage/`, Database Insert/Upsert nutzt validierte Identifier und Prepared Statements statt freier SQL-Strings. Admin-UI für Target Actions und Prozess-Step-Auswahl wurde ergänzt. Bestehende Prozess-, Trigger-, Endpoint- und WooCommerce-CLI-Kommandos bleiben registriert.
+
+### Offene Punkte
+
+Produktive systemspezifische Adapter für WooCommerce, Afterbuy, ERP und Amazon sowie Schema Registry/Validation bleiben spätere Meilensteine. Retry wird konfigurierbar vorbereitet, aber noch nicht als Backoff-Runtime ausgeführt.
+
+### Commit-Hash
+
+Noch nicht committed.
+
+### Abschlussprüfung
+
+UI-Umlautprüfung: durchgeführt
