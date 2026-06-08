@@ -10,6 +10,8 @@ use Luna\Process\ProcessTriggerRunner;
 use Luna\Repository\ProcessRunRepository;
 use Luna\Repository\ProcessTriggerRepository;
 use Luna\Repository\WooCommerceRuntimeEventRepository;
+use Luna\TransferDb\TransferDbWebhookEventWriter;
+use Throwable;
 
 final class WooCommerceRuntimeWebhookHandler
 {
@@ -20,6 +22,7 @@ final class WooCommerceRuntimeWebhookHandler
         private readonly WooCommerceRuntimeEventRepository $events,
         private readonly WooCommerceWebhookSignatureVerifier $signatureVerifier,
         private readonly WooCommerceWebhookEventNormalizer $normalizer,
+        private readonly ?TransferDbWebhookEventWriter $transferDbWebhookEvents = null,
     ) {
     }
 
@@ -55,7 +58,10 @@ final class WooCommerceRuntimeWebhookHandler
         $allowUnsigned = ! empty($config['allow_unsigned']);
         $signatureValid = $secret !== null && $this->signatureVerifier->verify($rawBody, $secret, $signature);
 
-        $event = $this->normalizer->normalize($trigger, $config, $request, $rawBody, $signatureValid);
+        $event = $this->normalizer->normalize($trigger, $config, $request, $rawBody, $signatureValid) + [
+            'trigger_key' => (string) ($trigger['trigger_key'] ?? ''),
+            'configured_topic' => $configuredTopic,
+        ];
         if ($secret === null && ! $allowUnsigned) {
             $eventId = $this->events->create($event, 'rejected', 'WooCommerce Webhook Secret ist nicht konfiguriert.');
 
@@ -70,6 +76,7 @@ final class WooCommerceRuntimeWebhookHandler
         $event['signature_valid'] = $signatureValid || $allowUnsigned;
         $eventId = $this->events->create($event, 'verified', $allowUnsigned && ! $signatureValid ? 'Unsigned Webhook explizit erlaubt.' : 'WooCommerce Webhook Signatur wurde geprüft.');
         $runtimeEvent = $this->runtimeEvent($event, $eventId);
+        $runtimeEvent['transferdb'] = $this->writeTransferDbEvent($trigger, $event, $request);
 
         try {
             $runId = $this->triggerRunner->runTrigger(
@@ -147,6 +154,63 @@ final class WooCommerceRuntimeWebhookHandler
         }
 
         return $runtimeEvent;
+    }
+
+    /**
+     * @param array<string, mixed> $trigger
+     * @param array<string, mixed> $event
+     * @return array<string, mixed>
+     */
+    private function writeTransferDbEvent(array $trigger, array $event, Request $request): array
+    {
+        if ($this->transferDbWebhookEvents === null) {
+            return ['configured' => false, 'message' => 'TransferDB Writer ist nicht registriert.'];
+        }
+        if (empty($trigger['workspace_id'])) {
+            return ['configured' => false, 'message' => 'No TransferDB configured for workspace.'];
+        }
+
+        try {
+            return ['configured' => true] + $this->transferDbWebhookEvents->write(
+                (int) $trigger['workspace_id'],
+                $event,
+                $this->headers($request),
+            );
+        } catch (Throwable $exception) {
+            return [
+                'configured' => false,
+                'success' => false,
+                'message' => 'No TransferDB configured for workspace: ' . $exception->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function headers(Request $request): array
+    {
+        $headers = [];
+        foreach ([
+            'X-WC-Webhook-Signature',
+            'X-WC-Webhook-Topic',
+            'X-WC-Webhook-Resource',
+            'X-WC-Webhook-Event',
+            'X-WC-Webhook-Delivery-ID',
+            'X-WC-Webhook-ID',
+            'X-WC-Webhook-Source',
+            'Authorization',
+            'Cookie',
+            'X-Api-Key',
+            'X-Auth-Token',
+        ] as $header) {
+            $value = (string) $request->header($header, '');
+            if ($value !== '') {
+                $headers[$header] = $value;
+            }
+        }
+
+        return $headers;
     }
 
     /**

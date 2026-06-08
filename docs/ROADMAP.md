@@ -1,6 +1,6 @@
 ﻿# Luna V3 Roadmap
 
-Stand: nach `v2.7.0`
+Stand: nach `v2.7.1`
 Ziel dieses Dokuments: Die Versionsfolge sauber ordnen, widersprÃ¼chliche alte Planungen bereinigen und die nÃ¤chsten Schritte so definieren, dass Luna nicht in WooCommerce-, Webhook-, Export- und Transfer-Sonderlogik zerfÃ¤llt.
 
 ---
@@ -69,7 +69,8 @@ Diese Regeln gelten fÃ¼r alle kommenden Versionen:
 | `v2.5.0` | abgeschlossen | Adapter / Target Actions Foundation |
 | `v2.6.0` | abgeschlossen | Schema Registry & Validation |
 | `v2.7.0` | abgeschlossen | WooCommerce Runtime Module |
-| `v2.8.0` | nächster Meilenstein | External System Modules: Afterbuy / ERP / weitere Systeme |
+| `v2.7.1` | abgeschlossen | TransferDB Foundation & Runtime Storage |
+| `v2.8.0` | nächster Meilenstein | Exportable Webhook Runtime Packages |
 
 ---
 
@@ -458,7 +459,7 @@ Abgrenzung:
 
 ### v2.7.0 - WooCommerce Runtime Module
 
-Status: abgeschlossen
+Status: abgeschlossen / gemerged
 
 Ziel:
 
@@ -493,22 +494,52 @@ Nicht-Ziele:
 
 ---
 
-### v2.8.0 - External System Modules: Afterbuy / ERP / weitere Systeme
+### v2.7.1 - TransferDB Foundation & Runtime Storage
+
+Status: abgeschlossen
+
+Ziel:
+
+TransferDB je Workspace konfigurieren, eigene `luna_` Runtime-/Transfer-Tabellen anlegen und Webhook-/Endpoint-/Process-Ergebnisse strukturiert speichern.
+
+Umgesetzt:
+
+- Connection-Rolle `transfer_db` und `mixed`.
+- Workspace-Default-TransferDB-Connection.
+- TransferDB-Status und Migration über UI und CLI.
+- TransferDB-Schema mit `luna_transfer_sources`, `luna_transfer_batches`, `luna_transfer_records`, `luna_transfer_webhook_events`, `luna_transfer_endpoint_snapshots`, `luna_transfer_logs` und `luna_transfer_schema_migrations`.
+- Writer-Services für Sources, Batches, Records, Logs, Webhook Events und Endpoint Snapshots.
+- WooCommerce Runtime spiegelt valide Webhooks optional in die TransferDB, ohne bei fehlender TransferDB den bestehenden Flow zu blockieren.
+- Endpoint-Detailseite kann Endpoint-Ergebnisse als Snapshot in die TransferDB schreiben.
+- Endpoint-Exportpakete enthalten secret-freie `runtime_storage`-Metadaten.
+
+Hinweis:
+
+WooCommerce Runtime in der Luna-App ist vorbereitet; echter Exportbetrieb benötigt TransferDB und später exportierbare Runtime-Pakete.
+
+Nicht-Ziele:
+
+- kein vollständiger exportierbarer Webhook-Receiver.
+- kein Pflicht-Deployment der kompletten Luna-Admin-App.
+- keine WooCommerce-Schreibaktionen.
+
+---
+
+### v2.8.0 - Exportable Webhook Runtime Packages
 
 Status: geplant / nächster Meilenstein
 
 Ziel:
 
-Afterbuy, ERP und weitere Systeme werden als konkrete Module oder Adapter umgesetzt, sobald Process Runtime, Trigger Layer, Adapter Foundation und Schema Registry stabil sind.
+Webhook Trigger als deploybares Runtime-Paket exportieren, damit öffentliche Subdomains Webhooks empfangen können, ohne die komplette Luna-Admin-App öffentlich zu betreiben.
 
 Geplanter Scope:
 
-- Afterbuy als erster externer Zielsystemkandidat.
-- ERP-Export oder ERP-Import als weiteres Zielsystem.
-- Pro System klare Schemas.
-- Pro System klare Adapter-Konfiguration.
-- Pro System klare Prozessdefinitionen.
-- Exportpakete fÃ¼r diese Integrationen.
+- Exportpaket für Webhook Trigger.
+- Minimaler öffentlicher Receiver mit Secret-/HMAC-Prüfung.
+- TransferDB-Schreibzugriff über `.env.example`-Konfiguration.
+- Secret-freie Manifest- und README-Dokumentation.
+- Keine Luna-Admin-Oberfläche im öffentlichen Runtime-Paket.
 
 Abgrenzung:
 
@@ -579,21 +610,21 @@ FÃ¼r jeden Meilenstein gilt:
 
 ## 11. Nächste konkrete Entscheidung
 
-Der nächste Codex-Prompt sollte auf `v2.8.0 - External System Modules: Afterbuy / ERP / weitere Systeme` gehen.
+Der nächste Codex-Prompt sollte auf `v2.8.0 - Exportable Webhook Runtime Packages` gehen.
 
 Er soll ausdrücklich nicht bauen:
 
-- keine Sonderarchitektur pro Zielsystem,
-- keine ungeprüften Schreibzugriffe in externe Systeme,
+- keine vollständige Luna-Admin-App öffentlich deployen,
+- keine WooCommerce-Schreibaktionen,
 - keine PRO-/Lizenzserverlogik,
 - keine Vermischung von Trigger, Prozess und Adapter-Fachlogik.
 
 Er soll bauen:
 
-- konkrete externe Systemmodule auf Basis der bestehenden Trigger-/Process-/Target-Action-/Schema-Schicht,
-- klare Schemas und Adapter-Konfigurationen pro System,
-- nachvollziehbare Prozessläufe und sichere Logs,
-- exportierbare Metadaten ohne Secrets.
+- deploybare Webhook-Runtime-Pakete,
+- TransferDB-Schreibpfad aus exportierter Runtime,
+- HMAC-/Secret-Prüfung ohne Secret-Export,
+- nachvollziehbare Runtime-Metadaten ohne Luna-Admin-Zwang.
 
 
 

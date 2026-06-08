@@ -47,6 +47,7 @@ final class WooCommerceWebhookEventNormalizer
             'payload' => ! empty($config['payload_context_mode']) && (string) $config['payload_context_mode'] === 'full'
                 ? $this->sanitizePayload($payload)
                 : null,
+            'transfer_payload' => $this->sanitizePayload($payload),
         ];
     }
 

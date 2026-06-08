@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 /** @var array<string, mixed> $connection */
 $formAction = '/admin/connections/' . (int) $connection['id'] . '/edit';

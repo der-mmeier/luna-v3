@@ -71,6 +71,22 @@ final class ConnectionProfileDataTest extends TestCase
             'database_name' => 'app',
             'username' => 'user',
         ]));
+        self::assertSame([], ConnectionProfileData::validate([
+            'name' => 'TransferDB',
+            'type' => 'transfer_db',
+            'driver' => 'mysql',
+            'host' => 'db.local',
+            'database_name' => 'transfer',
+            'username' => 'user',
+        ]));
+        self::assertSame([], ConnectionProfileData::validate([
+            'name' => 'Mixed',
+            'type' => 'mixed',
+            'driver' => 'mysql',
+            'host' => 'db.local',
+            'database_name' => 'mixed',
+            'username' => 'user',
+        ]));
 
         $errors = ConnectionProfileData::validate([
             'name' => 'Invalid',
@@ -81,8 +97,8 @@ final class ConnectionProfileDataTest extends TestCase
             'username' => 'user',
         ]);
 
-        self::assertContains('Connection-Rolle ist ungueltig.', $errors);
-        self::assertContains('Connection-Driver ist ungueltig.', $errors);
+        self::assertContains('Connection-Rolle ist ungültig.', $errors);
+        self::assertContains('Connection-Driver ist ungültig.', $errors);
     }
 
     public function testConnectionTesterDoesNotExposeSecretsOnFailure(): void

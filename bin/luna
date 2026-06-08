@@ -24,6 +24,7 @@ use Luna\Repository\ProcessRunRepository;
 use Luna\Repository\ProcessTriggerRepository;
 use Luna\Repository\SchemaRegistryRepository;
 use Luna\Schema\SchemaValidator;
+use Luna\TransferDb\TransferDbStatusService;
 use Luna\WooCommerce\WooCommerceTransferRunner;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -54,11 +55,12 @@ function exitCodeForRun(array $run): int
 
 if ($command === null) {
 
-    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|export:woocommerce:list|export:woocommerce:run|process:run|trigger:list|trigger:run|schema:validate|endpoint:export|integration:export>\n");
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|transferdb:check|transferdb:migrate|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|export:woocommerce:list|export:woocommerce:run|process:run|trigger:list|trigger:run|schema:validate|endpoint:export|integration:export>\n");
     fwrite(STDERR, "Endpoint contract: php bin/luna endpoint:export <endpoint-id> [--target=<environment>] [--output=<directory>]\n");
     fwrite(STDERR, "Process runtime: php bin/luna process:run <process-id> [--dry-run] [--trigger=<trigger-id-or-key>]\n");
     fwrite(STDERR, "Trigger runtime: php bin/luna trigger:list <process-id> | trigger:run <trigger-id-or-key> [--dry-run]\n");
     fwrite(STDERR, "Schema validation: php bin/luna schema:validate <schema-id> <json-file>\n");
+    fwrite(STDERR, "TransferDB: php bin/luna transferdb:check <workspace-id-or-key> | transferdb:migrate <workspace-id-or-key>\n");
 
     exit(2);
 }
@@ -131,6 +133,37 @@ try {
         echo 'Status: ' . ($result['success'] ? 'success' : 'failed') . "\n";
         echo 'Message: ' . (string) $result['message'] . "\n";
         exit($result['success'] ? 0 : 1);
+    }
+
+    if ($command === 'transferdb:check' || $command === 'transferdb:migrate') {
+        $workspace = isset($argv[2]) ? (string) $argv[2] : '';
+        if ($workspace === '') {
+            fwrite(STDERR, "Usage: php bin/luna {$command} <workspace-id-or-key>\n");
+            exit(2);
+        }
+
+        /** @var TransferDbStatusService $transferDb */
+        $transferDb = $app->services()->get(TransferDbStatusService::class);
+        $status = $command === 'transferdb:migrate'
+            ? $transferDb->migrate($workspace)
+            : $transferDb->check($workspace);
+
+        echo 'Workspace: ' . (string) ($status['workspace']['slug'] ?? $workspace) . "\n";
+        echo 'Configured: ' . (! empty($status['configured']) ? 'yes' : 'no') . "\n";
+        echo 'Reachable: ' . (! empty($status['reachable']) ? 'yes' : 'no') . "\n";
+        echo 'Schema current: ' . (! empty($status['schema_current']) ? 'yes' : 'no') . "\n";
+        echo 'Migration version: ' . (string) ($status['migration_version'] ?? '-') . "\n";
+        if (! empty($status['error'])) {
+            echo 'Error: ' . (string) $status['error'] . "\n";
+        }
+        if (($status['missing_tables'] ?? []) !== []) {
+            echo "Missing tables:\n";
+            foreach ((array) $status['missing_tables'] as $table) {
+                echo '- ' . (string) $table . "\n";
+            }
+        }
+
+        exit(empty($status['error']) && ! empty($status['reachable']) ? 0 : 1);
     }
 
     if ($command === 'job:run') {

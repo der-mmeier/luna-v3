@@ -52,6 +52,8 @@ use Luna\Schema\TableNameReader;
 use Luna\Transfer\DatasetTransferRunner;
 use Luna\Transfer\MappingSourceRowProvider;
 use Luna\TargetAction\TargetActionConfigValidator;
+use Luna\TransferDb\TransferDbEndpointSnapshotWriter;
+use Luna\TransferDb\TransferDbStatusService;
 use Luna\View\ViewRenderer;
 use Luna\WooCommerce\WooCommerceHposValidator;
 use Luna\WooCommerce\WooCommerceTransferRunner;
@@ -1389,6 +1391,7 @@ if (! function_exists('workspaceValues')) {
             'slug' => $slug !== '' ? $slug : WorkspaceRepository::normalizeSlug($name),
             'description' => trim((string) $request->post('description', '')),
             'status' => (string) $request->post('status', 'active'),
+            'transfer_db_connection_id' => $request->post('transfer_db_connection_id'),
         ];
     }
 }
@@ -1415,6 +1418,25 @@ if (! function_exists('workspaceErrors')) {
         }
 
         return $errors;
+    }
+}
+
+if (! function_exists('transferDbConnectionOptions')) {
+    /**
+     * @return list<array<string, mixed>>
+     */
+    function transferDbConnectionOptions(Closure $connections, ?int $workspaceId): array
+    {
+        return array_values(array_filter(
+            safeList($connections),
+            static fn (array $connection): bool => in_array((string) ($connection['type'] ?? ''), ['transfer_db', 'mixed'], true)
+                && ! empty($connection['is_active'])
+                && (
+                    empty($connection['workspace_id'])
+                    || $workspaceId === null
+                    || (int) $connection['workspace_id'] === $workspaceId
+                ),
+        ));
     }
 }
 
@@ -1471,6 +1493,8 @@ return static function (RouteCollection $routes, Application $app): void {
     $reportMailer = static fn (): ReportMailer => $app->services()->get('reports.mailer');
     $validator = static fn (): MappingValidator => $app->services()->get('mapping.validator');
     $pdoFactory = static fn (): ExternalPdoConnectionFactory => $app->services()->get('connections.pdo_factory');
+    $transferDbStatus = static fn (): TransferDbStatusService => $app->services()->get(TransferDbStatusService::class);
+    $transferDbEndpointSnapshots = static fn (): TransferDbEndpointSnapshotWriter => $app->services()->get(TransferDbEndpointSnapshotWriter::class);
     $configFor = static function (array $profile) use ($connections): ExternalDatabaseConfig {
         return ExternalDatabaseConfig::fromProfile($profile, $connections()->secretsFor((int) $profile['id']));
     };
@@ -1582,6 +1606,7 @@ return static function (RouteCollection $routes, Application $app): void {
         'active' => 'workspaces',
         'values' => ['status' => 'active'],
         'errors' => [],
+        'transferDbConnections' => [],
     ]), 'admin.workspaces.create', 'web');
 
     $routes->post('/admin/workspaces', static function (Request $request) use ($admin, $workspaces, $audit): Response {
@@ -1594,12 +1619,13 @@ return static function (RouteCollection $routes, Application $app): void {
                 'active' => 'workspaces',
                 'values' => $values,
                 'errors' => $errors,
+                'transferDbConnections' => [],
             ]);
         }
 
-        $id = $workspaces()->create((string) $values['slug'], (string) $values['name'], trim((string) $values['description']) ?: null);
+        $id = $workspaces()->create((string) $values['slug'], (string) $values['name'], trim((string) $values['description']) ?: null, empty($values['transfer_db_connection_id']) ? null : (int) $values['transfer_db_connection_id']);
         if ((string) $values['status'] !== 'active') {
-            $workspaces()->update($id, (string) $values['slug'], (string) $values['name'], trim((string) $values['description']) ?: null, (string) $values['status']);
+            $workspaces()->update($id, (string) $values['slug'], (string) $values['name'], trim((string) $values['description']) ?: null, (string) $values['status'], empty($values['transfer_db_connection_id']) ? null : (int) $values['transfer_db_connection_id']);
         }
         $audit()->log($id, 'workspace.created', 'workspace', (string) $id, 'Workspace erstellt.', [
             'slug' => $values['slug'],
@@ -1610,7 +1636,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return workspaceCreateSuccessRedirect();
     }, 'admin.workspaces.store', 'web');
 
-    $routes->get('/admin/workspaces/{id}', static function (Request $request) use ($admin, $workspaces): Response {
+    $routes->get('/admin/workspaces/{id}', static function (Request $request) use ($admin, $workspaces, $connections, $transferDbStatus): Response {
         $workspace = $workspaces()->find((int) $request->route('id'));
 
         return $admin('admin/workspaces/show', [
@@ -1619,10 +1645,13 @@ return static function (RouteCollection $routes, Application $app): void {
             'workspace' => $workspace,
             'values' => $workspace ?? ['status' => 'active'],
             'errors' => [],
+            'transferDbConnections' => transferDbConnectionOptions($connections, $workspace === null ? null : (int) $workspace['id']),
+            'transferDbStatus' => $workspace === null ? null : $transferDbStatus()->check((int) $workspace['id']),
+            'alert' => null,
         ]);
     }, 'admin.workspaces.show', 'web');
 
-    $routes->post('/admin/workspaces/{id}', static function (Request $request) use ($admin, $workspaces, $audit): Response {
+    $routes->post('/admin/workspaces/{id}', static function (Request $request) use ($admin, $workspaces, $audit, $connections, $transferDbStatus): Response {
         $id = (int) $request->route('id');
         $workspace = $workspaces()->find($id);
 
@@ -1640,10 +1669,13 @@ return static function (RouteCollection $routes, Application $app): void {
                 'workspace' => $workspace,
                 'values' => $values + ['id' => $id],
                 'errors' => $errors,
+                'transferDbConnections' => transferDbConnectionOptions($connections, $id),
+                'transferDbStatus' => $transferDbStatus()->check($id),
+                'alert' => null,
             ]);
         }
 
-        $workspaces()->update($id, (string) $values['slug'], (string) $values['name'], trim((string) $values['description']) ?: null, (string) $values['status']);
+        $workspaces()->update($id, (string) $values['slug'], (string) $values['name'], trim((string) $values['description']) ?: null, (string) $values['status'], empty($values['transfer_db_connection_id']) ? null : (int) $values['transfer_db_connection_id']);
         $audit()->log($id, 'workspace.updated', 'workspace', (string) $id, 'Workspace aktualisiert.', [
             'slug' => $values['slug'],
             'name' => $values['name'],
@@ -1652,6 +1684,53 @@ return static function (RouteCollection $routes, Application $app): void {
 
         return new Response('', 302, ['Location' => '/admin/workspaces/' . $id]);
     }, 'admin.workspaces.update', 'web');
+
+    $routes->post('/admin/workspaces/{id}/transferdb/check', static function (Request $request) use ($admin, $workspaces, $connections, $transferDbStatus): Response {
+        $id = (int) $request->route('id');
+        $workspace = $workspaces()->find($id);
+        if ($workspace === null) {
+            return Response::notFound();
+        }
+        $status = $transferDbStatus()->check($id);
+
+        return $admin('admin/workspaces/show', [
+            'title' => $workspace['name'] ?? 'Workspace',
+            'active' => 'workspaces',
+            'workspace' => $workspace,
+            'values' => $workspace,
+            'errors' => [],
+            'transferDbConnections' => transferDbConnectionOptions($connections, $id),
+            'transferDbStatus' => $status,
+            'alert' => ['type' => empty($status['error']) ? 'info' : 'warning', 'message' => empty($status['error']) ? 'TransferDB wurde geprüft.' : (string) $status['error']],
+        ]);
+    }, 'admin.workspaces.transferdb_check', 'web');
+
+    $routes->post('/admin/workspaces/{id}/transferdb/migrate', static function (Request $request) use ($admin, $workspaces, $connections, $transferDbStatus): Response {
+        $id = (int) $request->route('id');
+        $workspace = $workspaces()->find($id);
+        if ($workspace === null) {
+            return Response::notFound();
+        }
+
+        try {
+            $status = $transferDbStatus()->migrate($id);
+            $alert = ['type' => 'success', 'message' => 'TransferDB Tabellen wurden angelegt oder aktualisiert.'];
+        } catch (Throwable $exception) {
+            $status = $transferDbStatus()->check($id);
+            $alert = ['type' => 'danger', 'message' => $exception->getMessage()];
+        }
+
+        return $admin('admin/workspaces/show', [
+            'title' => $workspace['name'] ?? 'Workspace',
+            'active' => 'workspaces',
+            'workspace' => $workspace,
+            'values' => $workspace,
+            'errors' => [],
+            'transferDbConnections' => transferDbConnectionOptions($connections, $id),
+            'transferDbStatus' => $status,
+            'alert' => $alert,
+        ]);
+    }, 'admin.workspaces.transferdb_migrate', 'web');
 
     $routes->post('/admin/workspaces/{id}/delete', static function (Request $request) use ($admin, $workspaces, $audit): Response {
         $id = (int) $request->route('id');
@@ -4110,6 +4189,48 @@ return static function (RouteCollection $routes, Application $app): void {
             'result' => $result,
         ]);
     }, 'admin.endpoints.test', 'web');
+
+    $routes->post('/admin/endpoints/{id}/transferdb-snapshot', static function (Request $request) use ($admin, $endpoints, $app, $transferDbEndpointSnapshots, $endpointExporter, $deploymentTargets, $targetUrlBuilder, $workspaces, $mappings, $connections, $jobs, $schemas): Response {
+        $id = (int) $request->route('id');
+        $endpoint = $endpoints()->find($id);
+        if ($endpoint === null) {
+            return Response::notFound();
+        }
+
+        try {
+            $payload = json_decode($app->services()->get('api.endpoint_response_builder')->build($endpoint)->body(), true, 512, JSON_THROW_ON_ERROR);
+            if (! is_array($payload)) {
+                throw new RuntimeException('Endpoint-Ergebnis ist kein JSON-Objekt.');
+            }
+            $result = $transferDbEndpointSnapshots()->write((int) $endpoint['workspace_id'], $endpoint, $payload);
+            $alert = [
+                'type' => 'success',
+                'message' => 'Endpoint Snapshot wurde in der TransferDB gespeichert. Batch ID: ' . (int) $result['batch_id'] . ', Snapshot ID: ' . (int) $result['snapshot_id'] . ', Records: ' . (int) $result['record_count'],
+            ];
+        } catch (Throwable $exception) {
+            $alert = ['type' => 'danger', 'message' => 'Endpoint Snapshot konnte nicht in der TransferDB gespeichert werden: ' . $exception->getMessage()];
+        }
+
+        $config = json_decode((string) ($endpoint['config_json'] ?? '{}'), true) ?: [];
+
+        return $admin('admin/endpoints/show', [
+            'title' => 'Endpoint',
+            'active' => 'endpoints',
+            'endpoint' => $endpoint,
+            'workspaces' => safeList($workspaces),
+            'mappings' => safeList($mappings),
+            'jobs' => safeList($jobs),
+            'schemas' => $schemas()->all(),
+            'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
+            'hasSecret' => $endpoints()->hasSecret($id),
+            'exportStatus' => $endpointExporter()->exportStatusForEndpoint($id),
+            'contractTargets' => endpointTargetRows($endpoint, $deploymentTargets(), $targetUrlBuilder()),
+            'currentEndpointUrl' => currentEndpointUrl($request, $targetUrlBuilder(), (string) $endpoint['endpoint_key']),
+            'contractExportStatus' => null,
+            'mappingSummary' => endpointMappingSummary($endpoint, $mappings, $connections),
+            'alert' => $alert,
+        ]);
+    }, 'admin.endpoints.transferdb_snapshot', 'web');
 
     $routes->post('/admin/endpoints/{id}/validate-schema', static function (Request $request) use ($admin, $endpoints, $app, $schemas, $schemaValidator, $endpointExporter, $deploymentTargets, $targetUrlBuilder, $workspaces, $mappings, $connections, $jobs): Response {
         $id = (int) $request->route('id');

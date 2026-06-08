@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 /** @var array<int, array<string, mixed>> $connections */
 /** @var string|null $error */
@@ -6,7 +6,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h1 class="h3 mb-1">Connections</h1>
-        <p class="text-body-secondary mb-0">Externe Datenquellen werden verschlüsselt in der Luna-Systemdatenbank verwaltet.</p>
+        <p class="text-body-secondary mb-0">Externe Datenquellen und TransferDB-Verbindungen werden verschlüsselt in der Luna-Systemdatenbank verwaltet.</p>
     </div>
     <a class="btn btn-primary" href="/admin/connections/create">Connection anlegen</a>
 </div>
@@ -38,7 +38,15 @@
                 <tr>
                     <td><?= htmlspecialchars((string) $connection['name'], ENT_QUOTES, 'UTF-8') ?></td>
                     <td><?= htmlspecialchars((string) ($connection['workspace_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
-                    <td><?= htmlspecialchars((string) $connection['type'], ENT_QUOTES, 'UTF-8') ?></td>
+                    <td>
+                        <?php if ((string) $connection['type'] === 'transfer_db'): ?>
+                            <span class="badge text-bg-info">TransferDB</span>
+                        <?php elseif ((string) $connection['type'] === 'mixed'): ?>
+                            <span class="badge text-bg-secondary">Mixed</span>
+                        <?php else: ?>
+                            <?= htmlspecialchars((string) $connection['type'], ENT_QUOTES, 'UTF-8') ?>
+                        <?php endif; ?>
+                    </td>
                     <td><?= htmlspecialchars((string) $connection['driver'], ENT_QUOTES, 'UTF-8') ?></td>
                     <td><?= htmlspecialchars((string) $connection['host'], ENT_QUOTES, 'UTF-8') ?></td>
                     <td><?= htmlspecialchars((string) $connection['database_name'], ENT_QUOTES, 'UTF-8') ?></td>
