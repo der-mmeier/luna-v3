@@ -24,13 +24,14 @@ final class ProcessTriggerRunner
         array $payloadMeta = [],
         ?int $expectedProcessId = null,
         ?string $expectedType = null,
+        array $initialContext = [],
     ): int {
         $trigger = $this->triggers->findByIdentifier($identifier);
         if ($trigger === null) {
             throw ProcessTriggerException::notFound();
         }
 
-        return $this->runTrigger($trigger, $mode, $source, $secret, $payloadMeta, $expectedProcessId, $expectedType);
+        return $this->runTrigger($trigger, $mode, $source, $secret, $payloadMeta, $expectedProcessId, $expectedType, $initialContext);
     }
 
     public function runTrigger(
@@ -41,6 +42,7 @@ final class ProcessTriggerRunner
         array $payloadMeta = [],
         ?int $expectedProcessId = null,
         ?string $expectedType = null,
+        array $initialContext = [],
     ): int {
         if (empty($trigger['is_active'])) {
             throw ProcessTriggerException::inactive();
@@ -73,7 +75,7 @@ final class ProcessTriggerRunner
             $mode,
             (string) $trigger['trigger_type'],
             (string) $trigger['trigger_key'],
-            [
+            $initialContext + [
                 'trigger' => [
                     'id' => (int) $trigger['id'],
                     'key' => (string) $trigger['trigger_key'],

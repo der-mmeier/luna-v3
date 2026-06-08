@@ -1,6 +1,6 @@
 ﻿# Luna V3 Roadmap
 
-Stand: nach `v2.5.0`
+Stand: nach `v2.7.0`
 Ziel dieses Dokuments: Die Versionsfolge sauber ordnen, widersprÃ¼chliche alte Planungen bereinigen und die nÃ¤chsten Schritte so definieren, dass Luna nicht in WooCommerce-, Webhook-, Export- und Transfer-Sonderlogik zerfÃ¤llt.
 
 ---
@@ -68,7 +68,8 @@ Diese Regeln gelten fÃ¼r alle kommenden Versionen:
 | `v2.4.0` | abgeschlossen | Trigger Layer |
 | `v2.5.0` | abgeschlossen | Adapter / Target Actions Foundation |
 | `v2.6.0` | abgeschlossen | Schema Registry & Validation |
-| `v2.7.0` | nächster Meilenstein | WooCommerce Runtime Module |
+| `v2.7.0` | abgeschlossen | WooCommerce Runtime Module |
+| `v2.8.0` | nächster Meilenstein | External System Modules: Afterbuy / ERP / weitere Systeme |
 
 ---
 
@@ -457,21 +458,24 @@ Abgrenzung:
 
 ### v2.7.0 - WooCommerce Runtime Module
 
-Status: geplant / nächster Meilenstein
+Status: abgeschlossen
 
 Ziel:
 
 WooCommerce wird als konkretes Modul auf Basis von Process Runtime, Trigger Layer und Adapter Foundation umgesetzt oder bereinigt.
 
-Geplanter Scope:
+Umgesetzt:
 
-- WooCommerce-Webhooks als Trigger.
-- HMAC-/Secret-PrÃ¼fung.
-- Order-Events verarbeiten.
-- Event -> Prozesslauf.
-- Prozesslauf -> TransferDB/Staging oder Exportprofil.
-- StatusÃ¤nderungen nachvollziehbar Ã¼bernehmen.
-- WooCommerce-spezifische Exportprofile ordnen.
+- WooCommerce-Webhooks als konkrete Trigger-Anwendung auf Basis des generischen Trigger Layers.
+- Delivery URL aus Deployment Targets mit `/api/webhooks/woocommerce/{trigger_key}`.
+- HMAC-/Secret-Prüfung nach WooCommerce-Prinzip mit Base64-HMAC-SHA256 über den rohen Request Body.
+- Order-Topics wie `order.created` und `order.updated` werden generisch normalisiert.
+- Valide Webhooks erzeugen normale Prozessläufe mit WooCommerce-Metadaten.
+- Event-Metadaten enthalten Provider, Topic/Event, Delivery ID, Source Domain, Empfangszeit und Signaturstatus.
+- Payloads werden nur zusammengefasst und sanitizt protokolliert.
+- WooCommerce Runtime Events werden intern gestaged und mit Process Runs verknüpft.
+- Run-Details zeigen WooCommerce-Metadaten und Payload Summary.
+- Bestehende WooCommerce-Export- und Process-Kommandos bleiben erhalten.
 
 Wichtige Regel:
 
@@ -491,7 +495,7 @@ Nicht-Ziele:
 
 ### v2.8.0 - External System Modules: Afterbuy / ERP / weitere Systeme
 
-Status: geplant / spÃ¤ter
+Status: geplant / nächster Meilenstein
 
 Ziel:
 
@@ -575,21 +579,21 @@ FÃ¼r jeden Meilenstein gilt:
 
 ## 11. Nächste konkrete Entscheidung
 
-Der nächste Codex-Prompt sollte auf `v2.6.0 - Schema Registry & Validation` gehen.
+Der nächste Codex-Prompt sollte auf `v2.8.0 - External System Modules: Afterbuy / ERP / weitere Systeme` gehen.
 
 Er soll ausdrücklich nicht bauen:
 
-- vollständige WooCommerce-Webhook-Fachverarbeitung,
-- Afterbuy- oder ERP-Sonderarchitektur im Core,
-- PRO-/Lizenzserver,
-- unkontrollierte externe Schreibaktionen ohne Dry-Run/Preview.
+- keine Sonderarchitektur pro Zielsystem,
+- keine ungeprüften Schreibzugriffe in externe Systeme,
+- keine PRO-/Lizenzserverlogik,
+- keine Vermischung von Trigger, Prozess und Adapter-Fachlogik.
 
 Er soll bauen:
 
-- Schema Registry je Workspace,
-- versionierte Schema-Definitionen,
-- Validierung von Mapping-/Endpoint-/Process-Ergebnissen,
-- exportierbare Schema-Metadaten ohne Secrets.
+- konkrete externe Systemmodule auf Basis der bestehenden Trigger-/Process-/Target-Action-/Schema-Schicht,
+- klare Schemas und Adapter-Konfigurationen pro System,
+- nachvollziehbare Prozessläufe und sichere Logs,
+- exportierbare Metadaten ohne Secrets.
 
 
 

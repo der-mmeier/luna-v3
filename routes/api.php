@@ -10,6 +10,7 @@ use Luna\Process\ProcessTriggerRunner;
 use Luna\Process\ProcessTriggerService;
 use Luna\Repository\ProcessRunRepository;
 use Luna\Routing\RouteCollection;
+use Luna\WooCommerce\WooCommerceRuntimeWebhookHandler;
 
 return static function (RouteCollection $routes, Application $app): void {
     $routes->get('/api/version', static fn (): Response => Response::json([
@@ -23,6 +24,7 @@ return static function (RouteCollection $routes, Application $app): void {
     $triggerRunner = static fn (): ProcessTriggerRunner => $app->services()->get(ProcessTriggerRunner::class);
     $triggerService = static fn (): ProcessTriggerService => $app->services()->get(ProcessTriggerService::class);
     $processRuns = static fn (): ProcessRunRepository => $app->services()->get(ProcessRunRepository::class);
+    $woocommerceRuntimeWebhookHandler = static fn (): WooCommerceRuntimeWebhookHandler => $app->services()->get(WooCommerceRuntimeWebhookHandler::class);
 
     $runTriggerResponse = static function ($request, string $expectedType) use ($triggerRunner, $triggerService, $processRuns): Response {
         $rawBody = file_get_contents('php://input');
@@ -65,5 +67,15 @@ return static function (RouteCollection $routes, Application $app): void {
     $routes->get('/api/e/{endpointKey}', static fn ($request): Response => $endpointRuntime()->handle($request), 'api.endpoints.show', 'api');
     $routes->post('/api/e/{endpointKey}', static fn ($request): Response => $endpointRuntime()->handle($request), 'api.endpoints.post', 'api');
     $routes->post('/api/process-triggers/{trigger_key}/run', static fn ($request): Response => $runTriggerResponse($request, 'api'), 'api.process_triggers.run', 'api');
+    $routes->post('/api/webhooks/woocommerce/{trigger_key}', static function ($request) use ($woocommerceRuntimeWebhookHandler): Response {
+        $rawBody = file_get_contents('php://input');
+        $result = $woocommerceRuntimeWebhookHandler()->handle(
+            $request,
+            (string) $request->route('trigger_key'),
+            $rawBody === false ? '' : $rawBody,
+        );
+
+        return Response::json($result['payload'], $result['status']);
+    }, 'api.webhooks.woocommerce', 'api');
     $routes->post('/api/webhooks/{trigger_key}', static fn ($request): Response => $runTriggerResponse($request, 'webhook'), 'api.process_triggers.webhook', 'api');
 };

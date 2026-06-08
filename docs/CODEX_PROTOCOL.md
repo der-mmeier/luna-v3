@@ -1092,3 +1092,47 @@ Noch nicht committed.
 ### Abschlussprüfung
 
 UI-Umlautprüfung: durchgeführt
+---
+
+## 2026-06-08 - v2.7.0 WooCommerce Runtime Module
+
+### Ziel
+
+WooCommerce-Webhooks sollen Luna als konkrete Runtime-Modul-Anwendung aufrufen können, ohne die generische Trigger-/Process-/Adapter-/Schema-Architektur zu ersetzen.
+
+### Geänderte Dateien
+
+- database/migrations/2026_06_08_000020_create_woocommerce_runtime_events.sql
+- src/Core/Application.php
+- src/Process/ProcessTriggerRunner.php
+- src/Process/TriggerUrlBuilder.php
+- src/Repository/ProcessTriggerRepository.php
+- src/Repository/WooCommerceRuntimeEventRepository.php
+- src/WooCommerce/WooCommerceRuntimeWebhookHandler.php
+- src/WooCommerce/WooCommerceWebhookEventNormalizer.php
+- src/WooCommerce/WooCommerceWebhookSignatureVerifier.php
+- routes/api.php
+- resources/views/admin/processes/show.php
+- resources/views/admin/processes/run.php
+- tests/Unit/WooCommerceRuntimeModuleTest.php
+- docs/WOOCOMMERCE_RUNTIME.md
+- CHANGELOG.md
+- ROADMAP.md
+- docs/ROADMAP.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+WooCommerce-Webhooks laufen über `POST /api/webhooks/woocommerce/{trigger_key}`. Der Runtime-Handler lädt aktive Webhook-Trigger mit `provider=woocommerce`, prüft die WooCommerce-HMAC-Signatur über den rohen Request Body, normalisiert Topic/Event/Delivery-ID/Source-Domain und speichert ein internes `luna_woocommerce_runtime_events`-Event. Valide Webhooks starten einen normalen Process Run über den bestehenden Trigger Runner; der Run erhält WooCommerce-Metadaten, Payload-Referenz und sanitizte Payload Summary. Die UI zeigt kopierbare WooCommerce-Delivery-URLs aus Deployment Targets und Run-Details mit Signaturstatus. Trigger-Secrets bleiben verschlüsselt oder gehasht und werden nicht in Logs oder Payload Summaries ausgegeben.
+
+### Offene Punkte
+
+WooCommerce-Schreibaktionen, vollständiger Sync, Afterbuy-/ERP-/Amazon-Adapter, PRO-/Lizenzlogik und Scheduler-Ausbau bleiben bewusst spätere Meilensteine.
+
+### Commit-Hash
+
+Noch nicht committed.
+
+### Abschlussprüfung
+
+UI-Umlautprüfung: durchgeführt

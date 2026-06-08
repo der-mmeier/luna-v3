@@ -10,6 +10,7 @@ Format basiert lose auf Keep a Changelog.
 
 ### Added
 
+- WooCommerce Runtime Module v2.7.0 ergänzt: WooCommerce-Webhooks laufen über den generischen Trigger Layer, prüfen HMAC-SHA256-Signaturen gegen verschlüsselt gespeicherte Trigger-Secrets, normalisieren Event-Metadaten, stagen Runtime Events, starten normale Process Runs und protokollieren nur sanitizte Payload-Zusammenfassungen ohne WooCommerce-Schreibzugriffe.
 - Schema Registry & Validation v2.6.0 ergänzt: `luna_schemas`, `luna_schema_revisions`, versionierte Schema-Definitionen je Workspace, Admin-UI, Validator für verschachtelte Objekte/Arrays, optionaler Endpoint-Schema-Bezug, `schema_validation` Process-Step, `schema:validate` CLI und Schema-Referenzen im Endpoint-Export ohne Secrets.
 - Adapter / Target Actions Foundation v2.5.0 ergänzt: `luna_target_actions`, generische Action-Typen `http_get`, `http_post`, `http_put`, `file_export`, `database_insert`, `database_upsert`, Target-Action-Step-Runner, Dry-Run-Schutz, sichere File-/DB-/HTTP-Ausführung und Admin-UI für Target Actions.
 - Trigger Layer v2.4.0 ergänzt: `luna_process_triggers`, Trigger-Typen `manual`, `cli`, `api`, `schedule`, `webhook`, Aktivierung/Deaktivierung, Trigger-Konfiguration, generische API-/Webhook-Auslösung, CLI-Trigger-Start und Prozessläufe mit sicherem Trigger-Kontext ohne Fachverarbeitung oder Secret-Leaks.
