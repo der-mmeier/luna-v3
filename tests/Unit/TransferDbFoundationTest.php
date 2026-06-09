@@ -69,10 +69,34 @@ final class TransferDbFoundationTest extends TestCase
         $status = $manager->migrate($pdo);
 
         self::assertTrue($status['schema_current']);
+        foreach ([
+            'luna_transferdb_migrations',
+            'luna_webhook_events',
+            'luna_endpoint_snapshots',
+            'luna_endpoint_snapshot_records',
+            'luna_transfer_runs',
+            'luna_transfer_run_logs',
+        ] as $requiredTable) {
+            self::assertContains($requiredTable, $manager->tableNames());
+        }
         foreach ($manager->tableNames() as $table) {
             self::assertStringStartsWith('luna_', $table);
             self::assertSame(1, (int) $pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = " . $pdo->quote($table))->fetchColumn());
         }
+    }
+
+    public function testSchemaManagerIsIdempotentAndKeepsExistingRuntimeData(): void
+    {
+        $pdo = $this->transferPdo();
+        $manager = new TransferDbSchemaManager();
+        $manager->migrate($pdo);
+        $pdo->exec("INSERT INTO luna_transfer_runs (run_type, status, record_count, created_at, updated_at) VALUES ('manual_import', 'received', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+
+        $status = $manager->migrate($pdo);
+
+        self::assertTrue($status['schema_current']);
+        self::assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM luna_transfer_runs')->fetchColumn());
+        self::assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM luna_transferdb_migrations')->fetchColumn());
     }
 
     public function testCheckDetectsMissingAndExistingTables(): void
@@ -110,9 +134,9 @@ final class TransferDbFoundationTest extends TestCase
         ]);
 
         self::assertSame(1, (int) $result['batch_id']);
-        self::assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM luna_transfer_webhook_events')->fetchColumn());
+        self::assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM luna_webhook_events')->fetchColumn());
         self::assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM luna_transfer_records')->fetchColumn());
-        $stored = (string) $pdo->query('SELECT headers_json || payload_json FROM luna_transfer_webhook_events')->fetchColumn();
+        $stored = (string) $pdo->query('SELECT headers_json || payload_json FROM luna_webhook_events')->fetchColumn();
         self::assertStringNotContainsString('plain-secret', $stored);
         self::assertStringContainsString('***', $stored);
     }
@@ -135,9 +159,9 @@ final class TransferDbFoundationTest extends TestCase
         ]);
 
         self::assertSame(2, (int) $result['record_count']);
-        self::assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM luna_transfer_endpoint_snapshots')->fetchColumn());
-        self::assertSame(2, (int) $pdo->query('SELECT COUNT(*) FROM luna_transfer_records')->fetchColumn());
-        self::assertSame('S001', (string) $pdo->query('SELECT record_key FROM luna_transfer_records ORDER BY id LIMIT 1')->fetchColumn());
+        self::assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM luna_endpoint_snapshots')->fetchColumn());
+        self::assertSame(2, (int) $pdo->query('SELECT COUNT(*) FROM luna_endpoint_snapshot_records')->fetchColumn());
+        self::assertSame('S001', (string) $pdo->query('SELECT record_key FROM luna_endpoint_snapshot_records ORDER BY id LIMIT 1')->fetchColumn());
     }
 
     public function testCliUsageKeepsExistingCommandsAndAddsTransferDbCommands(): void
@@ -152,6 +176,8 @@ final class TransferDbFoundationTest extends TestCase
             'export:woocommerce:run',
             'process:run',
             'transferdb:check',
+            'transferdb:test',
+            'transferdb:status',
             'transferdb:migrate',
         ] as $command) {
             self::assertStringContainsString($command, $bin);

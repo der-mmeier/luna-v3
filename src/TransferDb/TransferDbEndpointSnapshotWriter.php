@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Luna\TransferDb;
 
-use Throwable;
 use PDO;
+use Throwable;
 
 final class TransferDbEndpointSnapshotWriter
 {
@@ -68,7 +68,7 @@ final class TransferDbEndpointSnapshotWriter
             $snapshotId = $this->snapshot($pdo, $batchId, $workspaceKey, $endpoint, count($items), $resultHash, $resultJson);
             $recordIds = [];
             foreach ($items as $index => $item) {
-                $recordIds[] = $this->writer->record($pdo, $batchId, $sourceId, $item, [
+                $recordIds[] = $this->writer->endpointSnapshotRecord($pdo, $snapshotId, $batchId, $sourceId, $item, [
                     'record_index' => $index,
                     'operation' => 'snapshot',
                     'status' => 'staged',
@@ -118,7 +118,7 @@ final class TransferDbEndpointSnapshotWriter
     private function snapshot(\PDO $pdo, int $batchId, string $workspaceKey, array $endpoint, int $count, string $resultHash, string $resultJson): int
     {
         $statement = $pdo->prepare(
-            'INSERT INTO luna_transfer_endpoint_snapshots
+            'INSERT INTO luna_endpoint_snapshots
              (batch_id, workspace_key, endpoint_key, mapping_id, process_id, process_run_id, schema_key, schema_version,
               result_count, result_hash, result_json, status, created_at, updated_at)
              VALUES

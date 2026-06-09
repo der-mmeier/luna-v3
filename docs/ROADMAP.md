@@ -506,8 +506,9 @@ Umgesetzt:
 
 - Connection-Rolle `transfer_db` und `mixed`.
 - Workspace-Default-TransferDB-Connection.
-- TransferDB-Status und Migration über UI und CLI.
-- TransferDB-Schema mit `luna_transfer_sources`, `luna_transfer_batches`, `luna_transfer_records`, `luna_transfer_webhook_events`, `luna_transfer_endpoint_snapshots`, `luna_transfer_logs` und `luna_transfer_schema_migrations`.
+- TransferDB-Status und Migration über Workspace-UI, Connection-Detailseite und CLI.
+- TransferDB-Management-Actions: `Test connection`, `Check TransferDB schema`, `Install/setup TransferDB schema` und `Migrate TransferDB schema`.
+- TransferDB-Schema mit `luna_transferdb_migrations`, `luna_webhook_events`, `luna_endpoint_snapshots`, `luna_endpoint_snapshot_records`, `luna_transfer_runs`, `luna_transfer_run_logs` sowie internen `luna_` Hilfstabellen.
 - Writer-Services für Sources, Batches, Records, Logs, Webhook Events und Endpoint Snapshots.
 - WooCommerce Runtime spiegelt valide Webhooks optional in die TransferDB, ohne bei fehlender TransferDB den bestehenden Flow zu blockieren.
 - Endpoint-Detailseite kann Endpoint-Ergebnisse als Snapshot in die TransferDB schreiben.

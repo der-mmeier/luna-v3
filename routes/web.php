@@ -1928,7 +1928,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/connections']);
     }, 'admin.connections.update', 'web');
 
-    $routes->get('/admin/connections/{id}', static function (Request $request) use ($admin, $connections): Response {
+    $routes->get('/admin/connections/{id}', static function (Request $request) use ($admin, $connections, $transferDbStatus): Response {
         try {
             $profile = $connections()->find((int) $request->route('id'));
         } catch (Throwable) {
@@ -1937,18 +1937,24 @@ return static function (RouteCollection $routes, Application $app): void {
                 'active' => 'connections',
                 'connection' => null,
                 'alert' => ['type' => 'danger', 'message' => 'Luna-Systemdatenbank ist nicht erreichbar.'],
+                'transferDbStatus' => null,
             ]);
         }
+
+        $status = $profile !== null && in_array((string) ($profile['type'] ?? ''), ['transfer_db', 'mixed'], true)
+            ? $transferDbStatus()->statusConnection((int) $profile['id'])
+            : null;
 
         return $admin('admin/connections/show', [
             'title' => $profile['name'] ?? 'Connection',
             'active' => 'connections',
             'connection' => $profile,
             'alert' => null,
+            'transferDbStatus' => $status,
         ]);
     }, 'admin.connections.show', 'web');
 
-    $routes->post('/admin/connections/{id}/test', static function (Request $request) use ($admin, $app, $connections, $configFor): Response {
+    $routes->post('/admin/connections/{id}/test', static function (Request $request) use ($admin, $app, $connections, $configFor, $transferDbStatus): Response {
         try {
             $profile = $connections()->find((int) $request->route('id'));
 
@@ -1970,8 +1976,62 @@ return static function (RouteCollection $routes, Application $app): void {
             'active' => 'connections',
             'connection' => $profile,
             'alert' => $alert,
+            'transferDbStatus' => $profile !== null && in_array((string) ($profile['type'] ?? ''), ['transfer_db', 'mixed'], true)
+                ? $transferDbStatus()->statusConnection((int) $profile['id'])
+                : null,
         ]);
     }, 'admin.connections.test', 'web');
+
+    $routes->post('/admin/connections/{id}/transferdb/status', static function (Request $request) use ($admin, $connections, $transferDbStatus): Response {
+        $profile = $connections()->find((int) $request->route('id'));
+        if ($profile === null) {
+            return Response::notFound();
+        }
+
+        $status = $transferDbStatus()->statusConnection((int) $profile['id']);
+
+        return $admin('admin/connections/show', [
+            'title' => $profile['name'] ?? 'Connection',
+            'active' => 'connections',
+            'connection' => $profile,
+            'alert' => ['type' => empty($status['error']) ? 'info' : 'danger', 'message' => empty($status['error']) ? 'TransferDB Schema wurde geprüft.' : (string) $status['error']],
+            'transferDbStatus' => $status,
+        ]);
+    }, 'admin.connections.transferdb_status', 'web');
+
+    $routes->post('/admin/connections/{id}/transferdb/setup', static function (Request $request) use ($admin, $connections, $transferDbStatus): Response {
+        $profile = $connections()->find((int) $request->route('id'));
+        if ($profile === null) {
+            return Response::notFound();
+        }
+
+        $status = $transferDbStatus()->migrateConnection((int) $profile['id']);
+
+        return $admin('admin/connections/show', [
+            'title' => $profile['name'] ?? 'Connection',
+            'active' => 'connections',
+            'connection' => $profile,
+            'alert' => ['type' => empty($status['error']) ? 'success' : 'danger', 'message' => empty($status['error']) ? 'TransferDB Schema wurde installiert oder aktualisiert.' : (string) $status['error']],
+            'transferDbStatus' => $status,
+        ]);
+    }, 'admin.connections.transferdb_setup', 'web');
+
+    $routes->post('/admin/connections/{id}/transferdb/migrate', static function (Request $request) use ($admin, $connections, $transferDbStatus): Response {
+        $profile = $connections()->find((int) $request->route('id'));
+        if ($profile === null) {
+            return Response::notFound();
+        }
+
+        $status = $transferDbStatus()->migrateConnection((int) $profile['id']);
+
+        return $admin('admin/connections/show', [
+            'title' => $profile['name'] ?? 'Connection',
+            'active' => 'connections',
+            'connection' => $profile,
+            'alert' => ['type' => empty($status['error']) ? 'success' : 'danger', 'message' => empty($status['error']) ? 'TransferDB Migration wurde ausgeführt.' : (string) $status['error']],
+            'transferDbStatus' => $status,
+        ]);
+    }, 'admin.connections.transferdb_migrate', 'web');
 
     $routes->post('/admin/connections/{id}/delete', static function (Request $request) use ($admin, $connections, $audit): Response {
         $id = (int) $request->route('id');

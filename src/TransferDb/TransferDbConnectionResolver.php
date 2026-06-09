@@ -35,6 +35,24 @@ final class TransferDbConnectionResolver
             throw new RuntimeException('Für diesen Workspace ist keine TransferDB konfiguriert.');
         }
 
+        $resolved = $this->resolveConnection($connectionId);
+
+        return [
+            'workspace' => $workspace,
+            'connection' => $resolved['connection'],
+            'pdo' => $resolved['pdo'],
+        ];
+    }
+
+    /**
+     * @return array{connection: array<string, mixed>, pdo: PDO}
+     */
+    public function resolveConnection(int $connectionId): array
+    {
+        if ($connectionId <= 0) {
+            throw new RuntimeException('TransferDB-Connection wurde nicht angegeben.');
+        }
+
         $connection = $this->connections->find($connectionId);
         if ($connection === null || empty($connection['is_active'])) {
             throw new RuntimeException('TransferDB-Connection wurde nicht gefunden oder ist inaktiv.');
@@ -50,7 +68,6 @@ final class TransferDbConnectionResolver
         );
 
         return [
-            'workspace' => $workspace,
             'connection' => $connection,
             'pdo' => $pdo,
         ];

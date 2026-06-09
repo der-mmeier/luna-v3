@@ -8,8 +8,9 @@ use PDO;
 
 final class TransferDbSchemaManager
 {
-    public const VERSION = '2026_06_09_000001';
-    public const NAME = 'transferdb_foundation';
+    public const VERSION = '2026_06_09_000002';
+    public const NAME = 'transferdb_management_actions';
+    private const MIGRATIONS_TABLE = 'luna_transferdb_migrations';
 
     /**
      * @return list<string>
@@ -17,13 +18,14 @@ final class TransferDbSchemaManager
     public function tableNames(): array
     {
         return [
-            'luna_transfer_schema_migrations',
+            'luna_transferdb_migrations',
+            'luna_webhook_events',
+            'luna_endpoint_snapshots',
+            'luna_endpoint_snapshot_records',
+            'luna_transfer_runs',
+            'luna_transfer_run_logs',
             'luna_transfer_sources',
-            'luna_transfer_batches',
             'luna_transfer_records',
-            'luna_transfer_webhook_events',
-            'luna_transfer_endpoint_snapshots',
-            'luna_transfer_logs',
         ];
     }
 
@@ -92,11 +94,11 @@ final class TransferDbSchemaManager
 
     private function migrationApplied(PDO $pdo): bool
     {
-        if (! $this->tableExists($pdo, 'luna_transfer_schema_migrations')) {
+        if (! $this->tableExists($pdo, self::MIGRATIONS_TABLE)) {
             return false;
         }
 
-        $statement = $pdo->prepare('SELECT COUNT(*) FROM luna_transfer_schema_migrations WHERE version = :version');
+        $statement = $pdo->prepare('SELECT COUNT(*) FROM ' . self::MIGRATIONS_TABLE . ' WHERE version = :version');
         $statement->execute(['version' => self::VERSION]);
 
         return (int) $statement->fetchColumn() > 0;
@@ -104,11 +106,11 @@ final class TransferDbSchemaManager
 
     private function latestMigrationVersion(PDO $pdo): ?string
     {
-        if (! $this->tableExists($pdo, 'luna_transfer_schema_migrations')) {
+        if (! $this->tableExists($pdo, self::MIGRATIONS_TABLE)) {
             return null;
         }
 
-        $statement = $pdo->query('SELECT version FROM luna_transfer_schema_migrations ORDER BY id DESC LIMIT 1');
+        $statement = $pdo->query('SELECT version FROM ' . self::MIGRATIONS_TABLE . ' ORDER BY id DESC LIMIT 1');
         $version = $statement === false ? false : $statement->fetchColumn();
 
         return $version === false ? null : (string) $version;
@@ -117,18 +119,11 @@ final class TransferDbSchemaManager
     private function recordMigration(PDO $pdo): void
     {
         $checksum = hash('sha256', implode("\n", $this->statements($pdo)));
-        if ($this->isSqlite($pdo)) {
-            $statement = $pdo->prepare(
-                'INSERT OR IGNORE INTO luna_transfer_schema_migrations (version, name, checksum, applied_at)
-                 VALUES (:version, :name, :checksum, CURRENT_TIMESTAMP)',
-            );
-        } else {
-            $statement = $pdo->prepare(
-                'INSERT IGNORE INTO luna_transfer_schema_migrations (version, name, checksum, applied_at)
-                 VALUES (:version, :name, :checksum, NOW())',
-            );
-        }
+        $sql = $this->isSqlite($pdo)
+            ? 'INSERT OR IGNORE INTO ' . self::MIGRATIONS_TABLE . ' (version, name, checksum, applied_at) VALUES (:version, :name, :checksum, CURRENT_TIMESTAMP)'
+            : 'INSERT IGNORE INTO ' . self::MIGRATIONS_TABLE . ' (version, name, checksum, applied_at) VALUES (:version, :name, :checksum, NOW())';
 
+        $statement = $pdo->prepare($sql);
         $statement->execute([
             'version' => self::VERSION,
             'name' => self::NAME,
@@ -147,7 +142,7 @@ final class TransferDbSchemaManager
     private function mysqlStatements(): array
     {
         return [
-            "CREATE TABLE IF NOT EXISTS luna_transfer_schema_migrations (
+            "CREATE TABLE IF NOT EXISTS luna_transferdb_migrations (
                 id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 version VARCHAR(80) NOT NULL UNIQUE,
                 name VARCHAR(190) NOT NULL,
@@ -169,11 +164,11 @@ final class TransferDbSchemaManager
                 INDEX idx_luna_transfer_sources_workspace (workspace_key),
                 INDEX idx_luna_transfer_sources_type (source_type)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-            "CREATE TABLE IF NOT EXISTS luna_transfer_batches (
+            "CREATE TABLE IF NOT EXISTS luna_transfer_runs (
                 id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                source_id BIGINT UNSIGNED NOT NULL,
+                source_id BIGINT UNSIGNED NULL,
                 external_id VARCHAR(190) NULL,
-                batch_type VARCHAR(60) NOT NULL,
+                run_type VARCHAR(60) NOT NULL,
                 status VARCHAR(40) NOT NULL DEFAULT 'received',
                 record_count INT UNSIGNED NOT NULL DEFAULT 0,
                 payload_hash VARCHAR(64) NULL,
@@ -184,10 +179,10 @@ final class TransferDbSchemaManager
                 error_message TEXT NULL,
                 created_at DATETIME NOT NULL,
                 updated_at DATETIME NOT NULL,
-                INDEX idx_luna_transfer_batches_source (source_id),
-                INDEX idx_luna_transfer_batches_status (status),
-                INDEX idx_luna_transfer_batches_external (external_id),
-                INDEX idx_luna_transfer_batches_created (created_at)
+                INDEX idx_luna_transfer_runs_source (source_id),
+                INDEX idx_luna_transfer_runs_status (status),
+                INDEX idx_luna_transfer_runs_external (external_id),
+                INDEX idx_luna_transfer_runs_created (created_at)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
             "CREATE TABLE IF NOT EXISTS luna_transfer_records (
                 id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -212,7 +207,7 @@ final class TransferDbSchemaManager
                 INDEX idx_luna_transfer_records_status (status),
                 INDEX idx_luna_transfer_records_validation (validation_status)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-            "CREATE TABLE IF NOT EXISTS luna_transfer_webhook_events (
+            "CREATE TABLE IF NOT EXISTS luna_webhook_events (
                 id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 batch_id BIGINT UNSIGNED NULL,
                 workspace_key VARCHAR(120) NOT NULL,
@@ -237,15 +232,15 @@ final class TransferDbSchemaManager
                 processed_at DATETIME NULL,
                 created_at DATETIME NOT NULL,
                 updated_at DATETIME NOT NULL,
-                INDEX idx_luna_transfer_webhooks_workspace (workspace_key),
-                INDEX idx_luna_transfer_webhooks_provider (provider),
-                INDEX idx_luna_transfer_webhooks_trigger (trigger_key),
-                INDEX idx_luna_transfer_webhooks_delivery (external_delivery_id),
-                INDEX idx_luna_transfer_webhooks_hash (payload_hash),
-                INDEX idx_luna_transfer_webhooks_status (status),
-                INDEX idx_luna_transfer_webhooks_received (received_at)
+                INDEX idx_luna_webhook_events_workspace (workspace_key),
+                INDEX idx_luna_webhook_events_provider (provider),
+                INDEX idx_luna_webhook_events_trigger (trigger_key),
+                INDEX idx_luna_webhook_events_delivery (external_delivery_id),
+                INDEX idx_luna_webhook_events_hash (payload_hash),
+                INDEX idx_luna_webhook_events_status (status),
+                INDEX idx_luna_webhook_events_received (received_at)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-            "CREATE TABLE IF NOT EXISTS luna_transfer_endpoint_snapshots (
+            "CREATE TABLE IF NOT EXISTS luna_endpoint_snapshots (
                 id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 batch_id BIGINT UNSIGNED NULL,
                 workspace_key VARCHAR(120) NOT NULL,
@@ -261,16 +256,40 @@ final class TransferDbSchemaManager
                 status VARCHAR(40) NOT NULL DEFAULT 'generated',
                 created_at DATETIME NOT NULL,
                 updated_at DATETIME NOT NULL,
-                INDEX idx_luna_transfer_snapshots_workspace (workspace_key),
-                INDEX idx_luna_transfer_snapshots_endpoint (endpoint_key),
-                INDEX idx_luna_transfer_snapshots_mapping (mapping_id),
-                INDEX idx_luna_transfer_snapshots_process (process_id),
-                INDEX idx_luna_transfer_snapshots_run (process_run_id),
-                INDEX idx_luna_transfer_snapshots_hash (result_hash),
-                INDEX idx_luna_transfer_snapshots_status (status),
-                INDEX idx_luna_transfer_snapshots_created (created_at)
+                INDEX idx_luna_endpoint_snapshots_workspace (workspace_key),
+                INDEX idx_luna_endpoint_snapshots_endpoint (endpoint_key),
+                INDEX idx_luna_endpoint_snapshots_mapping (mapping_id),
+                INDEX idx_luna_endpoint_snapshots_process (process_id),
+                INDEX idx_luna_endpoint_snapshots_run (process_run_id),
+                INDEX idx_luna_endpoint_snapshots_hash (result_hash),
+                INDEX idx_luna_endpoint_snapshots_status (status),
+                INDEX idx_luna_endpoint_snapshots_created (created_at)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-            "CREATE TABLE IF NOT EXISTS luna_transfer_logs (
+            "CREATE TABLE IF NOT EXISTS luna_endpoint_snapshot_records (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                snapshot_id BIGINT UNSIGNED NOT NULL,
+                batch_id BIGINT UNSIGNED NOT NULL,
+                source_id BIGINT UNSIGNED NOT NULL,
+                record_key VARCHAR(190) NULL,
+                record_index INT NULL,
+                operation VARCHAR(40) NULL,
+                status VARCHAR(40) NOT NULL DEFAULT 'staged',
+                payload_json LONGTEXT NOT NULL,
+                payload_hash VARCHAR(64) NOT NULL,
+                schema_key VARCHAR(190) NULL,
+                schema_version VARCHAR(80) NULL,
+                validation_status VARCHAR(40) NULL,
+                validation_errors_json LONGTEXT NULL,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL,
+                INDEX idx_luna_endpoint_records_snapshot (snapshot_id),
+                INDEX idx_luna_endpoint_records_batch (batch_id),
+                INDEX idx_luna_endpoint_records_source (source_id),
+                INDEX idx_luna_endpoint_records_key (record_key),
+                INDEX idx_luna_endpoint_records_hash (payload_hash),
+                INDEX idx_luna_endpoint_records_status (status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+            "CREATE TABLE IF NOT EXISTS luna_transfer_run_logs (
                 id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 workspace_key VARCHAR(120) NOT NULL,
                 level VARCHAR(20) NOT NULL,
@@ -279,10 +298,10 @@ final class TransferDbSchemaManager
                 message TEXT NOT NULL,
                 metadata_json LONGTEXT NULL,
                 created_at DATETIME NOT NULL,
-                INDEX idx_luna_transfer_logs_workspace (workspace_key),
-                INDEX idx_luna_transfer_logs_level (level),
-                INDEX idx_luna_transfer_logs_context (context_type, context_id),
-                INDEX idx_luna_transfer_logs_created (created_at)
+                INDEX idx_luna_transfer_run_logs_workspace (workspace_key),
+                INDEX idx_luna_transfer_run_logs_level (level),
+                INDEX idx_luna_transfer_run_logs_context (context_type, context_id),
+                INDEX idx_luna_transfer_run_logs_created (created_at)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
         ];
     }
@@ -293,14 +312,15 @@ final class TransferDbSchemaManager
     private function sqliteStatements(): array
     {
         return [
-            'CREATE TABLE IF NOT EXISTS luna_transfer_schema_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, version TEXT NOT NULL UNIQUE, name TEXT NOT NULL, checksum TEXT NULL, applied_at TEXT NOT NULL)',
+            'CREATE TABLE IF NOT EXISTS luna_transferdb_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, version TEXT NOT NULL UNIQUE, name TEXT NOT NULL, checksum TEXT NULL, applied_at TEXT NOT NULL)',
             'CREATE TABLE IF NOT EXISTS luna_transfer_sources (id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_key TEXT NOT NULL, source_type TEXT NOT NULL, source_key TEXT NOT NULL, provider TEXT NULL, schema_key TEXT NULL, schema_version TEXT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
             'CREATE UNIQUE INDEX IF NOT EXISTS uniq_luna_transfer_sources_source ON luna_transfer_sources (workspace_key, source_type, source_key)',
-            'CREATE TABLE IF NOT EXISTS luna_transfer_batches (id INTEGER PRIMARY KEY AUTOINCREMENT, source_id INTEGER NOT NULL, external_id TEXT NULL, batch_type TEXT NOT NULL, status TEXT NOT NULL DEFAULT "received", record_count INTEGER NOT NULL DEFAULT 0, payload_hash TEXT NULL, metadata_json TEXT NULL, received_at TEXT NULL, generated_at TEXT NULL, processed_at TEXT NULL, error_message TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
+            'CREATE TABLE IF NOT EXISTS luna_transfer_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, source_id INTEGER NULL, external_id TEXT NULL, run_type TEXT NOT NULL, status TEXT NOT NULL DEFAULT "received", record_count INTEGER NOT NULL DEFAULT 0, payload_hash TEXT NULL, metadata_json TEXT NULL, received_at TEXT NULL, generated_at TEXT NULL, processed_at TEXT NULL, error_message TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
             'CREATE TABLE IF NOT EXISTS luna_transfer_records (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id INTEGER NOT NULL, source_id INTEGER NOT NULL, record_key TEXT NULL, record_index INTEGER NULL, operation TEXT NULL, status TEXT NOT NULL DEFAULT "staged", payload_json TEXT NOT NULL, payload_hash TEXT NOT NULL, schema_key TEXT NULL, schema_version TEXT NULL, validation_status TEXT NULL, validation_errors_json TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS luna_transfer_webhook_events (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id INTEGER NULL, workspace_key TEXT NOT NULL, provider TEXT NOT NULL, trigger_key TEXT NOT NULL, configured_topic TEXT NULL, received_topic TEXT NULL, event_name TEXT NULL, resource TEXT NULL, action TEXT NULL, external_event_id TEXT NULL, external_delivery_id TEXT NULL, source_url TEXT NULL, signature_valid INTEGER NOT NULL DEFAULT 0, signature_algorithm TEXT NULL, payload_hash TEXT NOT NULL, payload_json TEXT NOT NULL, headers_json TEXT NULL, status TEXT NOT NULL DEFAULT "received", rejection_reason TEXT NULL, received_at TEXT NOT NULL, processed_at TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS luna_transfer_endpoint_snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id INTEGER NULL, workspace_key TEXT NOT NULL, endpoint_key TEXT NULL, mapping_id INTEGER NULL, process_id INTEGER NULL, process_run_id INTEGER NULL, schema_key TEXT NULL, schema_version TEXT NULL, result_count INTEGER NOT NULL DEFAULT 0, result_hash TEXT NOT NULL, result_json TEXT NULL, status TEXT NOT NULL DEFAULT "generated", created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
-            'CREATE TABLE IF NOT EXISTS luna_transfer_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_key TEXT NOT NULL, level TEXT NOT NULL, context_type TEXT NULL, context_id TEXT NULL, message TEXT NOT NULL, metadata_json TEXT NULL, created_at TEXT NOT NULL)',
+            'CREATE TABLE IF NOT EXISTS luna_webhook_events (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id INTEGER NULL, workspace_key TEXT NOT NULL, provider TEXT NOT NULL, trigger_key TEXT NOT NULL, configured_topic TEXT NULL, received_topic TEXT NULL, event_name TEXT NULL, resource TEXT NULL, action TEXT NULL, external_event_id TEXT NULL, external_delivery_id TEXT NULL, source_url TEXT NULL, signature_valid INTEGER NOT NULL DEFAULT 0, signature_algorithm TEXT NULL, payload_hash TEXT NOT NULL, payload_json TEXT NOT NULL, headers_json TEXT NULL, status TEXT NOT NULL DEFAULT "received", rejection_reason TEXT NULL, received_at TEXT NOT NULL, processed_at TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
+            'CREATE TABLE IF NOT EXISTS luna_endpoint_snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id INTEGER NULL, workspace_key TEXT NOT NULL, endpoint_key TEXT NULL, mapping_id INTEGER NULL, process_id INTEGER NULL, process_run_id INTEGER NULL, schema_key TEXT NULL, schema_version TEXT NULL, result_count INTEGER NOT NULL DEFAULT 0, result_hash TEXT NOT NULL, result_json TEXT NULL, status TEXT NOT NULL DEFAULT "generated", created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
+            'CREATE TABLE IF NOT EXISTS luna_endpoint_snapshot_records (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, batch_id INTEGER NOT NULL, source_id INTEGER NOT NULL, record_key TEXT NULL, record_index INTEGER NULL, operation TEXT NULL, status TEXT NOT NULL DEFAULT "staged", payload_json TEXT NOT NULL, payload_hash TEXT NOT NULL, schema_key TEXT NULL, schema_version TEXT NULL, validation_status TEXT NULL, validation_errors_json TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
+            'CREATE TABLE IF NOT EXISTS luna_transfer_run_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_key TEXT NOT NULL, level TEXT NOT NULL, context_type TEXT NULL, context_id TEXT NULL, message TEXT NOT NULL, metadata_json TEXT NULL, created_at TEXT NOT NULL)',
         ];
     }
 }

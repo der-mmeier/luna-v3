@@ -75,17 +75,17 @@ final class TransferDbWriter
     public function batch(PDO $pdo, int $sourceId, array $data): int
     {
         $statement = $pdo->prepare(
-            'INSERT INTO luna_transfer_batches
-             (source_id, external_id, batch_type, status, record_count, payload_hash, metadata_json,
+            'INSERT INTO luna_transfer_runs
+             (source_id, external_id, run_type, status, record_count, payload_hash, metadata_json,
               received_at, generated_at, processed_at, error_message, created_at, updated_at)
              VALUES
-             (:source_id, :external_id, :batch_type, :status, :record_count, :payload_hash, :metadata_json,
+             (:source_id, :external_id, :run_type, :status, :record_count, :payload_hash, :metadata_json,
               :received_at, :generated_at, :processed_at, :error_message, ' . $this->now($pdo) . ', ' . $this->now($pdo) . ')',
         );
         $statement->execute([
             'source_id' => $sourceId,
             'external_id' => $data['external_id'] ?? null,
-            'batch_type' => (string) ($data['batch_type'] ?? 'manual_import'),
+            'run_type' => (string) ($data['batch_type'] ?? $data['run_type'] ?? 'manual_import'),
             'status' => (string) ($data['status'] ?? 'received'),
             'record_count' => (int) ($data['record_count'] ?? 0),
             'payload_hash' => $data['payload_hash'] ?? null,
@@ -102,7 +102,7 @@ final class TransferDbWriter
     public function updateBatchRecordCount(PDO $pdo, int $batchId, int $recordCount): void
     {
         $statement = $pdo->prepare(
-            'UPDATE luna_transfer_batches SET record_count = :record_count, updated_at = ' . $this->now($pdo) . ' WHERE id = :id',
+            'UPDATE luna_transfer_runs SET record_count = :record_count, updated_at = ' . $this->now($pdo) . ' WHERE id = :id',
         );
         $statement->execute(['id' => $batchId, 'record_count' => $recordCount]);
     }
@@ -141,13 +141,47 @@ final class TransferDbWriter
     }
 
     /**
+     * @param array<string, mixed> $payload
+     * @param array<string, mixed> $data
+     */
+    public function endpointSnapshotRecord(PDO $pdo, int $snapshotId, int $batchId, int $sourceId, array $payload, array $data = []): int
+    {
+        $payloadJson = $this->json($payload);
+        $statement = $pdo->prepare(
+            'INSERT INTO luna_endpoint_snapshot_records
+             (snapshot_id, batch_id, source_id, record_key, record_index, operation, status, payload_json, payload_hash,
+              schema_key, schema_version, validation_status, validation_errors_json, created_at, updated_at)
+             VALUES
+             (:snapshot_id, :batch_id, :source_id, :record_key, :record_index, :operation, :status, :payload_json, :payload_hash,
+              :schema_key, :schema_version, :validation_status, :validation_errors_json, ' . $this->now($pdo) . ', ' . $this->now($pdo) . ')',
+        );
+        $statement->execute([
+            'snapshot_id' => $snapshotId,
+            'batch_id' => $batchId,
+            'source_id' => $sourceId,
+            'record_key' => $data['record_key'] ?? $this->recordKey($payload, (int) ($data['record_index'] ?? 0)),
+            'record_index' => $data['record_index'] ?? null,
+            'operation' => $data['operation'] ?? null,
+            'status' => (string) ($data['status'] ?? 'staged'),
+            'payload_json' => $payloadJson,
+            'payload_hash' => hash('sha256', $payloadJson),
+            'schema_key' => $data['schema_key'] ?? null,
+            'schema_version' => $data['schema_version'] ?? null,
+            'validation_status' => $data['validation_status'] ?? 'not_validated',
+            'validation_errors_json' => isset($data['validation_errors']) ? $this->json($data['validation_errors']) : null,
+        ]);
+
+        return (int) $pdo->lastInsertId();
+    }
+
+    /**
      * @param array<string, mixed> $metadata
      */
     public function log(PDO $pdo, string $workspaceKey, string $level, string $message, array $metadata = [], ?string $contextType = null, ?string $contextId = null): int
     {
         $level = in_array($level, ['info', 'warning', 'error'], true) ? $level : 'info';
         $statement = $pdo->prepare(
-            'INSERT INTO luna_transfer_logs
+            'INSERT INTO luna_transfer_run_logs
              (workspace_key, level, context_type, context_id, message, metadata_json, created_at)
              VALUES (:workspace_key, :level, :context_type, :context_id, :message, :metadata_json, ' . $this->now($pdo) . ')',
         );
@@ -195,7 +229,7 @@ final class TransferDbWriter
 
     private function safeMessage(string $message): string
     {
-        return preg_replace('/(password|secret|token|api_key|authorization|bearer|cookie)=([^\\s]+)/i', '$1=***', $message) ?? $message;
+        return preg_replace('/(password|secret|token|api_key|authorization|bearer|cookie)=([^\s]+)/i', '$1=***', $message) ?? $message;
     }
 
     private function maskSecrets(mixed $value): mixed

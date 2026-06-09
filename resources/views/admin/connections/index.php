@@ -53,9 +53,23 @@
                     <td><?= (int) $connection['read_only'] === 1 ? 'Ja' : 'Nein' ?></td>
                     <td><?= (int) $connection['is_active'] === 1 ? 'Ja' : 'Nein' ?></td>
                     <td>
-                        <div class="d-flex gap-2">
+                        <div class="d-flex flex-wrap gap-2">
                             <a class="btn btn-sm btn-outline-secondary" href="/admin/connections/<?= (int) $connection['id'] ?>">Details</a>
                             <a class="btn btn-sm btn-outline-primary" href="/admin/connections/<?= (int) $connection['id'] ?>/edit">Bearbeiten</a>
+                            <?php if (in_array((string) $connection['type'], ['transfer_db', 'mixed'], true)): ?>
+                                <form method="post" action="/admin/connections/<?= (int) $connection['id'] ?>/test">
+                                    <button class="btn btn-sm btn-outline-success" type="submit">Test connection</button>
+                                </form>
+                                <form method="post" action="/admin/connections/<?= (int) $connection['id'] ?>/transferdb/status">
+                                    <button class="btn btn-sm btn-outline-info" type="submit">Check TransferDB schema</button>
+                                </form>
+                                <form method="post" action="/admin/connections/<?= (int) $connection['id'] ?>/transferdb/setup">
+                                    <button class="btn btn-sm btn-outline-warning" type="submit">Install/setup TransferDB schema</button>
+                                </form>
+                                <form method="post" action="/admin/connections/<?= (int) $connection['id'] ?>/transferdb/migrate">
+                                    <button class="btn btn-sm btn-outline-warning" type="submit">Migrate TransferDB schema</button>
+                                </form>
+                            <?php endif; ?>
                             <form method="post" action="/admin/connections/<?= (int) $connection['id'] ?>/delete" onsubmit="return confirm('Diesen Eintrag wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.');">
                                 <input type="hidden" name="confirm_delete" value="1">
                                 <button class="btn btn-sm btn-danger" type="submit">Löschen</button>

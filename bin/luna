@@ -55,12 +55,12 @@ function exitCodeForRun(array $run): int
 
 if ($command === null) {
 
-    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|transferdb:check|transferdb:migrate|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|export:woocommerce:list|export:woocommerce:run|process:run|trigger:list|trigger:run|schema:validate|endpoint:export|integration:export>\n");
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|transferdb:test|transferdb:status|transferdb:check|transferdb:migrate|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|export:woocommerce:list|export:woocommerce:run|process:run|trigger:list|trigger:run|schema:validate|endpoint:export|integration:export>\n");
     fwrite(STDERR, "Endpoint contract: php bin/luna endpoint:export <endpoint-id> [--target=<environment>] [--output=<directory>]\n");
     fwrite(STDERR, "Process runtime: php bin/luna process:run <process-id> [--dry-run] [--trigger=<trigger-id-or-key>]\n");
     fwrite(STDERR, "Trigger runtime: php bin/luna trigger:list <process-id> | trigger:run <trigger-id-or-key> [--dry-run]\n");
     fwrite(STDERR, "Schema validation: php bin/luna schema:validate <schema-id> <json-file>\n");
-    fwrite(STDERR, "TransferDB: php bin/luna transferdb:check <workspace-id-or-key> | transferdb:migrate <workspace-id-or-key>\n");
+    fwrite(STDERR, "TransferDB: php bin/luna transferdb:test <connection-id> | transferdb:status <connection-id> | transferdb:migrate <connection-id> | transferdb:check <workspace-id-or-key>\n");
 
     exit(2);
 }
@@ -135,20 +135,26 @@ try {
         exit($result['success'] ? 0 : 1);
     }
 
-    if ($command === 'transferdb:check' || $command === 'transferdb:migrate') {
+    if (in_array($command, ['transferdb:test', 'transferdb:status', 'transferdb:check', 'transferdb:migrate'], true)) {
         $workspace = isset($argv[2]) ? (string) $argv[2] : '';
         if ($workspace === '') {
-            fwrite(STDERR, "Usage: php bin/luna {$command} <workspace-id-or-key>\n");
+            fwrite(STDERR, $command === 'transferdb:check'
+                ? "Usage: php bin/luna transferdb:check <workspace-id-or-key>\n"
+                : "Usage: php bin/luna {$command} <connection-id>\n");
             exit(2);
         }
 
         /** @var TransferDbStatusService $transferDb */
         $transferDb = $app->services()->get(TransferDbStatusService::class);
-        $status = $command === 'transferdb:migrate'
-            ? $transferDb->migrate($workspace)
-            : $transferDb->check($workspace);
+        $status = match ($command) {
+            'transferdb:test' => $transferDb->testConnection((int) $workspace),
+            'transferdb:status' => $transferDb->statusConnection((int) $workspace),
+            'transferdb:migrate' => $transferDb->migrateConnection((int) $workspace),
+            default => $transferDb->check($workspace),
+        };
 
-        echo 'Workspace: ' . (string) ($status['workspace']['slug'] ?? $workspace) . "\n";
+        echo 'Workspace: ' . (string) ($status['workspace']['slug'] ?? '-') . "\n";
+        echo 'Connection: ' . (string) ($status['connection']['name'] ?? $workspace) . "\n";
         echo 'Configured: ' . (! empty($status['configured']) ? 'yes' : 'no') . "\n";
         echo 'Reachable: ' . (! empty($status['reachable']) ? 'yes' : 'no') . "\n";
         echo 'Schema current: ' . (! empty($status['schema_current']) ? 'yes' : 'no') . "\n";
@@ -159,6 +165,12 @@ try {
         if (($status['missing_tables'] ?? []) !== []) {
             echo "Missing tables:\n";
             foreach ((array) $status['missing_tables'] as $table) {
+                echo '- ' . (string) $table . "\n";
+            }
+        }
+        if (($status['existing_tables'] ?? []) !== []) {
+            echo "Existing tables:\n";
+            foreach ((array) $status['existing_tables'] as $table) {
                 echo '- ' . (string) $table . "\n";
             }
         }

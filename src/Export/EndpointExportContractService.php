@@ -177,11 +177,14 @@ final class EndpointExportContractService
             'requires_transfer_db' => true,
             'runtime_storage' => 'transfer_db',
             'tables' => [
+                'luna_transferdb_migrations',
+                'luna_webhook_events',
+                'luna_endpoint_snapshots',
+                'luna_endpoint_snapshot_records',
+                'luna_transfer_runs',
+                'luna_transfer_run_logs',
                 'luna_transfer_sources',
-                'luna_transfer_batches',
                 'luna_transfer_records',
-                'luna_transfer_endpoint_snapshots',
-                'luna_transfer_logs',
             ],
             'secrets_exported' => false,
         ];

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Luna\TransferDb;
 
-use Throwable;
 use PDO;
+use Throwable;
 
 final class TransferDbWebhookEventWriter
 {
@@ -110,7 +110,7 @@ final class TransferDbWebhookEventWriter
     private function webhookEvent(\PDO $pdo, string $workspaceKey, int $batchId, array $event, array $headers, string $payloadJson, string $payloadHash): int
     {
         $statement = $pdo->prepare(
-            'INSERT INTO luna_transfer_webhook_events
+            'INSERT INTO luna_webhook_events
              (batch_id, workspace_key, provider, trigger_key, configured_topic, received_topic, event_name, resource, action,
               external_event_id, external_delivery_id, source_url, signature_valid, signature_algorithm, payload_hash,
               payload_json, headers_json, status, rejection_reason, received_at, processed_at, created_at, updated_at)
