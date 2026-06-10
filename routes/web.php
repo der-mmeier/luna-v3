@@ -1712,59 +1712,53 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/workspaces/' . $id]);
     }, 'admin.workspaces.update', 'web');
 
-    $routes->post('/admin/workspaces/{id}/delete', static function (Request $request) use ($admin, $workspaces, $audit): Response {
+    $routes->get('/admin/workspaces/{id}/delete', static function (Request $request) use ($admin, $workspaces, $deletionGuard): Response {
+        $id = (int) $request->route('id');
+        $workspace = $workspaces()->find($id);
+        $check = $workspace === null ? null : $deletionGuard()->canDelete('workspace', $id);
+
+        return $admin('admin/workspaces/delete', [
+            'title' => 'Workspace löschen',
+            'active' => 'workspaces',
+            'workspace' => $workspace,
+            'check' => $check,
+            'blockerMessage' => $check === null || $check->allowed ? null : $deletionGuard()->formatBlockedMessage($check),
+        ]);
+    }, 'admin.workspaces.delete.confirm', 'web');
+
+    $routes->post('/admin/workspaces/{id}/delete', static function (Request $request) use ($admin, $workspaces, $deletionGuard, $audit): Response {
         $id = (int) $request->route('id');
         $workspace = $workspaces()->find($id);
 
         if ($workspace === null) {
-            return Response::notFound();
+            return $admin('admin/workspaces/delete', [
+                'title' => 'Workspace löschen',
+                'active' => 'workspaces',
+                'workspace' => null,
+                'check' => null,
+                'blockerMessage' => null,
+            ]);
         }
 
         if (! deleteConfirmed($request)) {
-            return $admin('admin/workspaces/show', [
-                'title' => 'Workspace bearbeiten',
-                'active' => 'workspaces',
-                'workspace' => $workspace,
-                'values' => $workspace,
-                'errors' => ['Löschen wurde nicht bestätigt.'],
-            ]);
+            return new Response('', 302, ['Location' => '/admin/workspaces/' . $id . '/delete']);
         }
 
         try {
-            $check = $workspaces()->canDelete($id);
-        } catch (Throwable) {
-            return $admin('admin/workspaces/show', [
-                'title' => 'Workspace bearbeiten',
-                'active' => 'workspaces',
-                'workspace' => $workspace,
-                'values' => $workspace,
-                'errors' => ['Workspace konnte nicht gelöscht werden.'],
-            ]);
-        }
-
-        if (! $check->allowed) {
-            return $admin('admin/workspaces/show', [
-                'title' => 'Workspace bearbeiten',
-                'active' => 'workspaces',
-                'workspace' => $workspace,
-                'values' => $workspace,
-                'errors' => [deleteBlockedMessage($check->message, $check->blockingNames)],
-            ]);
-        }
-
-        try {
-            $workspaces()->delete($id);
+            $deletionGuard()->delete('workspace', $id);
             $audit()->log($id, 'workspace.deleted', 'workspace', (string) $id, 'Workspace gelöscht.', [
                 'slug' => $workspace['slug'] ?? '',
                 'name' => $workspace['name'] ?? '',
             ]);
-        } catch (Throwable) {
-            return $admin('admin/workspaces/show', [
-                'title' => 'Workspace bearbeiten',
+        } catch (Throwable $exception) {
+            $check = $deletionGuard()->canDelete('workspace', $id);
+
+            return $admin('admin/workspaces/delete', [
+                'title' => 'Workspace löschen',
                 'active' => 'workspaces',
                 'workspace' => $workspace,
-                'values' => $workspace,
-                'errors' => ['Workspace konnte nicht gelöscht werden.'],
+                'check' => $check,
+                'blockerMessage' => $check->allowed ? $exception->getMessage() : $deletionGuard()->formatBlockedMessage($check),
             ]);
         }
 

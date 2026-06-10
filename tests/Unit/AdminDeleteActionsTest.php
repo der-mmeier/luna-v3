@@ -112,11 +112,15 @@ final class AdminDeleteActionsTest extends TestCase
         $repo = new WorkspaceRepository($this->systemDatabase(), $pdo);
         $pdo->exec("INSERT INTO luna_workspaces (id, slug, name) VALUES (1, 'isr', 'ISR')");
         $pdo->exec("INSERT INTO luna_connection_profiles (id, workspace_id, name) VALUES (2, 1, 'PIMCORE')");
+        $pdo->exec("INSERT INTO luna_jobs (id, workspace_id, name) VALUES (3, 1, 'Connection Test ASF Gmbh')");
 
         $check = $repo->canDelete(1);
 
         self::assertFalse($check->allowed);
         self::assertSame(1, $check->counts['connections'] ?? 0);
+        self::assertSame(1, $check->counts['jobs'] ?? 0);
+        self::assertContains('Connection "PIMCORE" verwendet diesen Workspace', $check->blockingNames);
+        self::assertContains('Job "Connection Test ASF Gmbh" verwendet diesen Workspace', $check->blockingNames);
     }
 
     public function testWorkspaceCanBeDeletedWhenEmpty(): void
@@ -136,7 +140,6 @@ final class AdminDeleteActionsTest extends TestCase
         $routes = $this->loadWebRoutes();
 
         foreach ([
-            '/admin/workspaces/1/delete',
             '/admin/connections/1/delete',
             '/admin/mappings/1/delete',
             '/admin/mappings/1/fields/2/sort-order',
@@ -145,6 +148,9 @@ final class AdminDeleteActionsTest extends TestCase
             self::assertNull($routes->match(new \Luna\Http\Request('GET', $path)), $path);
             self::assertNotNull($routes->match(new \Luna\Http\Request('POST', $path)), $path);
         }
+
+        self::assertNotNull($routes->match(new \Luna\Http\Request('GET', '/admin/workspaces/1/delete')));
+        self::assertNotNull($routes->match(new \Luna\Http\Request('POST', '/admin/workspaces/1/delete')));
     }
 
     public function testTransferMappingRequiresSourceAndTargetConnection(): void
@@ -274,7 +280,7 @@ final class AdminDeleteActionsTest extends TestCase
         $pdo->exec('CREATE TABLE luna_mapping_source_filters (id INTEGER PRIMARY KEY, mapping_set_id INTEGER, source_column TEXT, operator TEXT, filter_value TEXT, value_type TEXT NULL, sort_order INTEGER)');
         $pdo->exec('CREATE TABLE luna_endpoints (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, name TEXT, endpoint_key TEXT, mapping_set_id INTEGER NULL)');
         $pdo->exec('CREATE TABLE luna_endpoint_secrets (endpoint_id INTEGER, secret_key TEXT, secret_value_encrypted TEXT)');
-        $pdo->exec('CREATE TABLE luna_jobs (id INTEGER PRIMARY KEY, name TEXT, mapping_set_id INTEGER NULL)');
+        $pdo->exec('CREATE TABLE luna_jobs (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, name TEXT, mapping_set_id INTEGER NULL)');
 
         return $pdo;
     }

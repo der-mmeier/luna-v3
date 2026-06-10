@@ -108,6 +108,8 @@ final class WorkspaceRepository
 
     public function canDelete(int $id): DeleteCheckResult
     {
+        $workspace = $this->find($id);
+        $workspaceName = $workspace === null ? ('#' . $id) : (string) $workspace['name'];
         $counts = [
             'connections' => $this->countByWorkspace('luna_connection_profiles', $id),
             'shared_connections' => $this->countSharedConnections($id),
@@ -116,19 +118,29 @@ final class WorkspaceRepository
             'processes' => $this->countByWorkspace('luna_processes', $id),
             'schemas' => $this->countByWorkspace('luna_schemas', $id),
             'jobs' => $this->countByWorkspace('luna_jobs', $id),
+            'reports' => $this->countByWorkspace('luna_reports', $id),
         ];
+        $blockingNames = array_merge(
+            $this->namesByWorkspace('luna_connection_profiles', $id, 'Connection'),
+            $this->sharedConnectionNames($id),
+            $this->namesByWorkspace('luna_mapping_sets', $id, 'Mapping'),
+            $this->namesByWorkspace('luna_endpoints', $id, 'Endpoint'),
+            $this->namesByWorkspace('luna_processes', $id, 'Prozess'),
+            $this->schemaNamesByWorkspace($id),
+            $this->namesByWorkspace('luna_jobs', $id, 'Job'),
+            $this->namesByWorkspace('luna_reports', $id, 'Report'),
+        );
 
         if (array_sum($counts) > 0) {
             return DeleteCheckResult::blocked(
-                'Dieser Workspace kann nicht gelöscht werden, weil abhängige Ressourcen existieren. Bitte löschen oder verschieben Sie diese Ressourcen zuerst.',
-                [],
+                sprintf('Kann Workspace "%s" nicht löschen, weil abhängige Ressourcen existieren. Bitte löschen oder verschieben Sie diese Ressourcen zuerst.', $workspaceName),
+                array_values(array_unique($blockingNames)),
                 $counts,
             );
         }
 
         return DeleteCheckResult::allowed();
     }
-
     public function delete(int $id): void
     {
         $statement = $this->pdo()->prepare('DELETE FROM luna_workspaces WHERE id = :id');
@@ -185,6 +197,83 @@ final class WorkspaceRepository
         return (int) $statement->fetchColumn();
     }
 
+    /**
+     * @return list<string>
+     */
+    private function namesByWorkspace(string $table, int $workspaceId, string $type): array
+    {
+        if (! $this->columnExists($table, 'workspace_id')) {
+            return [];
+        }
+
+        $labelColumn = $this->columnExists($table, 'name') ? 'name' : ($this->columnExists($table, 'report_key') ? 'report_key' : 'id');
+        $statement = $this->pdo()->prepare(sprintf(
+            'SELECT id, %s AS label FROM %s WHERE workspace_id = :workspace_id ORDER BY %s LIMIT 10',
+            $labelColumn,
+            $table,
+            $labelColumn,
+        ));
+        $statement->execute(['workspace_id' => $workspaceId]);
+        $names = [];
+        foreach ($statement->fetchAll() as $row) {
+            $label = trim((string) ($row['label'] ?? '')) ?: ('#' . (string) ($row['id'] ?? ''));
+            $names[] = $type . ' "' . $label . '" verwendet diesen Workspace';
+        }
+
+        return $names;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function sharedConnectionNames(int $workspaceId): array
+    {
+        if (! $this->columnExists('luna_connection_workspaces', 'workspace_id')) {
+            return [];
+        }
+
+        $statement = $this->pdo()->prepare(
+            'SELECT cp.name
+             FROM luna_connection_workspaces cw
+             INNER JOIN luna_connection_profiles cp ON cp.id = cw.connection_id
+             WHERE cw.workspace_id = :workspace_id
+             ORDER BY cp.name
+             LIMIT 10',
+        );
+        $statement->execute(['workspace_id' => $workspaceId]);
+
+        return array_map(
+            static fn (array $row): string => 'Connection-Freigabe "' . (string) $row['name'] . '" verwendet diesen Workspace',
+            $statement->fetchAll(),
+        );
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function schemaNamesByWorkspace(int $workspaceId): array
+    {
+        if (! $this->columnExists('luna_schemas', 'workspace_id')) {
+            return [];
+        }
+
+        $statement = $this->pdo()->prepare(
+            'SELECT id, name, schema_key, version
+             FROM luna_schemas
+             WHERE workspace_id = :workspace_id
+             ORDER BY name, schema_key, version
+             LIMIT 10',
+        );
+        $statement->execute(['workspace_id' => $workspaceId]);
+        $names = [];
+        foreach ($statement->fetchAll() as $row) {
+            $label = trim((string) ($row['name'] ?? '')) ?: (string) ($row['schema_key'] ?? ('#' . $row['id']));
+            $version = trim((string) ($row['version'] ?? ''));
+            $names[] = 'Schema "' . $label . ($version === '' ? '' : ' v' . $version) . '" verwendet diesen Workspace';
+        }
+
+        return $names;
+    }
     private function columnExists(string $table, string $column): bool
     {
         try {
