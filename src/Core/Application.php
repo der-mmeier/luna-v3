@@ -75,6 +75,12 @@ use Luna\Transfer\MappingRowTransformer;
 use Luna\Transfer\MappingSourceRowProvider;
 use Luna\Transfer\SingleTableTransferWriter;
 use Luna\Transfer\TargetWriter;
+use Luna\TransferDb\TransferDbConnectionResolver;
+use Luna\TransferDb\TransferDbEndpointSnapshotWriter;
+use Luna\TransferDb\TransferDbSchemaManager;
+use Luna\TransferDb\TransferDbStatusService;
+use Luna\TransferDb\TransferDbWebhookEventWriter;
+use Luna\TransferDb\TransferDbWriter;
 use Luna\View\ViewRenderer;
 use Luna\WooCommerce\WooCommerceHposValidator;
 use Luna\WooCommerce\WooCommerceHposOrderReader;
@@ -153,11 +159,32 @@ final class Application
         $externalPdoFactory = new ExternalPdoConnectionFactory();
         $this->services->set(ExternalPdoConnectionFactory::class, $externalPdoFactory);
         $this->services->set(ConnectionTester::class, new ConnectionTester($externalPdoFactory));
+        $this->services->set(TransferDbSchemaManager::class, new TransferDbSchemaManager());
+        $this->services->set(TransferDbWriter::class, new TransferDbWriter());
         $this->services->set(DeploymentTargetUrlBuilder::class, new DeploymentTargetUrlBuilder());
         $this->services->set(WorkspaceRepository::class, new WorkspaceRepository($systemDatabase));
         $this->services->set(ConnectionProfileRepository::class, new ConnectionProfileRepository(
             $systemDatabase,
             $this->services->get(EncryptionService::class),
+        ));
+        $this->services->set(TransferDbConnectionResolver::class, new TransferDbConnectionResolver(
+            $this->services->get(WorkspaceRepository::class),
+            $this->services->get(ConnectionProfileRepository::class),
+            $externalPdoFactory,
+        ));
+        $this->services->set(TransferDbStatusService::class, new TransferDbStatusService(
+            $this->services->get(TransferDbConnectionResolver::class),
+            $this->services->get(TransferDbSchemaManager::class),
+        ));
+        $this->services->set(TransferDbWebhookEventWriter::class, new TransferDbWebhookEventWriter(
+            $this->services->get(TransferDbConnectionResolver::class),
+            $this->services->get(TransferDbSchemaManager::class),
+            $this->services->get(TransferDbWriter::class),
+        ));
+        $this->services->set(TransferDbEndpointSnapshotWriter::class, new TransferDbEndpointSnapshotWriter(
+            $this->services->get(TransferDbConnectionResolver::class),
+            $this->services->get(TransferDbSchemaManager::class),
+            $this->services->get(TransferDbWriter::class),
         ));
         $this->services->set(DeploymentTargetRepository::class, new DeploymentTargetRepository(
             $systemDatabase,
@@ -289,6 +316,7 @@ final class Application
             $this->services->get(WooCommerceRuntimeEventRepository::class),
             $this->services->get(WooCommerceWebhookSignatureVerifier::class),
             $this->services->get(WooCommerceWebhookEventNormalizer::class),
+            $this->services->get(TransferDbWebhookEventWriter::class),
         ));
         $this->services->set(TriggerUrlBuilder::class, new TriggerUrlBuilder(
             $this->services->get(DeploymentTargetRepository::class),
@@ -394,6 +422,12 @@ final class Application
         $this->services->set('database.migrations', $migrationRunner);
         $this->services->set('connections.pdo_factory', $externalPdoFactory);
         $this->services->set('connections.tester', $this->services->get(ConnectionTester::class));
+        $this->services->set('transferdb.resolver', $this->services->get(TransferDbConnectionResolver::class));
+        $this->services->set('transferdb.schema_manager', $this->services->get(TransferDbSchemaManager::class));
+        $this->services->set('transferdb.status', $this->services->get(TransferDbStatusService::class));
+        $this->services->set('transferdb.writer', $this->services->get(TransferDbWriter::class));
+        $this->services->set('transferdb.webhook_writer', $this->services->get(TransferDbWebhookEventWriter::class));
+        $this->services->set('transferdb.endpoint_snapshot_writer', $this->services->get(TransferDbEndpointSnapshotWriter::class));
         $this->services->set('repository.workspaces', $this->services->get(WorkspaceRepository::class));
         $this->services->set('repository.connections', $this->services->get(ConnectionProfileRepository::class));
         $this->services->set('repository.deployment_targets', $this->services->get(DeploymentTargetRepository::class));

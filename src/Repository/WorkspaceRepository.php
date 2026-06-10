@@ -31,36 +31,89 @@ final class WorkspaceRepository
         return $workspace === false ? null : $workspace;
     }
 
-    public function create(string $slug, string $name, ?string $description = null): int
+    public function findByIdentifier(string $identifier): ?array
+    {
+        $identifier = trim($identifier);
+        if ($identifier === '') {
+            return null;
+        }
+
+        if (ctype_digit($identifier)) {
+            return $this->find((int) $identifier);
+        }
+
+        $statement = $this->pdo()->prepare('SELECT * FROM luna_workspaces WHERE slug = :slug');
+        $statement->execute(['slug' => self::normalizeSlug($identifier)]);
+        $workspace = $statement->fetch();
+
+        return $workspace === false ? null : $workspace;
+    }
+
+    public function create(string $slug, string $name, ?string $description = null, ?int $transferDbConnectionId = null): int
     {
         $slug = self::normalizeSlug($slug !== '' ? $slug : $name);
-        $statement = $this->pdo()->prepare(
-            'INSERT INTO luna_workspaces (slug, name, description, status, created_at, updated_at)
-             VALUES (:slug, :name, :description, :status, NOW(), NOW())',
-        );
-        $statement->execute([
+        $payload = [
             'slug' => $slug,
             'name' => $name,
             'description' => $description,
             'status' => 'active',
-        ]);
+        ];
+        if ($this->columnExists('luna_workspaces', 'transfer_db_connection_id')) {
+            $payload['transfer_db_connection_id'] = $transferDbConnectionId;
+            $column = ', transfer_db_connection_id';
+            $placeholder = ', :transfer_db_connection_id';
+        } else {
+            $column = '';
+            $placeholder = '';
+        }
+        $statement = $this->pdo()->prepare(
+            'INSERT INTO luna_workspaces (slug, name, description, status' . $column . ', created_at, updated_at)
+             VALUES (:slug, :name, :description, :status' . $placeholder . ', NOW(), NOW())',
+        );
+        $statement->execute($payload);
 
         return (int) $this->pdo()->lastInsertId();
     }
 
-    public function update(int $id, string $slug, string $name, ?string $description, string $status): void
+    public function update(int $id, string $slug, string $name, ?string $description, string $status, ?int $transferDbConnectionId = null): void
     {
-        $statement = $this->pdo()->prepare(
-            'UPDATE luna_workspaces
-             SET slug = :slug, name = :name, description = :description, status = :status, updated_at = NOW()
-             WHERE id = :id',
-        );
-        $statement->execute([
+        $payload = [
             'id' => $id,
             'slug' => self::normalizeSlug($slug !== '' ? $slug : $name),
             'name' => trim($name),
             'description' => $description === null ? null : trim($description),
             'status' => $status,
+        ];
+        $transferDbSet = '';
+        if ($this->columnExists('luna_workspaces', 'transfer_db_connection_id')) {
+            $payload['transfer_db_connection_id'] = $transferDbConnectionId;
+            $transferDbSet = 'transfer_db_connection_id = :transfer_db_connection_id,';
+        }
+        $statement = $this->pdo()->prepare(
+            'UPDATE luna_workspaces
+             SET slug = :slug,
+                 name = :name,
+                 description = :description,
+                 status = :status,
+                 ' . $transferDbSet . '
+                 updated_at = NOW()
+             WHERE id = :id',
+        );
+        $statement->execute($payload);
+    }
+
+    public function setTransferDbConnection(int $id, ?int $connectionId): void
+    {
+        if (! $this->columnExists('luna_workspaces', 'transfer_db_connection_id')) {
+            return;
+        }
+
+        $statement = $this->pdo()->prepare(
+            'UPDATE luna_workspaces SET transfer_db_connection_id = :connection_id, updated_at = NOW() WHERE id = :id',
+        );
+        $statement->execute([
+            'id' => $id,
+            'connection_id' => $connectionId,
         ]);
     }
 
@@ -121,6 +174,17 @@ final class WorkspaceRepository
         $statement->execute(['workspace_id' => $workspaceId]);
 
         return (int) $statement->fetchColumn();
+    }
+
+    private function columnExists(string $table, string $column): bool
+    {
+        try {
+            $this->pdo()->query(sprintf('SELECT %s FROM %s WHERE 1 = 0', $column, $table));
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     private function pdo(): PDO

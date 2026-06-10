@@ -79,6 +79,7 @@ final class EndpointExportContractService
         if ($schemaReference !== null) {
             $endpointDocument['schema'] = $schemaReference;
         }
+        $endpointDocument['runtime_storage'] = $this->runtimeStorageDocument();
         $mappingDocument = $this->mappingDocument($mapping, $fields, $filters);
         $targetDocument = $target === null ? null : [
             'environment' => (string) $target['environment'],
@@ -123,6 +124,7 @@ final class EndpointExportContractService
                 'contains_secrets' => false,
                 'connections_exported_as_references_only' => true,
             ],
+            'runtime_storage' => $this->runtimeStorageDocument(),
         ];
         $this->writeFile($targetPath . '/manifest.json', $manifest);
 
@@ -162,7 +164,30 @@ final class EndpointExportContractService
                 'ttl_seconds' => empty($endpoint['cache_ttl_seconds']) ? null : (int) $endpoint['cache_ttl_seconds'],
             ],
             'status' => (string) ($endpoint['status'] ?? 'draft'),
+            'runtime_storage' => $this->runtimeStorageDocument(),
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function runtimeStorageDocument(): array
+    {
+        return [
+            'requires_transfer_db' => true,
+            'runtime_storage' => 'transfer_db',
+            'tables' => [
+                'luna_transferdb_migrations',
+                'luna_webhook_events',
+                'luna_endpoint_snapshots',
+                'luna_endpoint_snapshot_records',
+                'luna_transfer_runs',
+                'luna_transfer_run_logs',
+                'luna_transfer_sources',
+                'luna_transfer_records',
+            ],
+            'secrets_exported' => false,
+        ];
     }
 
     /**

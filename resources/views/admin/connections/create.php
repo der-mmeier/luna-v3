@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 /** @var array<int, array<string, mixed>> $workspaces */
 /** @var array<string, mixed> $values */
@@ -14,7 +14,14 @@ $roles = $roles ?? ['source', 'transfer', 'target'];
 $drivers = $drivers ?? ['mysql', 'mariadb'];
 $formAction = $formAction ?? '/admin/connections';
 $heading = $heading ?? 'Connection anlegen';
-$lead = $lead ?? 'Für 1.2.0 werden mehrere MySQL/MariaDB-Verbindungen pro Workspace vorbereitet. Quellverbindungen sind standardmäßig read-only.';
+$lead = $lead ?? 'Für Luna können mehrere MySQL/MariaDB-Verbindungen pro Workspace verwaltet werden. TransferDB-Connections speichern Runtime- und Staging-Daten.';
+$roleLabels = [
+    'source' => 'Source',
+    'transfer' => 'Transfer',
+    'target' => 'Target',
+    'transfer_db' => 'TransferDB',
+    'mixed' => 'Mixed',
+];
 ?>
 <div class="mb-4">
     <h1 class="h3 mb-1"><?= htmlspecialchars($heading, ENT_QUOTES, 'UTF-8') ?></h1>
@@ -51,18 +58,19 @@ $lead = $lead ?? 'Für 1.2.0 werden mehrere MySQL/MariaDB-Verbindungen pro Works
             <input class="form-control" id="name" name="name" value="<?= htmlspecialchars((string) ($values['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" required>
         </div>
         <div class="col-md-3">
-            <label class="form-label" for="type">Typ</label>
+            <label class="form-label" for="type">Verwendung</label>
             <select class="form-select" id="type" name="type">
                 <?php foreach ($roles as $type): ?>
-                    <option value="<?= $type ?>" <?= ($values['type'] ?? 'source') === $type ? 'selected' : '' ?>><?= $type ?></option>
+                    <option value="<?= htmlspecialchars($type, ENT_QUOTES, 'UTF-8') ?>" <?= ($values['type'] ?? 'source') === $type ? 'selected' : '' ?>><?= htmlspecialchars($roleLabels[$type] ?? $type, ENT_QUOTES, 'UTF-8') ?></option>
                 <?php endforeach; ?>
             </select>
+            <div class="form-text">TransferDB-Connections speichern Runtime-/Transferdaten in eigenen `luna_` Tabellen.</div>
         </div>
         <div class="col-md-3">
             <label class="form-label" for="driver">Driver</label>
             <select class="form-select" id="driver" name="driver">
                 <?php foreach ($drivers as $driver): ?>
-                    <option value="<?= $driver ?>" <?= ($values['driver'] ?? 'mysql') === $driver ? 'selected' : '' ?>><?= $driver ?></option>
+                    <option value="<?= htmlspecialchars($driver, ENT_QUOTES, 'UTF-8') ?>" <?= ($values['driver'] ?? 'mysql') === $driver ? 'selected' : '' ?>><?= htmlspecialchars($driver, ENT_QUOTES, 'UTF-8') ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
@@ -107,5 +115,3 @@ $lead = $lead ?? 'Für 1.2.0 werden mehrere MySQL/MariaDB-Verbindungen pro Works
         <a class="btn btn-outline-secondary" href="/admin/connections">Abbrechen</a>
     </div>
 </form>
-
-

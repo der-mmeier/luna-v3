@@ -1136,3 +1136,49 @@ Noch nicht committed.
 ### Abschlussprüfung
 
 UI-Umlautprüfung: durchgeführt
+
+---
+
+## 2026-06-09 - v2.7.1 TransferDB Foundation & Runtime Storage
+
+### Ziel
+
+Workspaces sollen eine separate TransferDB für Runtime-, Staging- und Transferdaten konfigurieren können, ohne die Luna-App-Datenbank oder bestehende Kundentabellen zu vermischen.
+
+### Geänderte Dateien
+
+- database/migrations/2026_06_09_000021_create_transferdb_foundation.sql
+- src/Core/Application.php
+- src/Connections/ConnectionProfileData.php
+- src/Repository/WorkspaceRepository.php
+- src/TransferDb/*
+- src/WooCommerce/WooCommerceRuntimeWebhookHandler.php
+- src/WooCommerce/WooCommerceWebhookEventNormalizer.php
+- src/Export/EndpointExportContractService.php
+- routes/web.php
+- bin/luna
+- resources/views/admin/connections/*
+- resources/views/admin/workspaces/*
+- resources/views/admin/endpoints/show.php
+- tests/Unit/TransferDbFoundationTest.php
+- docs/TRANSFERDB.md
+- CHANGELOG.md
+- ROADMAP.md
+- docs/ROADMAP.md
+- docs/CODEX_PROTOCOL.md
+
+### Ergebnis
+
+Connections können als `transfer_db` oder `mixed` markiert werden. Workspaces können eine Default-TransferDB auswählen, prüfen und migrieren. TransferDB-Connections bieten eigene Management-Actions für Verbindungstest, Schema-Status, Setup und Migration. Der TransferDB-Schema-Manager legt ausschließlich `luna_` Tabellen in der ausgewählten TransferDB an, darunter `luna_transferdb_migrations`, `luna_webhook_events`, `luna_endpoint_snapshots`, `luna_endpoint_snapshot_records`, `luna_transfer_runs` und `luna_transfer_run_logs`. Setup und Migration sind idempotent und fassen keine fremden Tabellen an. Writer-Services speichern Sources, Runs, Records, Logs, WooCommerce Webhook Events und Endpoint Snapshots ohne Secret-Leaks. Die WooCommerce Runtime schreibt valide Events optional zusätzlich in die TransferDB und blockiert den bisherigen Webhook-Prozess nicht, wenn keine TransferDB konfiguriert ist. Endpoint-Detailseiten können Ergebnisse als TransferDB-Snapshot speichern. Endpoint-Exportpakete enthalten secret-freie `runtime_storage`-Metadaten.
+
+### Offene Punkte
+
+Exportierbare Webhook-Runtime-Pakete bleiben für v2.8.0 geplant. Produktive Rückschreibaktionen in WooCommerce, Afterbuy, ERP oder andere Zielsysteme sind weiterhin nicht Teil dieses Meilensteins.
+
+### Commit-Hash
+
+Noch nicht committed.
+
+### Abschlussprüfung
+
+UI-Umlautprüfung: durchgeführt

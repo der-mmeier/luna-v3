@@ -43,6 +43,9 @@
             <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>/test">
                 <button class="btn btn-outline-primary" type="submit">Preview ausführen</button>
             </form>
+            <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>/transferdb-snapshot">
+                <button class="btn btn-outline-secondary" type="submit">Snapshot in TransferDB speichern</button>
+            </form>
             <?php if (! empty($endpoint['schema_id'])): ?>
                 <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>/validate-schema">
                     <button class="btn btn-outline-primary" type="submit">Schema validieren</button>

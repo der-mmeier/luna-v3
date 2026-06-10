@@ -11,7 +11,7 @@ final class ConnectionProfileData
      */
     public static function roles(): array
     {
-        return ['source', 'transfer', 'target'];
+        return ['source', 'transfer', 'target', 'transfer_db', 'mixed'];
     }
 
     /**
@@ -63,11 +63,11 @@ final class ConnectionProfileData
         }
 
         if (! in_array((string) ($values['type'] ?? ''), self::roles(), true)) {
-            $errors[] = 'Connection-Rolle ist ungueltig.';
+            $errors[] = 'Connection-Rolle ist ungültig.';
         }
 
         if (! in_array((string) ($values['driver'] ?? ''), self::drivers(), true)) {
-            $errors[] = 'Connection-Driver ist ungueltig.';
+            $errors[] = 'Connection-Driver ist ungültig.';
         }
 
         return $errors;
