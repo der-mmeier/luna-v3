@@ -10,11 +10,12 @@
 /** @var string $heading */
 /** @var string $lead */
 $values = $values ?? [];
-$roles = $roles ?? ['source', 'transfer', 'target'];
+$roles = $roles ?? ['source', 'transfer', 'target', 'transfer_db', 'mixed'];
 $drivers = $drivers ?? ['mysql', 'mariadb'];
 $formAction = $formAction ?? '/admin/connections';
 $heading = $heading ?? 'Connection anlegen';
-$lead = $lead ?? 'Für 1.2.0 werden mehrere MySQL/MariaDB-Verbindungen pro Workspace vorbereitet. Quellverbindungen sind standardmäßig read-only.';
+$lead = $lead ?? 'Verbindungen können einem Owner-Workspace gehören und zusätzlich für weitere Workspaces freigegeben werden.';
+$sharedWorkspaceIds = array_map('intval', $values['shared_workspace_ids'] ?? []);
 ?>
 <div class="mb-4">
     <h1 class="h3 mb-1"><?= htmlspecialchars($heading, ENT_QUOTES, 'UTF-8') ?></h1>
@@ -38,7 +39,7 @@ $lead = $lead ?? 'Für 1.2.0 werden mehrere MySQL/MariaDB-Verbindungen pro Works
 <form class="card admin-card" method="post" action="<?= htmlspecialchars($formAction, ENT_QUOTES, 'UTF-8') ?>">
     <div class="card-body row g-3">
         <div class="col-md-6">
-            <label class="form-label" for="workspace_id">Workspace optional</label>
+            <label class="form-label" for="workspace_id">Owner-Workspace optional</label>
             <select class="form-select" id="workspace_id" name="workspace_id">
                 <option value="">Kein Workspace</option>
                 <?php foreach ($workspaces ?? [] as $workspace): ?>
@@ -98,6 +99,20 @@ $lead = $lead ?? 'Für 1.2.0 werden mehrere MySQL/MariaDB-Verbindungen pro Works
             </div>
         </div>
         <div class="col-12">
+            <label class="form-label">Für weitere Workspaces freigeben</label>
+            <div class="row g-2">
+                <?php foreach ($workspaces ?? [] as $workspace): ?>
+                    <div class="col-md-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="shared_workspace_ids[]" id="shared_workspace_<?= (int) $workspace['id'] ?>" value="<?= (int) $workspace['id'] ?>" <?= in_array((int) $workspace['id'], $sharedWorkspaceIds, true) ? 'checked' : '' ?>>
+                            <label class="form-check-label" for="shared_workspace_<?= (int) $workspace['id'] ?>"><?= htmlspecialchars((string) $workspace['name'], ENT_QUOTES, 'UTF-8') ?></label>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <div class="form-text">Eine TransferDB kann so z. B. dem Workspace „Toolbox“ gehören und zusätzlich im Workspace „AsfInStocks“ genutzt werden.</div>
+        </div>
+        <div class="col-12">
             <label class="form-label" for="notes">Notizen</label>
             <textarea class="form-control" id="notes" name="notes" rows="3"><?= htmlspecialchars((string) ($values['notes'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
         </div>
@@ -107,5 +122,3 @@ $lead = $lead ?? 'Für 1.2.0 werden mehrere MySQL/MariaDB-Verbindungen pro Works
         <a class="btn btn-outline-secondary" href="/admin/connections">Abbrechen</a>
     </div>
 </form>
-
-

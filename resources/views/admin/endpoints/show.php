@@ -7,7 +7,10 @@
 /** @var list<array<string, mixed>> $contractTargets */
 /** @var string|null $currentEndpointUrl */
 /** @var array<string, mixed> $mappingSummary */
+/** @var list<array<string, mixed>> $transferDbConnections */
+/** @var array<string, mixed>|null $transferDbSnapshot */
 /** @var array<string, string>|null $alert */
+$transferDbConnections = $transferDbConnections ?? [];
 ?>
 <?php if ($endpoint === null): ?>
     <div class="alert alert-warning">Endpoint nicht gefunden.</div>
@@ -47,6 +50,18 @@
                 <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>/validate-schema">
                     <button class="btn btn-outline-primary" type="submit">Schema validieren</button>
                 </form>
+            <?php endif; ?>
+                        <?php if ($transferDbConnections !== []): ?>
+                <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>/transferdb-snapshot">
+                    <select class="form-select form-select-sm mb-1" name="transfer_db_connection_id" aria-label="TransferDB auswählen">
+                        <?php foreach ($transferDbConnections as $connection): ?>
+                            <option value="<?= (int) $connection['id'] ?>"><?= htmlspecialchars((string) $connection['name'], ENT_QUOTES, 'UTF-8') ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button class="btn btn-outline-success" type="submit">Snapshot in TransferDB speichern</button>
+                </form>
+            <?php else: ?>
+                <div class="alert alert-secondary py-2 mb-0">Für diesen Workspace ist keine TransferDB verfügbar.</div>
             <?php endif; ?>
             <form method="post" action="/admin/endpoints/<?= (int) $endpoint['id'] ?>/delete" onsubmit="return confirm('Diesen Eintrag wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.');">
                 <input type="hidden" name="confirm_delete" value="1">

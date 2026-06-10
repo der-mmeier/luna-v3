@@ -15,7 +15,13 @@
             <td><?= (int) $job['dry_run_default'] === 1 ? 'Ja' : 'Nein' ?></td>
             <td><?= (int) $job['report_enabled'] === 1 ? 'Ja' : 'Nein' ?></td>
             <td><?= htmlspecialchars((string) ($job['last_run_at'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
-            <td><a class="btn btn-sm btn-outline-primary" href="/admin/jobs/<?= (int) $job['id'] ?>">Details</a></td>
+            <td class="d-flex gap-2">
+                <a class="btn btn-sm btn-outline-primary" href="/admin/jobs/<?= (int) $job['id'] ?>">Details</a>
+                <form method="post" action="/admin/jobs/<?= (int) $job['id'] ?>/delete" onsubmit="return confirm('Diesen Job inklusive Runs und Logs löschen?');">
+                    <input type="hidden" name="confirm_delete" value="1">
+                    <button class="btn btn-sm btn-outline-danger" type="submit">Löschen</button>
+                </form>
+            </td>
         </tr>
     <?php endforeach; ?>
     <?php if (($jobs ?? []) === []): ?><tr><td colspan="8" class="text-body-secondary">Noch keine Jobs angelegt.</td></tr><?php endif; ?>

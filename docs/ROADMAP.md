@@ -1,6 +1,6 @@
-﻿# Luna V3 Roadmap
+# Luna V3 Roadmap
 
-Stand: nach `v2.7.0`
+Stand: nach `v2.7.2`
 Ziel dieses Dokuments: Die Versionsfolge sauber ordnen, widersprÃ¼chliche alte Planungen bereinigen und die nÃ¤chsten Schritte so definieren, dass Luna nicht in WooCommerce-, Webhook-, Export- und Transfer-Sonderlogik zerfÃ¤llt.
 
 ---
@@ -69,7 +69,9 @@ Diese Regeln gelten fÃ¼r alle kommenden Versionen:
 | `v2.5.0` | abgeschlossen | Adapter / Target Actions Foundation |
 | `v2.6.0` | abgeschlossen | Schema Registry & Validation |
 | `v2.7.0` | abgeschlossen | WooCommerce Runtime Module |
-| `v2.8.0` | nächster Meilenstein | External System Modules: Afterbuy / ERP / weitere Systeme |
+| `v2.7.1` | abgeschlossen | TransferDB Foundation & Runtime Storage |
+| `v2.7.2` | abgeschlossen | Admin Cleanup, Deletion Safety & TransferDB Workspace Sharing |
+| `v2.8.0` | nächster Meilenstein | Exportable Webhook Runtime Packages |
 
 ---
 
@@ -493,30 +495,82 @@ Nicht-Ziele:
 
 ---
 
-### v2.8.0 - External System Modules: Afterbuy / ERP / weitere Systeme
+### v2.7.1 - TransferDB Foundation & Runtime Storage
+
+Status: abgeschlossen
+
+Ziel:
+
+Luna kann pro Workspace eine separate TransferDB als Runtime-/Staging-Speicher nutzen. Diese TransferDB ist nicht die Luna-Systemdatenbank.
+
+Umgesetzt:
+
+- TransferDB-Connections können markiert und geprüft werden.
+- TransferDB-Schema-Management legt ausschließlich `luna_` Tabellen in der ausgewählten TransferDB an.
+- Idempotente Setup-/Migrationslogik für `luna_transferdb_migrations`, `luna_webhook_events`, `luna_endpoint_snapshots`, `luna_endpoint_snapshot_records`, `luna_transfer_runs` und `luna_transfer_run_logs`.
+- TransferDB-Status zeigt vorhandene und fehlende Tabellen.
+- Endpoint-Snapshots und Runtime-Daten können strukturiert in die TransferDB geschrieben werden.
+
+Abgrenzung:
+
+- keine exportierbare Webhook-Runtime als Paket.
+- kein WooCommerce-Writeback.
+- keine fremden TransferDB-Tabellen anfassen.
+
+---
+
+### v2.7.2 - Admin Cleanup, Deletion Safety & TransferDB Workspace Sharing
+
+Status: abgeschlossen
+
+Ziel:
+
+Luna wird administrativ aufräumbar und TransferDB-Connections können kontrolliert in mehreren Workspaces genutzt werden.
+
+Umgesetzt:
+
+- Zentraler Delete-/Dependency-Guard für präzise Blocker-Meldungen.
+- Jobs können inklusive eigener Runs, Logs und Reports gelöscht werden.
+- Reports haben CRUD-Grundbestand mit JSON-Konfigurationsvalidierung.
+- Prozesse können inklusive Steps, Triggern, Runs und Logs gelöscht werden.
+- Schemas liefern konkrete Blocker-Meldungen, wenn Endpoints sie referenzieren.
+- Connections behalten einen Owner-Workspace und können über `luna_connection_workspaces` für weitere Workspaces freigegeben werden.
+- TransferDB-Auswahl findet Owner- und freigegebene TransferDB-Connections.
+- Endpoint-Snapshots können aus freigegebenen TransferDBs gespeichert werden.
+- TransferDB-Management-Aktionen bleiben auf die ausgewählte TransferDB beschränkt und fassen keine Fremdtabellen an.
+- Smoke-/Codex-Testdaten werden durch löschbare Jobs/Reports und testlokale Fixtures nicht weiter vervielfältigt.
+
+Abgrenzung:
+
+- kein exportierbarer Webhook-Receiver.
+- kein WooCommerce-Status-Writeback.
+- keine globale Ressourcenfreigabe ohne explizite Zuordnung.
+
+---
+
+### v2.8.0 - Exportable Webhook Runtime Packages
 
 Status: geplant / nächster Meilenstein
 
 Ziel:
 
-Afterbuy, ERP und weitere Systeme werden als konkrete Module oder Adapter umgesetzt, sobald Process Runtime, Trigger Layer, Adapter Foundation und Schema Registry stabil sind.
+Webhook Trigger sollen als deploybare Runtime-Pakete exportiert werden, damit öffentliche Subdomains Webhooks empfangen können, ohne die komplette Luna-Admin-App öffentlich zu betreiben.
 
 Geplanter Scope:
 
-- Afterbuy als erster externer Zielsystemkandidat.
-- ERP-Export oder ERP-Import als weiteres Zielsystem.
-- Pro System klare Schemas.
-- Pro System klare Adapter-Konfiguration.
-- Pro System klare Prozessdefinitionen.
-- Exportpakete fÃ¼r diese Integrationen.
+- Webhook-Trigger als secretfreie Exportpakete beschreiben.
+- Public Runtime Receiver für exportierte Webhook-Pakete vorbereiten.
+- TransferDB als Runtime-Speicher referenzieren, ohne Zugangsdaten zu exportieren.
+- Provider-Metadaten wie WooCommerce Topic/Event in Manifesten abbilden.
+- Prozess-/Schema-/TransferDB-Referenzen konsistent exportieren.
 
 Abgrenzung:
 
-- Keine Sonderarchitektur pro Zielsystem.
-- Keine Vermischung von Adapter, Trigger und Prozesslogik.
+- Kein Pflicht-Deployment der kompletten Luna-Admin-App.
+- Kein WooCommerce-Writeback.
+- Kein Afterbuy-/ERP-Sonderadapter als Teil dieses Meilensteins.
 
 ---
-
 ### v2.9.0 - Official Modules / Entitlement Metadata Preparation
 
 Status: optional / spÃ¤ter
@@ -579,7 +633,7 @@ FÃ¼r jeden Meilenstein gilt:
 
 ## 11. Nächste konkrete Entscheidung
 
-Der nächste Codex-Prompt sollte auf `v2.8.0 - External System Modules: Afterbuy / ERP / weitere Systeme` gehen.
+Der nächste Codex-Prompt sollte auf `v2.8.0 - Exportable Webhook Runtime Packages` gehen.
 
 Er soll ausdrücklich nicht bauen:
 

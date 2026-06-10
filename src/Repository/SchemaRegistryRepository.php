@@ -161,10 +161,17 @@ final class SchemaRegistryRepository
 
     public function delete(int $id): void
     {
-        $statement = $this->pdo()->prepare('SELECT COUNT(*) FROM luna_endpoints WHERE schema_id = :id');
-        $statement->execute(['id' => $id]);
-        if ((int) $statement->fetchColumn() > 0) {
-            throw new \RuntimeException('Schema wird von Endpoints referenziert und kann nicht gelöscht werden.');
+        if ($this->hasColumn('luna_endpoints', 'schema_id')) {
+            $statement = $this->pdo()->prepare('SELECT name, endpoint_key FROM luna_endpoints WHERE schema_id = :id ORDER BY name LIMIT 10');
+            $statement->execute(['id' => $id]);
+            $endpoints = $statement->fetchAll();
+            if ($endpoints !== []) {
+                $names = array_map(
+                    static fn (array $endpoint): string => trim((string) ($endpoint['name'] ?? '')) ?: (string) ($endpoint['endpoint_key'] ?? 'Endpoint'),
+                    $endpoints,
+                );
+                throw new \RuntimeException('Schema kann nicht gelöscht werden, weil ' . count($endpoints) . ' Endpoint(s) dieses Schema referenzieren: ' . implode(', ', $names) . '. Bitte entfernen Sie die Schema-Zuordnung zuerst.');
+            }
         }
 
         $pdo = $this->pdo();
@@ -261,5 +268,17 @@ final class SchemaRegistryRepository
     private function pdo(): PDO
     {
         return $this->pdo ?? $this->database->pdo();
+    }
+
+    private function hasColumn(string $table, string $column): bool
+    {
+        try {
+            $statement = $this->pdo()->prepare('SELECT ' . $column . ' FROM ' . $table . ' LIMIT 1');
+            $statement->execute();
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

@@ -24,6 +24,7 @@ use Luna\Repository\ProcessRunRepository;
 use Luna\Repository\ProcessTriggerRepository;
 use Luna\Repository\SchemaRegistryRepository;
 use Luna\Schema\SchemaValidator;
+use Luna\TransferDb\TransferDbStatusService;
 use Luna\WooCommerce\WooCommerceTransferRunner;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -54,11 +55,12 @@ function exitCodeForRun(array $run): int
 
 if ($command === null) {
 
-    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|export:woocommerce:list|export:woocommerce:run|process:run|trigger:list|trigger:run|schema:validate|endpoint:export|integration:export>\n");
+    fwrite(STDERR, "Usage: php bin/luna <migrate|db:test|connection:test|transferdb:test|transferdb:status|transferdb:migrate|transferdb:check|job:run|mapping:dry-run|mapping:run|dataset:list|dataset:preview|transfer:dry-run|transfer:run|woocommerce:transfer:run|export:woocommerce:list|export:woocommerce:run|process:run|trigger:list|trigger:run|schema:validate|endpoint:export|integration:export>\n");
     fwrite(STDERR, "Endpoint contract: php bin/luna endpoint:export <endpoint-id> [--target=<environment>] [--output=<directory>]\n");
     fwrite(STDERR, "Process runtime: php bin/luna process:run <process-id> [--dry-run] [--trigger=<trigger-id-or-key>]\n");
     fwrite(STDERR, "Trigger runtime: php bin/luna trigger:list <process-id> | trigger:run <trigger-id-or-key> [--dry-run]\n");
     fwrite(STDERR, "Schema validation: php bin/luna schema:validate <schema-id> <json-file>\n");
+    fwrite(STDERR, "TransferDB: php bin/luna transferdb:test|transferdb:status|transferdb:migrate <connection-id> | transferdb:check <workspace-id-or-key>\n");
 
     exit(2);
 }
@@ -131,6 +133,71 @@ try {
         echo 'Status: ' . ($result['success'] ? 'success' : 'failed') . "\n";
         echo 'Message: ' . (string) $result['message'] . "\n";
         exit($result['success'] ? 0 : 1);
+    }
+
+    if (in_array($command, ['transferdb:test', 'transferdb:status', 'transferdb:migrate'], true)) {
+        $connectionId = isset($argv[2]) ? (int) $argv[2] : 0;
+
+        if ($connectionId <= 0) {
+            fwrite(STDERR, "Usage: php bin/luna {$command} <connection-id>\n");
+            exit(2);
+        }
+
+        /** @var TransferDbStatusService $transferDb */
+        $transferDb = $app->services()->get(TransferDbStatusService::class);
+        $result = match ($command) {
+            'transferdb:test' => $transferDb->testConnection($connectionId),
+            'transferdb:migrate' => $transferDb->migrateConnection($connectionId),
+            default => $transferDb->statusConnection($connectionId),
+        };
+
+        echo 'TransferDB connection: ' . $connectionId . "\n";
+        echo 'Configured: ' . (! empty($result['configured']) ? 'yes' : 'no') . "\n";
+        echo 'Reachable: ' . (! empty($result['reachable']) ? 'yes' : 'no') . "\n";
+        echo 'Schema current: ' . (! empty($result['schema_current']) ? 'yes' : 'no') . "\n";
+        if (isset($result['migration_version'])) {
+            echo 'Migration version: ' . (string) $result['migration_version'] . "\n";
+        }
+        if (! empty($result['existing_tables']) && is_array($result['existing_tables'])) {
+            echo 'Existing tables: ' . implode(', ', $result['existing_tables']) . "\n";
+        }
+        if (! empty($result['missing_tables']) && is_array($result['missing_tables'])) {
+            echo 'Missing tables: ' . implode(', ', $result['missing_tables']) . "\n";
+        }
+        if (! empty($result['error'])) {
+            echo 'Error: ' . (string) $result['error'] . "\n";
+        }
+
+        exit(! empty($result['reachable']) && ($command === 'transferdb:test' || ! empty($result['schema_current'])) ? 0 : 1);
+    }
+
+    if ($command === 'transferdb:check') {
+        $workspace = isset($argv[2]) ? (string) $argv[2] : '';
+
+        if ($workspace === '') {
+            fwrite(STDERR, "Usage: php bin/luna transferdb:check <workspace-id-or-key>\n");
+            exit(2);
+        }
+
+        /** @var TransferDbStatusService $transferDb */
+        $transferDb = $app->services()->get(TransferDbStatusService::class);
+        $result = $transferDb->check($workspace);
+
+        echo 'Workspace: ' . $workspace . "\n";
+        echo 'Configured: ' . (! empty($result['configured']) ? 'yes' : 'no') . "\n";
+        echo 'Reachable: ' . (! empty($result['reachable']) ? 'yes' : 'no') . "\n";
+        echo 'Schema current: ' . (! empty($result['schema_current']) ? 'yes' : 'no') . "\n";
+        if (! empty($result['connection']) && is_array($result['connection'])) {
+            echo 'Connection: ' . (int) $result['connection']['id'] . ' - ' . (string) $result['connection']['name'] . "\n";
+        }
+        if (! empty($result['missing_tables']) && is_array($result['missing_tables'])) {
+            echo 'Missing tables: ' . implode(', ', $result['missing_tables']) . "\n";
+        }
+        if (! empty($result['error'])) {
+            echo 'Error: ' . (string) $result['error'] . "\n";
+        }
+
+        exit(! empty($result['reachable']) && ! empty($result['schema_current']) ? 0 : 1);
     }
 
     if ($command === 'job:run') {

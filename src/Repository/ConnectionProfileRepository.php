@@ -19,6 +19,9 @@ final class ConnectionProfileRepository
     ) {
     }
 
+    /**
+     * @return list<array<string, mixed>>
+     */
     public function all(): array
     {
         $statement = $this->pdo()->query(
@@ -31,6 +34,9 @@ final class ConnectionProfileRepository
         return $statement->fetchAll();
     }
 
+    /**
+     * @return array<string, mixed>|null
+     */
     public function find(int $id): ?array
     {
         $statement = $this->pdo()->prepare(
@@ -45,6 +51,10 @@ final class ConnectionProfileRepository
         return $profile === false ? null : $profile;
     }
 
+    /**
+     * @param array<string, mixed> $data
+     * @param array<string, string> $secrets
+     */
     public function create(array $data, array $secrets): int
     {
         $pdo = $this->pdo();
@@ -60,15 +70,20 @@ final class ConnectionProfileRepository
             $statement->execute($this->profilePayload($data));
             $id = (int) $pdo->lastInsertId();
             $this->storeSecrets($id, $secrets);
+            $this->syncWorkspaces($id, $data);
             $pdo->commit();
 
             return $id;
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             $pdo->rollBack();
             throw $exception;
         }
     }
 
+    /**
+     * @param array<string, mixed> $data
+     * @param array<string, string> $secrets
+     */
     public function update(int $id, array $data, array $secrets = []): void
     {
         $pdo = $this->pdo();
@@ -87,8 +102,9 @@ final class ConnectionProfileRepository
             );
             $statement->execute($payload);
             $this->storeSecrets($id, $secrets);
+            $this->syncWorkspaces($id, $data);
             $pdo->commit();
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             $pdo->rollBack();
             throw $exception;
         }
@@ -100,12 +116,16 @@ final class ConnectionProfileRepository
         $pdo->beginTransaction();
 
         try {
+            if ($this->tableExists('luna_connection_workspaces')) {
+                $statement = $pdo->prepare('DELETE FROM luna_connection_workspaces WHERE connection_id = :id');
+                $statement->execute(['id' => $id]);
+            }
             $statement = $pdo->prepare('DELETE FROM luna_connection_secrets WHERE connection_profile_id = :id');
             $statement->execute(['id' => $id]);
             $statement = $pdo->prepare('DELETE FROM luna_connection_profiles WHERE id = :id');
             $statement->execute(['id' => $id]);
             $pdo->commit();
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             $pdo->rollBack();
             throw $exception;
         }
@@ -113,22 +133,34 @@ final class ConnectionProfileRepository
 
     public function canDelete(int $id): DeleteCheckResult
     {
+        $profile = $this->find($id);
+        $connectionName = $profile === null ? ('#' . $id) : (string) $profile['name'];
         $mappingNames = $this->mappingNamesForConnection($id);
+        $jobNames = $this->jobNamesForConnection($id);
+        $endpointNames = $this->endpointNamesForConnection($id);
+        $defaultWorkspaceNames = $this->defaultTransferDbWorkspaceNames($id);
         $schemaCount = $this->countByConnection('luna_schema_snapshots', $id)
             + $this->countByConnection('luna_table_notes', $id)
             + $this->countByConnection('luna_column_notes', $id);
 
-        if ($mappingNames !== []) {
+        $blockingNames = array_values(array_unique(array_merge($mappingNames, $jobNames, $endpointNames, $defaultWorkspaceNames)));
+        if ($blockingNames !== []) {
             return DeleteCheckResult::blocked(
-                'Diese Connection kann nicht gelöscht werden, weil sie noch von Mapping(s) verwendet wird.',
-                $mappingNames,
-                ['mappings' => count($mappingNames), 'schema' => $schemaCount],
+                sprintf('Connection "%s" kann nicht gelöscht werden, weil abhängige Ressourcen existieren. Bitte löschen, verschieben oder deaktivieren Sie diese Ressourcen zuerst.', $connectionName),
+                $blockingNames,
+                [
+                    'mappings' => count($mappingNames),
+                    'jobs' => count($jobNames),
+                    'endpoints' => count($endpointNames),
+                    'workspace_defaults' => count($defaultWorkspaceNames),
+                    'schema' => $schemaCount,
+                ],
             );
         }
 
         if ($schemaCount > 0) {
             return DeleteCheckResult::blocked(
-                'Diese Connection kann nicht gelöscht werden, weil noch Schema-/Explorer-Einträge vorhanden sind.',
+                sprintf('Connection "%s" kann nicht gelöscht werden, weil noch %d Schema-/Explorer-Einträge vorhanden sind. Bitte löschen Sie diese Explorer-Daten zuerst.', $connectionName, $schemaCount),
                 [],
                 ['schema' => $schemaCount],
             );
@@ -137,6 +169,9 @@ final class ConnectionProfileRepository
         return DeleteCheckResult::allowed();
     }
 
+    /**
+     * @return array<string, string>
+     */
     public function secretsFor(int $connectionProfileId): array
     {
         $statement = $this->pdo()->prepare(
@@ -152,6 +187,82 @@ final class ConnectionProfileRepository
         return $secrets;
     }
 
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function workspacesForConnection(int $connectionId): array
+    {
+        if (! $this->tableExists('luna_connection_workspaces')) {
+            $profile = $this->find($connectionId);
+            if ($profile === null || empty($profile['workspace_id'])) {
+                return [];
+            }
+
+            return [[
+                'id' => (int) $profile['workspace_id'],
+                'name' => (string) ($profile['workspace_name'] ?? ''),
+                'role' => (string) ($profile['type'] ?? ''),
+                'is_default' => 0,
+            ]];
+        }
+
+        $statement = $this->pdo()->prepare(
+            'SELECT w.*, cw.role, cw.is_default
+             FROM luna_connection_workspaces cw
+             INNER JOIN luna_workspaces w ON w.id = cw.workspace_id
+             WHERE cw.connection_id = :connection_id
+             ORDER BY w.name',
+        );
+        $statement->execute(['connection_id' => $connectionId]);
+
+        return $statement->fetchAll();
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function workspaceIdsForConnection(int $connectionId): array
+    {
+        return array_map(static fn (array $row): int => (int) $row['id'], $this->workspacesForConnection($connectionId));
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function transferDbConnectionsForWorkspace(int $workspaceId): array
+    {
+        if ($this->tableExists('luna_connection_workspaces')) {
+            $statement = $this->pdo()->prepare(
+                "SELECT DISTINCT cp.*, w.name AS workspace_name
+                 FROM luna_connection_profiles cp
+                 LEFT JOIN luna_workspaces w ON w.id = cp.workspace_id
+                 LEFT JOIN luna_connection_workspaces cw ON cw.connection_id = cp.id
+                 WHERE cp.is_active = 1
+                   AND cp.type IN ('transfer_db', 'mixed')
+                   AND (cp.workspace_id = :workspace_id OR cw.workspace_id = :shared_workspace_id)
+                 ORDER BY cp.name",
+            );
+            $statement->execute(['workspace_id' => $workspaceId, 'shared_workspace_id' => $workspaceId]);
+
+            return $statement->fetchAll();
+        }
+
+        $statement = $this->pdo()->prepare(
+            "SELECT cp.*, w.name AS workspace_name
+             FROM luna_connection_profiles cp
+             LEFT JOIN luna_workspaces w ON w.id = cp.workspace_id
+             WHERE cp.is_active = 1 AND cp.type IN ('transfer_db', 'mixed') AND cp.workspace_id = :workspace_id
+             ORDER BY cp.name",
+        );
+        $statement->execute(['workspace_id' => $workspaceId]);
+
+        return $statement->fetchAll();
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
     private function profilePayload(array $data): array
     {
         $normalized = ConnectionProfileData::normalize($data);
@@ -172,6 +283,9 @@ final class ConnectionProfileRepository
         ];
     }
 
+    /**
+     * @param array<string, string> $secrets
+     */
     private function storeSecrets(int $connectionProfileId, array $secrets): void
     {
         $statement = $this->pdo()->prepare(
@@ -196,12 +310,51 @@ final class ConnectionProfileRepository
     }
 
     /**
+     * @param array<string, mixed> $data
+     */
+    private function syncWorkspaces(int $connectionId, array $data): void
+    {
+        if (! $this->tableExists('luna_connection_workspaces')) {
+            return;
+        }
+
+        $ids = [];
+        if (! empty($data['workspace_id'])) {
+            $ids[] = (int) $data['workspace_id'];
+        }
+        foreach ((array) ($data['shared_workspace_ids'] ?? []) as $workspaceId) {
+            if ((int) $workspaceId > 0) {
+                $ids[] = (int) $workspaceId;
+            }
+        }
+        $ids = array_values(array_unique($ids));
+
+        $this->pdo()->prepare('DELETE FROM luna_connection_workspaces WHERE connection_id = :id')->execute(['id' => $connectionId]);
+        if ($ids === []) {
+            return;
+        }
+
+        $insert = $this->pdo()->prepare(
+            'INSERT INTO luna_connection_workspaces (connection_id, workspace_id, role, is_default, created_at, updated_at)
+             VALUES (:connection_id, :workspace_id, :role, :is_default, NOW(), NOW())',
+        );
+        $type = (string) ($data['type'] ?? 'source');
+        foreach ($ids as $workspaceId) {
+            $insert->execute([
+                'connection_id' => $connectionId,
+                'workspace_id' => $workspaceId,
+                'role' => $type,
+                'is_default' => 0,
+            ]);
+        }
+    }
+
+    /**
      * @return list<string>
      */
     private function mappingNamesForConnection(int $connectionId): array
     {
         $names = [];
-
         $conditions = [];
         if ($this->columnExists('luna_mapping_sets', 'source_connection_id')) {
             $conditions[] = 'source_connection_id = :source_connection_id';
@@ -211,13 +364,10 @@ final class ConnectionProfileRepository
         }
 
         if ($conditions !== []) {
-            $statement = $this->pdo()->prepare(sprintf(
-                'SELECT name FROM luna_mapping_sets WHERE %s ORDER BY name',
-                implode(' OR ', $conditions),
-            ));
+            $statement = $this->pdo()->prepare(sprintf('SELECT name FROM luna_mapping_sets WHERE %s ORDER BY name', implode(' OR ', $conditions)));
             $statement->execute(['source_connection_id' => $connectionId, 'target_connection_id' => $connectionId]);
             foreach ($statement->fetchAll() as $row) {
-                $names[] = (string) $row['name'];
+                $names[] = 'Mapping "' . (string) $row['name'] . '"';
             }
         }
 
@@ -231,11 +381,68 @@ final class ConnectionProfileRepository
             );
             $statement->execute(['id' => $connectionId]);
             foreach ($statement->fetchAll() as $row) {
-                $names[] = (string) $row['name'];
+                $names[] = 'Mapping "' . (string) $row['name'] . '"';
             }
         }
 
         return array_values(array_unique($names));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function jobNamesForConnection(int $connectionId): array
+    {
+        if (! $this->columnExists('luna_jobs', 'mapping_set_id')) {
+            return [];
+        }
+
+        $statement = $this->pdo()->prepare(
+            'SELECT DISTINCT j.name
+             FROM luna_jobs j
+             INNER JOIN luna_mapping_sets ms ON ms.id = j.mapping_set_id
+             WHERE ms.source_connection_id = :id OR ms.target_connection_id = :id
+             ORDER BY j.name',
+        );
+        $statement->execute(['id' => $connectionId]);
+
+        return array_map(static fn (array $row): string => 'Job "' . (string) $row['name'] . '"', $statement->fetchAll());
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function endpointNamesForConnection(int $connectionId): array
+    {
+        if (! $this->columnExists('luna_endpoints', 'mapping_set_id')) {
+            return [];
+        }
+
+        $statement = $this->pdo()->prepare(
+            'SELECT DISTINCT e.name
+             FROM luna_endpoints e
+             INNER JOIN luna_mapping_sets ms ON ms.id = e.mapping_set_id
+             WHERE ms.source_connection_id = :id OR ms.target_connection_id = :id
+             ORDER BY e.name',
+        );
+        $statement->execute(['id' => $connectionId]);
+
+        return array_map(static fn (array $row): string => 'Endpoint "' . (string) $row['name'] . '"', $statement->fetchAll());
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function defaultTransferDbWorkspaceNames(int $connectionId): array
+    {
+        if (! $this->columnExists('luna_workspaces', 'transfer_db_connection_id')) {
+            return [];
+        }
+
+        $statement = $this->pdo()->prepare('SELECT name FROM luna_workspaces WHERE transfer_db_connection_id = :id ORDER BY name');
+        $statement->execute(['id' => $connectionId]);
+
+        return array_map(static fn (array $row): string => 'Workspace Default-TransferDB "' . (string) $row['name'] . '"', $statement->fetchAll());
     }
 
     private function countByConnection(string $table, int $connectionId): int
@@ -254,6 +461,17 @@ final class ConnectionProfileRepository
     {
         try {
             $this->pdo()->query(sprintf('SELECT %s FROM %s WHERE 1 = 0', $column, $table));
+
+            return true;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private function tableExists(string $table): bool
+    {
+        try {
+            $this->pdo()->query(sprintf('SELECT 1 FROM %s WHERE 1 = 0', $table));
 
             return true;
         } catch (Throwable) {

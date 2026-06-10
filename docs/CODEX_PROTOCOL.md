@@ -116,6 +116,45 @@ Wenn bewusst ein sichtbarer UI-Text ohne Umlaut bleibt, muss der Grund genannt w
 
 ---
 
+## 2026-06-10 - v2.7.2 Admin Cleanup, Deletion Safety & TransferDB Workspace Sharing
+
+### Ziel
+
+Luna administrativ aufräumbar machen, präzise Löschblocker anzeigen und TransferDB-Connections workspaceübergreifend nutzbar machen.
+
+### Prompt/Aufgabe
+
+`v2.7.2` ergänzt kontrollierte Delete-Flows, Reports CRUD, Job-Löschung, Connection-Workspace-Freigaben und TransferDB-Auswahl über freigegebene Connections.
+
+### Geänderte Dateien
+
+- `database/migrations/2026_06_10_000021_admin_cleanup_transferdb_workspace_sharing.sql`
+- `src/Admin/DeletionGuard.php`
+- `src/Repository/ConnectionProfileRepository.php`
+- `src/Repository/WorkspaceRepository.php`
+- `src/Repository/JobRepository.php`
+- `src/Repository/ReportRepository.php`
+- `src/TransferDb/*`
+- `routes/web.php`
+- `bin/luna`
+- Admin-Views für Connections, Workspaces, Jobs, Reports, Prozesse, Schemas und Endpoints
+- `tests/Unit/AdminCleanupTransferDbSharingTest.php`
+- `tests/Unit/AdminDeleteActionsTest.php`
+- `ROADMAP.md`, `docs/ROADMAP.md`, `CHANGELOG.md`, `docs/CODEX_PROTOCOL.md`
+
+### Ergebnis
+
+Connections behalten einen Owner-Workspace und können explizit für weitere Workspaces freigegeben werden. TransferDB-Management läuft gegen die ausgewählte TransferDB und zeigt vorhandene/fehlende Tabellen. Jobs, Reports und Prozesse sind kontrolliert löschbar. Schema- und Connection-Löschungen liefern konkrete Blocker mit Entitätstyp und Namen.
+
+### Offene Punkte
+
+Weitere Ressourcenfreigaben wie Schemas, Deployment Targets oder Target Actions bleiben Roadmap-Thema. v2.8.0 soll exportierbare Webhook-Runtime-Pakete bauen.
+
+### Commit-Hash
+
+Noch nicht committed.
+---
+
 ## 2026-06-02 â€” 1.8.0 Dataset Sources Foundation
 
 ### Ziel

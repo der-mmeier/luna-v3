@@ -6,6 +6,7 @@
 /** @var string $validationInput */
 /** @var array<string, mixed>|null $validationResult */
 /** @var list<array<string, mixed>> $revisions */
+/** @var array{type: string, message: string}|null $alert */
 $values = $values ?? [];
 $field = static fn (string $key, string $default = ''): string => htmlspecialchars((string) ($values[$key] ?? $default), ENT_QUOTES, 'UTF-8');
 $selected = static fn (string $key, string $value): string => (string) ($values[$key] ?? '') === $value ? ' selected' : '';
@@ -24,6 +25,10 @@ $selected = static fn (string $key, string $value): string => (string) ($values[
     <?php foreach ($errors ?? [] as $error): ?>
         <div class="alert alert-danger"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
     <?php endforeach; ?>
+
+    <?php if (! empty($alert)): ?>
+        <div class="alert alert-<?= htmlspecialchars($alert['type'], ENT_QUOTES, 'UTF-8') ?>"><?= nl2br(htmlspecialchars($alert['message'], ENT_QUOTES, 'UTF-8')) ?></div>
+    <?php endif; ?>
 
     <?php if ($validationResult !== null): ?>
         <div class="alert alert-<?= ! empty($validationResult['valid']) ? 'success' : 'danger' ?>">

@@ -1,5 +1,6 @@
 <?php
 /** @var array<string, mixed> $values */
+/** @var array<int, array<string, mixed>> $transferDbConnections */
 $values = $values ?? [];
 $field = static fn (string $key, string $default = ''): string => htmlspecialchars((string) ($values[$key] ?? $default), ENT_QUOTES, 'UTF-8');
 $selected = static fn (string $status): string => (string) ($values['status'] ?? 'active') === $status ? ' selected' : '';
@@ -25,5 +26,17 @@ $selected = static fn (string $status): string => (string) ($values['status'] ??
             <option value="archived"<?= $selected('archived') ?>>archived</option>
             <option value="disabled"<?= $selected('disabled') ?>>disabled</option>
         </select>
+    </div>
+    <div class="col-md-8">
+        <label class="form-label" for="transfer_db_connection_id">Default-TransferDB</label>
+        <select class="form-select" id="transfer_db_connection_id" name="transfer_db_connection_id">
+            <option value="">Keine Default-TransferDB</option>
+            <?php foreach ($transferDbConnections ?? [] as $connection): ?>
+                <option value="<?= (int) $connection['id'] ?>" <?= (string) ($values['transfer_db_connection_id'] ?? '') === (string) $connection['id'] ? 'selected' : '' ?>>
+                    <?= htmlspecialchars((string) $connection['name'], ENT_QUOTES, 'UTF-8') ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <div class="form-text">TransferDBs können zusätzlich über die Connection-Freigabe für diesen Workspace verfügbar gemacht werden.</div>
     </div>
 </div>

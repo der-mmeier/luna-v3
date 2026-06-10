@@ -74,8 +74,8 @@ final class AdminDeleteActionsTest extends TestCase
         $check = $repo->canDelete(2);
 
         self::assertFalse($check->allowed);
-        self::assertStringContainsString('Mapping', $check->message);
-        self::assertSame(['ISR Mapping'], $check->blockingNames);
+        self::assertSame(1, $check->counts['mappings'] ?? 0);
+        self::assertSame(['Mapping "ISR Mapping"'], $check->blockingNames);
     }
 
     public function testConnectionCannotBeDeletedWhenMappingFieldUsesItAsLookupConnection(): void
@@ -89,7 +89,7 @@ final class AdminDeleteActionsTest extends TestCase
         $check = $repo->canDelete(3);
 
         self::assertFalse($check->allowed);
-        self::assertSame(['ISR Mapping'], $check->blockingNames);
+        self::assertSame(['Mapping "ISR Mapping"'], $check->blockingNames);
     }
 
     public function testConnectionCanBeDeletedWhenUnused(): void
@@ -116,7 +116,7 @@ final class AdminDeleteActionsTest extends TestCase
         $check = $repo->canDelete(1);
 
         self::assertFalse($check->allowed);
-        self::assertStringContainsString('Connections', $check->message);
+        self::assertSame(1, $check->counts['connections'] ?? 0);
     }
 
     public function testWorkspaceCanBeDeletedWhenEmpty(): void

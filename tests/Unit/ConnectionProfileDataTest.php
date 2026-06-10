@@ -81,8 +81,8 @@ final class ConnectionProfileDataTest extends TestCase
             'username' => 'user',
         ]);
 
-        self::assertContains('Connection-Rolle ist ungueltig.', $errors);
-        self::assertContains('Connection-Driver ist ungueltig.', $errors);
+        self::assertContains('Connection-Rolle ist ungültig.', $errors);
+        self::assertContains('Connection-Driver ist ungültig.', $errors);
     }
 
     public function testConnectionTesterDoesNotExposeSecretsOnFailure(): void

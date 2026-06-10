@@ -11,7 +11,7 @@ final class ConnectionProfileData
      */
     public static function roles(): array
     {
-        return ['source', 'transfer', 'target'];
+        return ['source', 'transfer', 'target', 'transfer_db', 'mixed'];
     }
 
     /**
@@ -45,6 +45,7 @@ final class ConnectionProfileData
             'read_only' => $readOnly,
             'is_active' => ! array_key_exists('is_active', $data) || ! empty($data['is_active']) ? 1 : 0,
             'notes' => trim((string) ($data['notes'] ?? '')) ?: null,
+            'shared_workspace_ids' => self::workspaceIds($data['shared_workspace_ids'] ?? []),
         ];
     }
 
@@ -63,11 +64,11 @@ final class ConnectionProfileData
         }
 
         if (! in_array((string) ($values['type'] ?? ''), self::roles(), true)) {
-            $errors[] = 'Connection-Rolle ist ungueltig.';
+            $errors[] = 'Connection-Rolle ist ungültig.';
         }
 
         if (! in_array((string) ($values['driver'] ?? ''), self::drivers(), true)) {
-            $errors[] = 'Connection-Driver ist ungueltig.';
+            $errors[] = 'Connection-Driver ist ungültig.';
         }
 
         return $errors;
@@ -93,5 +94,25 @@ final class ConnectionProfileData
         }
 
         return ! empty($data['read_only']) ? 1 : 0;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private static function workspaceIds(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($value as $id) {
+            $id = (int) $id;
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+
+        return array_values(array_unique($ids));
     }
 }

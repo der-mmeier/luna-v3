@@ -53,7 +53,13 @@ $triggerConfig = static function (array $trigger): array {
         <h1 class="h3 mb-1"><?= htmlspecialchars((string) $process['name'], ENT_QUOTES, 'UTF-8') ?></h1>
         <p class="text-body-secondary mb-0">Process Runtime mit manueller, CLI-, API-, Schedule- und Webhook-Trigger-Grundlage.</p>
     </div>
-    <a class="btn btn-outline-secondary" href="/admin/processes">Zurück</a>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="/admin/processes">Zurück</a>
+        <form method="post" action="/admin/processes/<?= (int) $process['id'] ?>/delete" onsubmit="return confirm('Diesen Prozess inklusive Steps, Triggern, Runs und Logs löschen?');">
+            <input type="hidden" name="confirm_delete" value="1">
+            <button class="btn btn-outline-danger" type="submit">Prozess löschen</button>
+        </form>
+    </div>
 </div>
 
 <?php if ($alert !== null): ?>

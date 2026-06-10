@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Luna\Core;
 
 use Luna\Config\Config;
+use Luna\Admin\DeletionGuard;
 use Luna\Api\EndpointAccessGuard;
 use Luna\Api\EndpointJsonResponseFactory;
 use Luna\Api\EndpointResponseBuilder;
@@ -75,6 +76,11 @@ use Luna\Transfer\MappingRowTransformer;
 use Luna\Transfer\MappingSourceRowProvider;
 use Luna\Transfer\SingleTableTransferWriter;
 use Luna\Transfer\TargetWriter;
+use Luna\TransferDb\TransferDbConnectionResolver;
+use Luna\TransferDb\TransferDbEndpointSnapshotWriter;
+use Luna\TransferDb\TransferDbSchemaManager;
+use Luna\TransferDb\TransferDbStatusService;
+use Luna\TransferDb\TransferDbWriter;
 use Luna\View\ViewRenderer;
 use Luna\WooCommerce\WooCommerceHposValidator;
 use Luna\WooCommerce\WooCommerceHposOrderReader;
@@ -181,6 +187,32 @@ final class Application
         $this->services->set(EndpointRepository::class, new EndpointRepository(
             $systemDatabase,
             $this->services->get(EncryptionService::class),
+        ));
+        $this->services->set(TransferDbSchemaManager::class, new TransferDbSchemaManager());
+        $this->services->set(TransferDbWriter::class, new TransferDbWriter());
+        $this->services->set(TransferDbConnectionResolver::class, new TransferDbConnectionResolver(
+            $this->services->get(WorkspaceRepository::class),
+            $this->services->get(ConnectionProfileRepository::class),
+            $externalPdoFactory,
+        ));
+        $this->services->set(TransferDbStatusService::class, new TransferDbStatusService(
+            $this->services->get(TransferDbConnectionResolver::class),
+            $this->services->get(TransferDbSchemaManager::class),
+        ));
+        $this->services->set(TransferDbEndpointSnapshotWriter::class, new TransferDbEndpointSnapshotWriter(
+            $this->services->get(TransferDbConnectionResolver::class),
+            $this->services->get(TransferDbSchemaManager::class),
+            $this->services->get(TransferDbWriter::class),
+        ));
+        $this->services->set(DeletionGuard::class, new DeletionGuard(
+            $systemDatabase,
+            $this->services->get(WorkspaceRepository::class),
+            $this->services->get(ConnectionProfileRepository::class),
+            $this->services->get(EndpointRepository::class),
+            $this->services->get(JobRepository::class),
+            $this->services->get(ProcessRepository::class),
+            $this->services->get(ReportRepository::class),
+            $this->services->get(SchemaRegistryRepository::class),
         ));
         $this->services->set(WooCommerceIntegrationRepository::class, new WooCommerceIntegrationRepository(
             $systemDatabase,
@@ -410,6 +442,9 @@ final class Application
         $this->services->set('repository.schemas', $this->services->get(SchemaRegistryRepository::class));
         $this->services->set('repository.reports', $this->services->get(ReportRepository::class));
         $this->services->set('repository.endpoints', $this->services->get(EndpointRepository::class));
+        $this->services->set('admin.deletion_guard', $this->services->get(DeletionGuard::class));
+        $this->services->set('transferdb.status', $this->services->get(TransferDbStatusService::class));
+        $this->services->set('transferdb.endpoint_snapshot_writer', $this->services->get(TransferDbEndpointSnapshotWriter::class));
         $this->services->set('repository.woocommerce_integrations', $this->services->get(WooCommerceIntegrationRepository::class));
         $this->services->set('repository.woocommerce_runtime_events', $this->services->get(WooCommerceRuntimeEventRepository::class));
         $this->services->set('repository.export_profiles', $this->services->get(ExportProfileRepository::class));

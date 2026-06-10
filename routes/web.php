@@ -6,6 +6,7 @@ use Luna\Connections\ConnectionProfileData;
 use Luna\Connections\ConnectionTester;
 use Luna\Connections\ExternalDatabaseConfig;
 use Luna\Connections\ExternalPdoConnectionFactory;
+use Luna\Admin\DeletionGuard;
 use Luna\Core\Application;
 use Luna\Dataset\DatasetRegistry;
 use Luna\Deployment\DeploymentTargetUrlBuilder;
@@ -51,6 +52,8 @@ use Luna\Schema\SchemaValidator;
 use Luna\Schema\TableNameReader;
 use Luna\Transfer\DatasetTransferRunner;
 use Luna\Transfer\MappingSourceRowProvider;
+use Luna\TransferDb\TransferDbEndpointSnapshotWriter;
+use Luna\TransferDb\TransferDbStatusService;
 use Luna\TargetAction\TargetActionConfigValidator;
 use Luna\View\ViewRenderer;
 use Luna\WooCommerce\WooCommerceHposValidator;
@@ -1047,6 +1050,7 @@ if (! function_exists('connectionValues')) {
             'username' => (string) $request->post('username', ''),
             'charset' => (string) $request->post('charset', 'utf8mb4'),
             'notes' => (string) $request->post('notes', ''),
+            'shared_workspace_ids' => is_array($request->post('shared_workspace_ids', [])) ? $request->post('shared_workspace_ids', []) : [],
         ];
 
         if ($request->post('read_only') !== null) {
@@ -1261,6 +1265,53 @@ if (! function_exists('jobValues')) {
     }
 }
 
+if (! function_exists('reportValues')) {
+    function reportValues(Request $request): array
+    {
+        return [
+            'workspace_id' => $request->post('workspace_id'),
+            'name' => (string) $request->post('name', ''),
+            'report_key' => ReportRepository::normalizeKey((string) $request->post('report_key', '')),
+            'type' => (string) $request->post('type', 'process_runs'),
+            'status' => (string) $request->post('status', 'draft'),
+            'config_json' => (string) $request->post('config_json', ''),
+            'notes' => (string) $request->post('notes', ''),
+        ];
+    }
+}
+
+if (! function_exists('reportErrors')) {
+    function reportErrors(array $values, ReportRepository $reports, ?int $ignoreId = null): array
+    {
+        $errors = [];
+        if (trim((string) ($values['name'] ?? '')) === '') {
+            $errors[] = 'Name ist erforderlich.';
+        }
+        if (trim((string) ($values['report_key'] ?? '')) === '') {
+            $errors[] = 'Key ist erforderlich.';
+        }
+        if (! in_array((string) ($values['type'] ?? ''), ['process_runs', 'endpoint_snapshots', 'webhook_events', 'custom_sql_placeholder'], true)) {
+            $errors[] = 'Report-Typ ist ungültig.';
+        }
+        if (! in_array((string) ($values['status'] ?? ''), ['active', 'inactive', 'draft'], true)) {
+            $errors[] = 'Status ist ungültig.';
+        }
+        $configJson = trim((string) ($values['config_json'] ?? ''));
+        if ($configJson !== '') {
+            json_decode($configJson, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $errors[] = 'Config JSON ist ungültig: ' . json_last_error_msg();
+            }
+        }
+        $workspaceId = empty($values['workspace_id']) ? null : (int) $values['workspace_id'];
+        if (trim((string) ($values['report_key'] ?? '')) !== '' && $reports->keyExists($workspaceId, (string) $values['report_key'], $ignoreId)) {
+            $errors[] = 'Report-Key ist in diesem Workspace bereits vergeben.';
+        }
+
+        return $errors;
+    }
+}
+
 if (! function_exists('endpointValues')) {
     function endpointValues(Request $request): array
     {
@@ -1389,6 +1440,7 @@ if (! function_exists('workspaceValues')) {
             'slug' => $slug !== '' ? $slug : WorkspaceRepository::normalizeSlug($name),
             'description' => trim((string) $request->post('description', '')),
             'status' => (string) $request->post('status', 'active'),
+            'transfer_db_connection_id' => empty($request->post('transfer_db_connection_id')) ? null : (int) $request->post('transfer_db_connection_id'),
         ];
     }
 }
@@ -1450,6 +1502,9 @@ return static function (RouteCollection $routes, Application $app): void {
     $schemaValidator = static fn (): SchemaValidator => $app->services()->get(SchemaValidator::class);
     $reports = static fn (): ReportRepository => $app->services()->get('repository.reports');
     $endpoints = static fn (): EndpointRepository => $app->services()->get('repository.endpoints');
+    $deletionGuard = static fn (): DeletionGuard => $app->services()->get(DeletionGuard::class);
+    $transferDbStatus = static fn (): TransferDbStatusService => $app->services()->get(TransferDbStatusService::class);
+    $transferDbEndpointSnapshots = static fn (): TransferDbEndpointSnapshotWriter => $app->services()->get(TransferDbEndpointSnapshotWriter::class);
     $woocommerce = static fn (): WooCommerceIntegrationRepository => $app->services()->get(WooCommerceIntegrationRepository::class);
     $woocommerceValidator = static fn (): WooCommerceHposValidator => $app->services()->get(WooCommerceHposValidator::class);
     $woocommerceTransferRunner = static fn (): WooCommerceTransferRunner => $app->services()->get(WooCommerceTransferRunner::class);
@@ -1581,10 +1636,11 @@ return static function (RouteCollection $routes, Application $app): void {
         'title' => 'Workspace anlegen',
         'active' => 'workspaces',
         'values' => ['status' => 'active'],
+        'transferDbConnections' => array_values(array_filter(safeList($connections), static fn (array $connection): bool => in_array((string) ($connection['type'] ?? ''), ['transfer_db', 'mixed'], true))),
         'errors' => [],
     ]), 'admin.workspaces.create', 'web');
 
-    $routes->post('/admin/workspaces', static function (Request $request) use ($admin, $workspaces, $audit): Response {
+    $routes->post('/admin/workspaces', static function (Request $request) use ($admin, $workspaces, $connections, $audit): Response {
         $values = workspaceValues($request);
         $errors = workspaceErrors($values, $workspaces());
 
@@ -1593,13 +1649,14 @@ return static function (RouteCollection $routes, Application $app): void {
                 'title' => 'Workspace anlegen',
                 'active' => 'workspaces',
                 'values' => $values,
+                'transferDbConnections' => array_values(array_filter(safeList($connections), static fn (array $connection): bool => in_array((string) ($connection['type'] ?? ''), ['transfer_db', 'mixed'], true))),
                 'errors' => $errors,
             ]);
         }
 
-        $id = $workspaces()->create((string) $values['slug'], (string) $values['name'], trim((string) $values['description']) ?: null);
+        $id = $workspaces()->create((string) $values['slug'], (string) $values['name'], trim((string) $values['description']) ?: null, empty($values['transfer_db_connection_id']) ? null : (int) $values['transfer_db_connection_id']);
         if ((string) $values['status'] !== 'active') {
-            $workspaces()->update($id, (string) $values['slug'], (string) $values['name'], trim((string) $values['description']) ?: null, (string) $values['status']);
+            $workspaces()->update($id, (string) $values['slug'], (string) $values['name'], trim((string) $values['description']) ?: null, (string) $values['status'], empty($values['transfer_db_connection_id']) ? null : (int) $values['transfer_db_connection_id']);
         }
         $audit()->log($id, 'workspace.created', 'workspace', (string) $id, 'Workspace erstellt.', [
             'slug' => $values['slug'],
@@ -1610,7 +1667,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return workspaceCreateSuccessRedirect();
     }, 'admin.workspaces.store', 'web');
 
-    $routes->get('/admin/workspaces/{id}', static function (Request $request) use ($admin, $workspaces): Response {
+    $routes->get('/admin/workspaces/{id}', static function (Request $request) use ($admin, $workspaces, $connections): Response {
         $workspace = $workspaces()->find((int) $request->route('id'));
 
         return $admin('admin/workspaces/show', [
@@ -1618,11 +1675,12 @@ return static function (RouteCollection $routes, Application $app): void {
             'active' => 'workspaces',
             'workspace' => $workspace,
             'values' => $workspace ?? ['status' => 'active'],
+            'transferDbConnections' => array_values(array_filter(safeList($connections), static fn (array $connection): bool => in_array((string) ($connection['type'] ?? ''), ['transfer_db', 'mixed'], true))),
             'errors' => [],
         ]);
     }, 'admin.workspaces.show', 'web');
 
-    $routes->post('/admin/workspaces/{id}', static function (Request $request) use ($admin, $workspaces, $audit): Response {
+    $routes->post('/admin/workspaces/{id}', static function (Request $request) use ($admin, $workspaces, $connections, $audit): Response {
         $id = (int) $request->route('id');
         $workspace = $workspaces()->find($id);
 
@@ -1639,11 +1697,12 @@ return static function (RouteCollection $routes, Application $app): void {
                 'active' => 'workspaces',
                 'workspace' => $workspace,
                 'values' => $values + ['id' => $id],
+                'transferDbConnections' => array_values(array_filter(safeList($connections), static fn (array $connection): bool => in_array((string) ($connection['type'] ?? ''), ['transfer_db', 'mixed'], true))),
                 'errors' => $errors,
             ]);
         }
 
-        $workspaces()->update($id, (string) $values['slug'], (string) $values['name'], trim((string) $values['description']) ?: null, (string) $values['status']);
+        $workspaces()->update($id, (string) $values['slug'], (string) $values['name'], trim((string) $values['description']) ?: null, (string) $values['status'], empty($values['transfer_db_connection_id']) ? null : (int) $values['transfer_db_connection_id']);
         $audit()->log($id, 'workspace.updated', 'workspace', (string) $id, 'Workspace aktualisiert.', [
             'slug' => $values['slug'],
             'name' => $values['name'],
@@ -1797,7 +1856,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'active' => 'connections',
             'connection' => $profile,
             'workspaces' => safeList($workspaces),
-            'values' => $profile,
+            'values' => $profile + ['shared_workspace_ids' => $connections()->workspaceIdsForConnection((int) $profile['id'])],
             'roles' => ConnectionProfileData::roles(),
             'drivers' => ConnectionProfileData::drivers(),
             'errors' => [],
@@ -1849,7 +1908,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/connections']);
     }, 'admin.connections.update', 'web');
 
-    $routes->get('/admin/connections/{id}', static function (Request $request) use ($admin, $connections): Response {
+    $routes->get('/admin/connections/{id}', static function (Request $request) use ($admin, $connections, $transferDbStatus): Response {
         try {
             $profile = $connections()->find((int) $request->route('id'));
         } catch (Throwable) {
@@ -1857,19 +1916,28 @@ return static function (RouteCollection $routes, Application $app): void {
                 'title' => 'Connection',
                 'active' => 'connections',
                 'connection' => null,
+                'sharedWorkspaces' => [],
+                'transferDbStatus' => null,
                 'alert' => ['type' => 'danger', 'message' => 'Luna-Systemdatenbank ist nicht erreichbar.'],
             ]);
+        }
+
+        $status = null;
+        if ($profile !== null && in_array((string) ($profile['type'] ?? ''), ['transfer_db', 'mixed'], true)) {
+            $status = $transferDbStatus()->statusConnection((int) $profile['id']);
         }
 
         return $admin('admin/connections/show', [
             'title' => $profile['name'] ?? 'Connection',
             'active' => 'connections',
             'connection' => $profile,
+            'sharedWorkspaces' => $profile === null ? [] : $connections()->workspacesForConnection((int) $profile['id']),
+            'transferDbStatus' => $status,
             'alert' => null,
         ]);
     }, 'admin.connections.show', 'web');
 
-    $routes->post('/admin/connections/{id}/test', static function (Request $request) use ($admin, $app, $connections, $configFor): Response {
+    $routes->post('/admin/connections/{id}/test', static function (Request $request) use ($admin, $app, $connections, $configFor, $transferDbStatus): Response {
         try {
             $profile = $connections()->find((int) $request->route('id'));
 
@@ -1886,13 +1954,87 @@ return static function (RouteCollection $routes, Application $app): void {
             $alert = ['type' => 'danger', 'message' => 'Verbindungstest konnte nicht ausgeführt werden.'];
         }
 
+        $status = null;
+        if ($profile !== null && in_array((string) ($profile['type'] ?? ''), ['transfer_db', 'mixed'], true)) {
+            $status = $transferDbStatus()->statusConnection((int) $profile['id']);
+        }
+
         return $admin('admin/connections/show', [
             'title' => $profile['name'] ?? 'Connection',
             'active' => 'connections',
             'connection' => $profile,
+            'sharedWorkspaces' => $profile === null ? [] : $connections()->workspacesForConnection((int) $profile['id']),
+            'transferDbStatus' => $status,
             'alert' => $alert,
         ]);
     }, 'admin.connections.test', 'web');
+
+    $routes->post('/admin/connections/{id}/transferdb/status', static function (Request $request) use ($admin, $connections, $transferDbStatus): Response {
+        $id = (int) $request->route('id');
+        $profile = $connections()->find($id);
+        if ($profile === null) {
+            return Response::notFound();
+        }
+
+        $status = $transferDbStatus()->statusConnection($id);
+
+        return $admin('admin/connections/show', [
+            'title' => $profile['name'] ?? 'Connection',
+            'active' => 'connections',
+            'connection' => $profile,
+            'sharedWorkspaces' => $connections()->workspacesForConnection($id),
+            'transferDbStatus' => $status,
+            'alert' => [
+                'type' => ! empty($status['reachable']) ? 'success' : 'danger',
+                'message' => ! empty($status['reachable']) ? 'TransferDB-Status wurde geprüft.' : (string) ($status['error'] ?? 'TransferDB konnte nicht geprüft werden.'),
+            ],
+        ]);
+    }, 'admin.connections.transferdb.status', 'web');
+
+    $routes->post('/admin/connections/{id}/transferdb/setup', static function (Request $request) use ($admin, $connections, $transferDbStatus): Response {
+        $id = (int) $request->route('id');
+        $profile = $connections()->find($id);
+        if ($profile === null) {
+            return Response::notFound();
+        }
+
+        $status = $transferDbStatus()->migrateConnection($id);
+
+        return $admin('admin/connections/show', [
+            'title' => $profile['name'] ?? 'Connection',
+            'active' => 'connections',
+            'connection' => $profile,
+            'sharedWorkspaces' => $connections()->workspacesForConnection($id),
+            'transferDbStatus' => $status,
+            'alert' => [
+                'type' => ! empty($status['schema_current']) ? 'success' : 'danger',
+                'message' => ! empty($status['schema_current']) ? 'TransferDB-Schema wurde eingerichtet.' : (string) ($status['error'] ?? 'TransferDB-Setup ist fehlgeschlagen.'),
+            ],
+        ]);
+    }, 'admin.connections.transferdb.setup', 'web');
+
+
+    $routes->post('/admin/connections/{id}/transferdb/migrate', static function (Request $request) use ($admin, $connections, $transferDbStatus): Response {
+        $id = (int) $request->route('id');
+        $profile = $connections()->find($id);
+        if ($profile === null) {
+            return Response::notFound();
+        }
+
+        $status = $transferDbStatus()->migrateConnection($id);
+
+        return $admin('admin/connections/show', [
+            'title' => $profile['name'] ?? 'Connection',
+            'active' => 'connections',
+            'connection' => $profile,
+            'sharedWorkspaces' => $connections()->workspacesForConnection($id),
+            'transferDbStatus' => $status,
+            'alert' => [
+                'type' => ! empty($status['schema_current']) ? 'success' : 'danger',
+                'message' => ! empty($status['schema_current']) ? 'TransferDB-Schema ist installiert oder aktualisiert.' : (string) ($status['error'] ?? 'TransferDB-Migration ist fehlgeschlagen.'),
+            ],
+        ]);
+    }, 'admin.connections.transferdb.migrate', 'web');
 
     $routes->post('/admin/connections/{id}/delete', static function (Request $request) use ($admin, $connections, $audit): Response {
         $id = (int) $request->route('id');
@@ -2539,6 +2681,22 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/jobs/' . $id]);
     }, 'admin.jobs.update', 'web');
 
+    $routes->post('/admin/jobs/{id}/delete', static function (Request $request) use ($jobs, $audit): Response {
+        $id = (int) $request->route('id');
+        $job = $jobs()->find($id);
+        if ($job === null) {
+            return Response::notFound();
+        }
+        if (deleteConfirmed($request)) {
+            $jobs()->delete($id);
+            $audit()->log(empty($job['workspace_id']) ? null : (int) $job['workspace_id'], 'job.deleted', 'job', (string) $id, 'Job gelöscht.', [
+                'name' => $job['name'] ?? '',
+            ]);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/jobs']);
+    }, 'admin.jobs.delete', 'web');
+
     $routes->post('/admin/jobs/{id}/dry-run', static function (Request $request) use ($jobRunner): Response {
         $runId = $jobRunner()->runJob((int) $request->route('id'), true);
         return new Response('', 302, ['Location' => '/admin/jobs/runs/' . $runId]);
@@ -2686,10 +2844,29 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/schemas/' . $id]);
     }, 'admin.schemas.status', 'web');
 
-    $routes->post('/admin/schemas/{id}/delete', static function (Request $request) use ($schemas): Response {
+    $routes->post('/admin/schemas/{id}/delete', static function (Request $request) use ($admin, $schemas, $workspaces, $deletionGuard): Response {
         $id = (int) $request->route('id');
         if ($request->post('confirm_delete') === '1') {
-            $schemas()->delete($id);
+            try {
+                $deletionGuard()->delete('schema', $id);
+            } catch (Throwable $exception) {
+                $schema = $schemas()->find($id);
+                if ($schema === null) {
+                    return Response::notFound();
+                }
+
+                return $admin('admin/schemas/show', [
+                    'title' => 'Schema',
+                    'active' => 'schemas',
+                    'schema' => $schema,
+                    'workspaces' => safeList($workspaces),
+                    'values' => $schema,
+                    'revisions' => $schemas()->revisionsForSchema($id),
+                    'validationResult' => null,
+                    'validationPayload' => '',
+                    'alert' => ['type' => 'danger', 'message' => $exception->getMessage()],
+                ]);
+            }
         }
 
         return new Response('', 302, ['Location' => '/admin/schemas']);
@@ -3075,6 +3252,19 @@ return static function (RouteCollection $routes, Application $app): void {
             ]));
         }
     }, 'admin.processes.run', 'web');
+
+    $routes->post('/admin/processes/{id}/delete', static function (Request $request) use ($processes): Response {
+        $id = (int) $request->route('id');
+        $process = $processes()->find($id);
+        if ($process === null) {
+            return Response::notFound();
+        }
+        if (deleteConfirmed($request)) {
+            $processes()->delete($id);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/processes']);
+    }, 'admin.processes.delete', 'web');
 
     $routes->get('/admin/transfers', static function () use ($admin, $datasetTransfers): Response {
         try {
@@ -3695,16 +3885,92 @@ return static function (RouteCollection $routes, Application $app): void {
         'title' => 'Reports',
         'active' => 'reports',
         'reports' => safeList($reports),
+        'workspaces' => safeList($workspaces),
     ]), 'admin.reports', 'web');
 
-    $routes->get('/admin/reports/{id}', static function (Request $request) use ($admin, $reports): Response {
-        return $admin('admin/reports/show', ['title' => 'Report', 'active' => 'reports', 'report' => $reports()->find((int) $request->route('id')), 'result' => null]);
+    $routes->get('/admin/reports/create', static fn (): Response => $admin('admin/reports/show', [
+        'title' => 'Report anlegen',
+        'active' => 'reports',
+        'report' => null,
+        'workspaces' => safeList($workspaces),
+        'values' => ['type' => 'process_runs', 'status' => 'draft', 'config_json' => '{}'],
+        'errors' => [],
+        'result' => null,
+    ]), 'admin.reports.create', 'web');
+
+    $routes->post('/admin/reports', static function (Request $request) use ($admin, $reports, $workspaces): Response {
+        $values = reportValues($request);
+        $errors = reportErrors($values, $reports());
+        if ($errors !== []) {
+            return $admin('admin/reports/show', [
+                'title' => 'Report anlegen',
+                'active' => 'reports',
+                'report' => null,
+                'workspaces' => safeList($workspaces),
+                'values' => $values,
+                'errors' => $errors,
+                'result' => null,
+            ]);
+        }
+
+        $id = $reports()->create($values);
+
+        return new Response('', 302, ['Location' => '/admin/reports/' . $id]);
+    }, 'admin.reports.store', 'web');
+
+    $routes->get('/admin/reports/{id}', static function (Request $request) use ($admin, $reports, $workspaces): Response {
+        $report = $reports()->find((int) $request->route('id'));
+
+        return $admin('admin/reports/show', [
+            'title' => 'Report',
+            'active' => 'reports',
+            'report' => $report,
+            'workspaces' => safeList($workspaces),
+            'values' => $report ?? [],
+            'errors' => [],
+            'result' => null,
+        ]);
     }, 'admin.reports.show', 'web');
 
-    $routes->post('/admin/reports/{id}/send', static function (Request $request) use ($admin, $reports, $reportMailer): Response {
+    $routes->post('/admin/reports/{id}', static function (Request $request) use ($admin, $reports, $workspaces): Response {
+        $id = (int) $request->route('id');
+        $report = $reports()->find($id);
+        if ($report === null) {
+            return Response::notFound();
+        }
+
+        $values = reportValues($request);
+        $errors = reportErrors($values, $reports(), $id);
+        if ($errors !== []) {
+            return $admin('admin/reports/show', [
+                'title' => 'Report',
+                'active' => 'reports',
+                'report' => $report,
+                'workspaces' => safeList($workspaces),
+                'values' => $values + ['id' => $id],
+                'errors' => $errors,
+                'result' => null,
+            ]);
+        }
+
+        $reports()->update($id, $values);
+
+        return new Response('', 302, ['Location' => '/admin/reports/' . $id]);
+    }, 'admin.reports.update', 'web');
+
+    $routes->post('/admin/reports/{id}/delete', static function (Request $request) use ($reports): Response {
+        $id = (int) $request->route('id');
+        if (deleteConfirmed($request)) {
+            $reports()->delete($id);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/reports']);
+    }, 'admin.reports.delete', 'web');
+
+    $routes->post('/admin/reports/{id}/send', static function (Request $request) use ($admin, $reports, $reportMailer, $workspaces): Response {
         $id = (int) $request->route('id');
         $result = $reportMailer()->send($id);
-        return $admin('admin/reports/show', ['title' => 'Report', 'active' => 'reports', 'report' => $reports()->find($id), 'result' => $result]);
+        return $admin('admin/reports/show', ['title' => 'Report', 'active' => 'reports', 'report' => $reports()->find($id), 'values' => $reports()->find($id) ?? [], 'workspaces' => safeList($workspaces), 'errors' => [], 'result' => $result]);
     }, 'admin.reports.send', 'web');
 
     $routes->get('/admin/deployment-targets', static fn (): Response => $admin('admin/deployment-targets/index', [
@@ -3889,6 +4155,8 @@ return static function (RouteCollection $routes, Application $app): void {
             'currentEndpointUrl' => $currentUrl,
             'contractExportStatus' => null,
             'mappingSummary' => endpointMappingSummary($endpoint, $mappings, $connections),
+            'transferDbConnections' => $endpoint === null || empty($endpoint['workspace_id']) ? [] : $connections()->transferDbConnectionsForWorkspace((int) $endpoint['workspace_id']),
+            'transferDbSnapshot' => null,
             'alert' => null,
         ]);
     }, 'admin.endpoints.show', 'web');
@@ -4110,6 +4378,49 @@ return static function (RouteCollection $routes, Application $app): void {
             'result' => $result,
         ]);
     }, 'admin.endpoints.test', 'web');
+
+    $routes->post('/admin/endpoints/{id}/transferdb-snapshot', static function (Request $request) use ($admin, $endpoints, $app, $endpointExporter, $deploymentTargets, $targetUrlBuilder, $workspaces, $mappings, $connections, $jobs, $schemas, $transferDbEndpointSnapshots): Response {
+        $id = (int) $request->route('id');
+        $endpoint = $endpoints()->find($id);
+        if ($endpoint === null) {
+            return Response::notFound();
+        }
+
+        $config = json_decode((string) ($endpoint['config_json'] ?? '{}'), true) ?: [];
+        $connectionId = empty($request->post('transfer_db_connection_id')) ? null : (int) $request->post('transfer_db_connection_id');
+
+        try {
+            $result = json_decode($app->services()->get('api.endpoint_response_builder')->build($endpoint)->body(), true, 512, JSON_THROW_ON_ERROR);
+            $snapshot = $transferDbEndpointSnapshots()->write((int) $endpoint['workspace_id'], $endpoint, is_array($result) ? $result : ['result' => $result], $connectionId);
+            $alert = [
+                'type' => 'success',
+                'message' => 'Snapshot #' . (int) $snapshot['snapshot_id'] . ' wurde in TransferDB "' . (string) (($snapshot['connection']['name'] ?? null) ?: ('#' . ($snapshot['connection']['id'] ?? ''))) . '" gespeichert. Records: ' . (int) $snapshot['record_count'] . '.',
+            ];
+        } catch (Throwable $exception) {
+            $snapshot = null;
+            $alert = ['type' => 'danger', 'message' => $exception->getMessage()];
+        }
+
+        return $admin('admin/endpoints/show', [
+            'title' => 'Endpoint',
+            'active' => 'endpoints',
+            'endpoint' => $endpoint,
+            'workspaces' => safeList($workspaces),
+            'mappings' => safeList($mappings),
+            'jobs' => safeList($jobs),
+            'schemas' => $schemas()->all(),
+            'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
+            'hasSecret' => $endpoints()->hasSecret((int) $endpoint['id']),
+            'exportStatus' => $endpointExporter()->exportStatusForEndpoint((int) $endpoint['id']),
+            'contractTargets' => endpointTargetRows($endpoint, $deploymentTargets(), $targetUrlBuilder()),
+            'currentEndpointUrl' => currentEndpointUrl($request, $targetUrlBuilder(), (string) $endpoint['endpoint_key']),
+            'contractExportStatus' => null,
+            'mappingSummary' => endpointMappingSummary($endpoint, $mappings, $connections),
+            'transferDbConnections' => empty($endpoint['workspace_id']) ? [] : $connections()->transferDbConnectionsForWorkspace((int) $endpoint['workspace_id']),
+            'transferDbSnapshot' => $snapshot,
+            'alert' => $alert,
+        ]);
+    }, 'admin.endpoints.transferdb_snapshot', 'web');
 
     $routes->post('/admin/endpoints/{id}/validate-schema', static function (Request $request) use ($admin, $endpoints, $app, $schemas, $schemaValidator, $endpointExporter, $deploymentTargets, $targetUrlBuilder, $workspaces, $mappings, $connections, $jobs): Response {
         $id = (int) $request->route('id');
