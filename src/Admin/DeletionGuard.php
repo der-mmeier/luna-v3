@@ -6,12 +6,15 @@ namespace Luna\Admin;
 
 use Luna\Database\SystemDatabase;
 use Luna\Repository\ConnectionProfileRepository;
+use Luna\Repository\DatasetTransferRepository;
 use Luna\Repository\DeleteCheckResult;
 use Luna\Repository\EndpointRepository;
+use Luna\Repository\ExportProfileRepository;
 use Luna\Repository\JobRepository;
 use Luna\Repository\ProcessRepository;
 use Luna\Repository\ReportRepository;
 use Luna\Repository\SchemaRegistryRepository;
+use Luna\Repository\WooCommerceIntegrationRepository;
 use Luna\Repository\WorkspaceRepository;
 use PDO;
 
@@ -26,6 +29,9 @@ final class DeletionGuard
         private readonly ProcessRepository $processes,
         private readonly ReportRepository $reports,
         private readonly SchemaRegistryRepository $schemas,
+        private readonly DatasetTransferRepository $transfers,
+        private readonly WooCommerceIntegrationRepository $woocommerce,
+        private readonly ExportProfileRepository $exportProfiles,
     ) {
     }
 
@@ -36,6 +42,10 @@ final class DeletionGuard
             'connection', 'connection_profile' => $this->connections->canDelete($id),
             'schema' => $this->canDeleteSchema($id),
             'endpoint' => $this->endpoints->canDelete($id),
+            'transfer', 'dataset_transfer' => $this->transfers->canDelete($id),
+            'woocommerce', 'woocommerce_connection' => $this->woocommerce->canDeleteConnection($id),
+            'woocommerce_webhook' => DeleteCheckResult::allowed(),
+            'export_profile' => $this->exportProfiles->canDelete($id),
             'job', 'process', 'report' => DeleteCheckResult::allowed(),
             default => DeleteCheckResult::allowed(),
         };
@@ -54,6 +64,10 @@ final class DeletionGuard
             'report' => $this->reports->delete($id),
             'schema' => $this->schemas->delete($id),
             'endpoint' => $this->endpoints->delete($id),
+            'transfer', 'dataset_transfer' => $this->transfers->delete($id),
+            'woocommerce', 'woocommerce_connection' => $this->woocommerce->deleteConnection($id),
+            'woocommerce_webhook' => $this->deleteWooCommerceWebhook($id),
+            'export_profile' => $this->exportProfiles->delete($id),
             'connection', 'connection_profile' => $this->connections->delete($id),
             'workspace' => $this->workspaces->delete($id),
             default => throw new \InvalidArgumentException('Unbekannter Entitätstyp: ' . $entityType),
@@ -126,6 +140,16 @@ final class DeletionGuard
         $message = 'Schema "' . $label . ($version === '' ? '' : ' v' . $version) . '" kann nicht gelöscht werden, weil abhängige Ressourcen existieren. Bitte entfernen Sie die Zuordnungen zuerst.';
 
         return DeleteCheckResult::blocked($message, $blockingNames, $counts);
+    }
+
+    private function deleteWooCommerceWebhook(int $id): void
+    {
+        $webhook = $this->woocommerce->findWebhookConfig($id);
+        if ($webhook === null) {
+            return;
+        }
+
+        $this->woocommerce->deleteWebhookConfig($id, (int) ($webhook['woocommerce_connection_id'] ?? 0));
     }
 
     private function tableExists(string $table): bool

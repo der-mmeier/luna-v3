@@ -204,6 +204,15 @@ final class Application
             $this->services->get(TransferDbSchemaManager::class),
             $this->services->get(TransferDbWriter::class),
         ));
+        $this->services->set(WooCommerceIntegrationRepository::class, new WooCommerceIntegrationRepository(
+            $systemDatabase,
+            $this->services->get(EncryptionService::class),
+        ));
+        $this->services->set(WooCommerceRuntimeEventRepository::class, new WooCommerceRuntimeEventRepository($systemDatabase));
+        $this->services->set(ExportProfileRepository::class, new ExportProfileRepository(
+            $systemDatabase,
+            $this->services->get(EncryptionService::class),
+        ));
         $this->services->set(DeletionGuard::class, new DeletionGuard(
             $systemDatabase,
             $this->services->get(WorkspaceRepository::class),
@@ -213,15 +222,9 @@ final class Application
             $this->services->get(ProcessRepository::class),
             $this->services->get(ReportRepository::class),
             $this->services->get(SchemaRegistryRepository::class),
-        ));
-        $this->services->set(WooCommerceIntegrationRepository::class, new WooCommerceIntegrationRepository(
-            $systemDatabase,
-            $this->services->get(EncryptionService::class),
-        ));
-        $this->services->set(WooCommerceRuntimeEventRepository::class, new WooCommerceRuntimeEventRepository($systemDatabase));
-        $this->services->set(ExportProfileRepository::class, new ExportProfileRepository(
-            $systemDatabase,
-            $this->services->get(EncryptionService::class),
+            $this->services->get(DatasetTransferRepository::class),
+            $this->services->get(WooCommerceIntegrationRepository::class),
+            $this->services->get(ExportProfileRepository::class),
         ));
         $this->services->set(WooCommerceHposValidator::class, new WooCommerceHposValidator());
         $this->services->set(WooCommerceHposOrderReader::class, new WooCommerceHposOrderReader());

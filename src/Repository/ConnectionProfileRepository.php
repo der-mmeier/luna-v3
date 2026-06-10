@@ -139,11 +139,26 @@ final class ConnectionProfileRepository
         $jobNames = $this->jobNamesForConnection($id);
         $endpointNames = $this->endpointNamesForConnection($id);
         $defaultWorkspaceNames = $this->defaultTransferDbWorkspaceNames($id);
+        $transferNames = $this->transferNamesForConnection($id);
+        $woocommerceNames = $this->woocommerceNamesForConnection($id);
+        $datasetSourceNames = $this->datasetSourceNamesForConnection($id);
+        $reportNames = $this->reportNamesForConnection($id);
+        $targetActionNames = $this->targetActionNamesForConnection($id);
         $schemaCount = $this->countByConnection('luna_schema_snapshots', $id)
             + $this->countByConnection('luna_table_notes', $id)
             + $this->countByConnection('luna_column_notes', $id);
 
-        $blockingNames = array_values(array_unique(array_merge($mappingNames, $jobNames, $endpointNames, $defaultWorkspaceNames)));
+        $blockingNames = array_values(array_unique(array_merge(
+            $mappingNames,
+            $jobNames,
+            $endpointNames,
+            $defaultWorkspaceNames,
+            $transferNames,
+            $woocommerceNames,
+            $datasetSourceNames,
+            $reportNames,
+            $targetActionNames,
+        )));
         if ($blockingNames !== []) {
             return DeleteCheckResult::blocked(
                 sprintf('Connection "%s" kann nicht gelöscht werden, weil abhängige Ressourcen existieren. Bitte löschen, verschieben oder deaktivieren Sie diese Ressourcen zuerst.', $connectionName),
@@ -153,6 +168,11 @@ final class ConnectionProfileRepository
                     'jobs' => count($jobNames),
                     'endpoints' => count($endpointNames),
                     'workspace_defaults' => count($defaultWorkspaceNames),
+                    'transfers' => count($transferNames),
+                    'woocommerce' => count($woocommerceNames),
+                    'dataset_sources' => count($datasetSourceNames),
+                    'reports' => count($reportNames),
+                    'target_actions' => count($targetActionNames),
                     'schema' => $schemaCount,
                 ],
             );
@@ -443,6 +463,101 @@ final class ConnectionProfileRepository
         $statement->execute(['id' => $connectionId]);
 
         return array_map(static fn (array $row): string => 'Workspace Default-TransferDB "' . (string) $row['name'] . '"', $statement->fetchAll());
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function transferNamesForConnection(int $connectionId): array
+    {
+        if (! $this->columnExists('luna_dataset_transfers', 'target_connection_id')) {
+            return [];
+        }
+
+        $statement = $this->pdo()->prepare('SELECT name FROM luna_dataset_transfers WHERE target_connection_id = :id ORDER BY name');
+        $statement->execute(['id' => $connectionId]);
+
+        return array_map(static fn (array $row): string => 'Transfer "' . (string) $row['name'] . '"', $statement->fetchAll());
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function woocommerceNamesForConnection(int $connectionId): array
+    {
+        if (! $this->columnExists('luna_woocommerce_connections', 'connection_id')) {
+            return [];
+        }
+
+        $statement = $this->pdo()->prepare('SELECT name FROM luna_woocommerce_connections WHERE connection_id = :id ORDER BY name');
+        $statement->execute(['id' => $connectionId]);
+
+        return array_map(static fn (array $row): string => 'WooCommerce-Anbindung "' . (string) $row['name'] . '"', $statement->fetchAll());
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function datasetSourceNamesForConnection(int $connectionId): array
+    {
+        foreach (['luna_dataset_sources', 'luna_datasets'] as $table) {
+            if (! $this->columnExists($table, 'connection_id')) {
+                continue;
+            }
+
+            $nameColumn = $this->columnExists($table, 'name') ? 'name' : 'id';
+            $statement = $this->pdo()->prepare(sprintf('SELECT %s AS name FROM %s WHERE connection_id = :id ORDER BY %s', $nameColumn, $table, $nameColumn));
+            $statement->execute(['id' => $connectionId]);
+
+            return array_map(static fn (array $row): string => 'Dataset "' . (string) $row['name'] . '"', $statement->fetchAll());
+        }
+
+        return [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function reportNamesForConnection(int $connectionId): array
+    {
+        if (! $this->columnExists('luna_reports', 'connection_id')) {
+            return [];
+        }
+
+        $nameColumn = $this->columnExists('luna_reports', 'name') ? 'name' : 'subject';
+        $statement = $this->pdo()->prepare(sprintf('SELECT %s AS name FROM luna_reports WHERE connection_id = :id ORDER BY %s', $nameColumn, $nameColumn));
+        $statement->execute(['id' => $connectionId]);
+
+        return array_map(static fn (array $row): string => 'Report "' . (string) $row['name'] . '"', $statement->fetchAll());
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function targetActionNamesForConnection(int $connectionId): array
+    {
+        if (! $this->tableExists('luna_target_actions') || ! $this->columnExists('luna_target_actions', 'config_json')) {
+            return [];
+        }
+
+        $statement = $this->pdo()->query('SELECT name, action_key, config_json FROM luna_target_actions ORDER BY name');
+        $names = [];
+        foreach ($statement->fetchAll() as $row) {
+            $config = json_decode((string) ($row['config_json'] ?? ''), true);
+            if (! is_array($config)) {
+                continue;
+            }
+
+            $configuredId = $config['connection_id'] ?? $config['connection_profile_id'] ?? null;
+            if ((int) $configuredId !== $connectionId) {
+                continue;
+            }
+
+            $label = trim((string) ($row['name'] ?? '')) ?: (string) ($row['action_key'] ?? '');
+            $names[] = 'Target Action "' . $label . '"';
+        }
+
+        return $names;
     }
 
     private function countByConnection(string $table, int $connectionId): int

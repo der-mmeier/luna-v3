@@ -2030,7 +2030,7 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.connections.transferdb.migrate', 'web');
 
-    $routes->post('/admin/connections/{id}/delete', static function (Request $request) use ($admin, $connections, $audit): Response {
+    $routes->post('/admin/connections/{id}/delete', static function (Request $request) use ($admin, $connections, $deletionGuard, $audit): Response {
         $id = (int) $request->route('id');
         $profile = $connections()->find($id);
 
@@ -2047,16 +2047,7 @@ return static function (RouteCollection $routes, Application $app): void {
             ]);
         }
 
-        try {
-            $check = $connections()->canDelete($id);
-        } catch (Throwable) {
-            return $admin('admin/connections/show', [
-                'title' => $profile['name'] ?? 'Connection',
-                'active' => 'connections',
-                'connection' => $profile,
-                'alert' => ['type' => 'danger', 'message' => 'Connection konnte nicht gelöscht werden.'],
-            ]);
-        }
+        $check = $deletionGuard()->canDelete('connection', $id);
 
         if (! $check->allowed) {
             return $admin('admin/connections/show', [
@@ -2068,7 +2059,7 @@ return static function (RouteCollection $routes, Application $app): void {
         }
 
         try {
-            $connections()->delete($id);
+            $deletionGuard()->delete('connection', $id);
             $audit()->log(
                 empty($profile['workspace_id']) ? null : (int) $profile['workspace_id'],
                 'connection.deleted',
@@ -3365,6 +3356,52 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
     }, 'admin.transfers.update', 'web');
 
+    $routes->post('/admin/transfers/{id}/delete', static function (Request $request) use ($admin, $workspaces, $connections, $datasets, $datasetTransfers, $deletionGuard, $audit): Response {
+        $id = (int) $request->route('id');
+        $transfer = $datasetTransfers()->find($id);
+        if ($transfer === null) {
+            return Response::notFound();
+        }
+
+        $errors = [];
+        if (! deleteConfirmed($request)) {
+            $errors[] = 'Löschen wurde nicht bestätigt.';
+        } else {
+            $check = $deletionGuard()->canDelete('transfer', $id);
+            if (! $check->allowed) {
+                $errors[] = $deletionGuard()->formatBlockedMessage($check);
+            }
+        }
+
+        if ($errors !== []) {
+            return $admin('admin/transfers/show', [
+                'title' => 'Transfer',
+                'active' => 'transfers',
+                'transfer' => $transfer,
+                'fields' => $datasetTransfers()->fieldsForTransfer($id),
+                'groups' => datasetTransferGroupsWithFields($datasetTransfers(), $id),
+                'workspaces' => safeList($workspaces),
+                'connections' => safeList($connections),
+                'datasets' => $datasets()->all(),
+                'datasetFields' => $datasets()->fields((string) $transfer['source_dataset']),
+                'result' => null,
+                'errors' => $errors,
+            ]);
+        }
+
+        $deletionGuard()->delete('transfer', $id);
+        $audit()->log(
+            empty($transfer['workspace_id']) ? null : (int) $transfer['workspace_id'],
+            'transfer.deleted',
+            'dataset_transfer',
+            (string) $id,
+            'Transfer gelöscht.',
+            ['name' => $transfer['name'] ?? ''],
+        );
+
+        return new Response('', 302, ['Location' => '/admin/transfers']);
+    }, 'admin.transfers.delete', 'web');
+
     $routes->post('/admin/transfers/{id}/fields', static function (Request $request) use ($datasetTransfers): Response {
         $id = (int) $request->route('id');
         if ($datasetTransfers()->find($id) === null) {
@@ -3560,6 +3597,33 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.woocommerce.show', 'web');
 
+    $routes->post('/admin/woocommerce/{id}/delete', static function (Request $request) use ($woocommerce, $deletionGuard, $woocommerceShowResponse): Response {
+        $id = (int) $request->route('id');
+        $connection = $woocommerce()->findConnection($id);
+        if ($connection === null) {
+            return Response::notFound();
+        }
+
+        if (! deleteConfirmed($request)) {
+            return $woocommerceShowResponse($request, $connection, [
+                'type' => 'danger',
+                'message' => 'Löschen wurde nicht bestätigt.',
+            ]);
+        }
+
+        $check = $deletionGuard()->canDelete('woocommerce', $id);
+        if (! $check->allowed) {
+            return $woocommerceShowResponse($request, $connection, [
+                'type' => 'danger',
+                'message' => $deletionGuard()->formatBlockedMessage($check),
+            ]);
+        }
+
+        $deletionGuard()->delete('woocommerce', $id);
+
+        return new Response('', 302, ['Location' => '/admin/woocommerce']);
+    }, 'admin.woocommerce.delete', 'web');
+
     $routes->post('/admin/woocommerce/{id}/validate', static function (Request $request) use ($admin, $app, $woocommerce, $woocommerceValidator, $connections, $pdoFactory, $configFor, $exportProfiles): Response {
         $id = (int) $request->route('id');
         $connection = $woocommerce()->findConnection($id);
@@ -3641,6 +3705,21 @@ return static function (RouteCollection $routes, Application $app): void {
 
         return new Response('', 302, ['Location' => '/admin/woocommerce/' . $id]);
     }, 'admin.woocommerce.webhooks.update', 'web');
+
+    $routes->post('/admin/woocommerce/{id}/webhooks/{webhookId}/delete', static function (Request $request) use ($woocommerce, $deletionGuard): Response {
+        $id = (int) $request->route('id');
+        $connection = $woocommerce()->findConnection($id);
+        $webhook = $woocommerce()->findWebhookConfig((int) $request->route('webhookId'));
+        if ($connection === null || $webhook === null || (int) ($webhook['woocommerce_connection_id'] ?? 0) !== $id) {
+            return Response::notFound();
+        }
+
+        if (deleteConfirmed($request)) {
+            $deletionGuard()->delete('woocommerce_webhook', (int) $webhook['id']);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/woocommerce/' . $id]);
+    }, 'admin.woocommerce.webhooks.delete', 'web');
 
     $routes->post('/admin/woocommerce/{id}/initial-transfer', static function (Request $request) use ($admin, $app, $woocommerce, $exportProfiles): Response {
         $id = (int) $request->route('id');
@@ -3811,6 +3890,26 @@ return static function (RouteCollection $routes, Application $app): void {
 
         return new Response('', 302, ['Location' => '/admin/woocommerce/' . $id]);
     }, 'admin.woocommerce.exports.toggle', 'web');
+
+    $routes->post('/admin/woocommerce/{id}/exports/{profileId}/delete', static function (Request $request) use ($woocommerce, $exportProfiles, $deletionGuard, $woocommerceShowResponse): Response {
+        $id = (int) $request->route('id');
+        $connection = $woocommerce()->findConnection($id);
+        $profile = $exportProfiles()->find((int) $request->route('profileId'));
+        if ($connection === null || $profile === null || (int) ($profile['connection_id'] ?? 0) !== $id) {
+            return Response::notFound();
+        }
+
+        if (! deleteConfirmed($request)) {
+            return $woocommerceShowResponse($request, $connection, [
+                'type' => 'danger',
+                'message' => 'Löschen wurde nicht bestätigt.',
+            ]);
+        }
+
+        $deletionGuard()->delete('export_profile', (int) $profile['id']);
+
+        return new Response('', 302, ['Location' => '/admin/woocommerce/' . $id]);
+    }, 'admin.woocommerce.exports.delete', 'web');
 
     $routes->post('/admin/woocommerce/{id}/exports/{profileId}/test', static function (Request $request) use ($woocommerce, $exportProfiles, $woocommerceExport, $woocommerceShowResponse): Response {
         $id = (int) $request->route('id');

@@ -230,6 +230,22 @@ final class ExportProfileRepository
         ]);
     }
 
+    public function canDelete(int $profileId): DeleteCheckResult
+    {
+        $profile = $this->find($profileId);
+        if ($profile === null) {
+            return DeleteCheckResult::allowed();
+        }
+
+        return DeleteCheckResult::allowed();
+    }
+
+    public function delete(int $profileId): void
+    {
+        $statement = $this->pdo()->prepare('DELETE FROM luna_export_profiles WHERE id = :id');
+        $statement->execute(['id' => $profileId]);
+    }
+
     /**
      * @param array<string, mixed> $profile
      */

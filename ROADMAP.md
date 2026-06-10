@@ -6,4 +6,4 @@ Die zentrale Architektur- und Schichtdefinition ist in [`docs/ARCHITECTURE.md`](
 
 Diese Root-Datei bleibt bewusst kurz, damit keine widersprüchlichen aktiven Roadmaps im Repository entstehen.
 
-Aktueller Stand: `v2.7.2 - Admin Cleanup, Deletion Safety & TransferDB Workspace Sharing` ist abgeschlossen. Nächster Meilenstein ist `v2.8.0 - Exportable Webhook Runtime Packages`.
+Aktueller Stand: `v2.7.2 - Admin Cleanup, Deletion Safety & TransferDB Workspace Sharing` ist abgeschlossen / merged pending. Nächster Meilenstein ist `v2.8.0 - Exportable Webhook Runtime Packages`.

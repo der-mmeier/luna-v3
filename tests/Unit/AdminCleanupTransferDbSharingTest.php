@@ -9,9 +9,12 @@ use Luna\Database\DatabaseConfig;
 use Luna\Database\PdoConnectionFactory;
 use Luna\Database\SystemDatabase;
 use Luna\Repository\ConnectionProfileRepository;
+use Luna\Repository\DatasetTransferRepository;
+use Luna\Repository\ExportProfileRepository;
 use Luna\Repository\JobRepository;
 use Luna\Repository\ReportRepository;
 use Luna\Repository\SchemaRegistryRepository;
+use Luna\Repository\WooCommerceIntegrationRepository;
 use Luna\Security\EncryptionService;
 use Luna\TransferDb\TransferDbSchemaManager;
 use PDO;
@@ -56,6 +59,8 @@ final class AdminCleanupTransferDbSharingTest extends TestCase
         $pdo->exec("INSERT INTO luna_mapping_sets (id, workspace_id, name, source_connection_id) VALUES (20, 1, 'ISR Prices Mapping', 10)");
         $pdo->exec("INSERT INTO luna_jobs (id, workspace_id, name, mapping_set_id) VALUES (30, 1, 'Connection Smoke Test', 20)");
         $pdo->exec("INSERT INTO luna_endpoints (id, workspace_id, name, endpoint_key, mapping_set_id) VALUES (40, 1, 'ISR Prices Endpoint Mapping v2', 'isr_prices', 20)");
+        $pdo->exec("INSERT INTO luna_dataset_transfers (id, workspace_id, name, target_connection_id) VALUES (50, 1, 'ISR Transfer Test', 10)");
+        $pdo->exec("INSERT INTO luna_woocommerce_connections (id, workspace_id, connection_id, name) VALUES (60, 1, 10, 'WooCommerce Runtime Test')");
 
         $check = $repo->canDelete(10);
 
@@ -64,6 +69,8 @@ final class AdminCleanupTransferDbSharingTest extends TestCase
         self::assertContains('Mapping "ISR Prices Mapping"', $check->blockingNames);
         self::assertContains('Job "Connection Smoke Test"', $check->blockingNames);
         self::assertContains('Endpoint "ISR Prices Endpoint Mapping v2"', $check->blockingNames);
+        self::assertContains('Transfer "ISR Transfer Test"', $check->blockingNames);
+        self::assertContains('WooCommerce-Anbindung "WooCommerce Runtime Test"', $check->blockingNames);
     }
 
     public function testJobDeleteCascadesRunsLogsAndReports(): void
@@ -97,6 +104,69 @@ final class AdminCleanupTransferDbSharingTest extends TestCase
 
         $repo->delete($id);
         self::assertNull($repo->find($id));
+    }
+
+    public function testTransferDeleteBlocksExistingRunsAndDeletesOwnConfiguration(): void
+    {
+        $pdo = $this->transferPdo();
+        $repo = new DatasetTransferRepository($this->systemDatabase(), $pdo);
+        $pdo->exec("INSERT INTO luna_workspaces (id, slug, name) VALUES (1, 'asf', 'AsfInStocks')");
+        $pdo->exec("INSERT INTO luna_connection_profiles (id, workspace_id, name) VALUES (10, 1, 'TransferDB')");
+        $pdo->exec("INSERT INTO luna_dataset_transfers (id, workspace_id, name, source_dataset, target_connection_id) VALUES (20, 1, 'ISR Transfer Test', 'isr_prices', 10)");
+        $pdo->exec("INSERT INTO luna_dataset_transfer_fields (id, transfer_id, dataset_field, target_column) VALUES (21, 20, 'model', 'sku')");
+        $pdo->exec("INSERT INTO luna_dataset_transfer_groups (id, transfer_id, name) VALUES (22, 20, 'orders')");
+        $pdo->exec("INSERT INTO luna_dataset_transfer_runs (id, transfer_id, created_at) VALUES (23, 20, '2026-06-09 20:15:00')");
+
+        $blocked = $repo->canDelete(20);
+
+        self::assertFalse($blocked->allowed);
+        self::assertContains('Transfer Run #23 vom 2026-06-09 20:15:00', $blocked->blockingNames);
+
+        $pdo->exec('DELETE FROM luna_dataset_transfer_runs WHERE transfer_id = 20');
+        self::assertTrue($repo->canDelete(20)->allowed);
+
+        $repo->delete(20);
+
+        self::assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM luna_dataset_transfers')->fetchColumn());
+        self::assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM luna_dataset_transfer_fields')->fetchColumn());
+        self::assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM luna_dataset_transfer_groups')->fetchColumn());
+    }
+
+    public function testWooCommerceConnectionDeleteBlocksExportProfilesAndDeletesLocalChildren(): void
+    {
+        $pdo = $this->woocommercePdo();
+        $encryption = new EncryptionService(new Config());
+        $woocommerce = new WooCommerceIntegrationRepository($this->systemDatabase(), $encryption, $pdo);
+        $profiles = new ExportProfileRepository($this->systemDatabase(), $encryption, $pdo);
+        $pdo->exec("INSERT INTO luna_workspaces (id, slug, name) VALUES (1, 'asf', 'AsfInStocks')");
+        $pdo->exec("INSERT INTO luna_connection_profiles (id, workspace_id, name) VALUES (10, 1, 'Woo DB')");
+        $pdo->exec("INSERT INTO luna_woocommerce_connections (id, workspace_id, connection_id, name, connection_token) VALUES (20, 1, 10, 'Woo Runtime', 'token')");
+        $pdo->exec("INSERT INTO luna_export_profiles (id, workspace_id, connection_id, integration_type, profile_key, name) VALUES (30, 1, 20, 'woocommerce', 'orders', 'Woo Orders')");
+
+        $blocked = $woocommerce->canDeleteConnection(20);
+
+        self::assertFalse($blocked->allowed);
+        self::assertContains('Exportprofil "Woo Orders"', $blocked->blockingNames);
+
+        $profiles->delete(30);
+        $pdo->exec("INSERT INTO luna_woocommerce_webhook_configs (id, workspace_id, woocommerce_connection_id, webhook_name, topic) VALUES (40, 1, 20, 'Order Updated', 'order.updated')");
+        $pdo->exec("INSERT INTO luna_woocommerce_webhook_events (id, workspace_id, woocommerce_connection_id, topic) VALUES (41, 1, 20, 'order.updated')");
+        $pdo->exec("INSERT INTO luna_woocommerce_transfer_queue (id, workspace_id, woocommerce_connection_id, status) VALUES (42, 1, 20, 'pending')");
+        $pdo->exec("INSERT INTO luna_woocommerce_transfer_runs (id, workspace_id, woocommerce_connection_id, queue_id, status) VALUES (43, 1, 20, 42, 'success')");
+
+        self::assertTrue($woocommerce->canDeleteConnection(20)->allowed);
+
+        $woocommerce->deleteConnection(20);
+
+        foreach ([
+            'luna_woocommerce_connections',
+            'luna_woocommerce_webhook_configs',
+            'luna_woocommerce_webhook_events',
+            'luna_woocommerce_transfer_queue',
+            'luna_woocommerce_transfer_runs',
+        ] as $table) {
+            self::assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn(), $table);
+        }
     }
 
     public function testSchemaDeleteReportsEndpointBlockerName(): void
@@ -140,6 +210,8 @@ final class AdminCleanupTransferDbSharingTest extends TestCase
         $pdo->exec('CREATE TABLE luna_mapping_fields (id INTEGER PRIMARY KEY, mapping_set_id INTEGER, target_column TEXT, lookup_connection_id INTEGER NULL)');
         $pdo->exec('CREATE TABLE luna_jobs (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, name TEXT, mapping_set_id INTEGER NULL)');
         $pdo->exec('CREATE TABLE luna_endpoints (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, name TEXT, endpoint_key TEXT, mapping_set_id INTEGER NULL)');
+        $pdo->exec('CREATE TABLE luna_dataset_transfers (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, name TEXT, target_connection_id INTEGER NULL)');
+        $pdo->exec('CREATE TABLE luna_woocommerce_connections (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, connection_id INTEGER, name TEXT)');
 
         return $pdo;
     }
@@ -172,6 +244,34 @@ final class AdminCleanupTransferDbSharingTest extends TestCase
         $pdo->exec('CREATE TABLE luna_schemas (id INTEGER PRIMARY KEY, workspace_id INTEGER, schema_key TEXT, version TEXT, name TEXT, description TEXT NULL, definition_json TEXT, example_json TEXT NULL, status TEXT, created_at TEXT NULL, updated_at TEXT NULL)');
         $pdo->exec('CREATE TABLE luna_schema_revisions (id INTEGER PRIMARY KEY, schema_id INTEGER, version TEXT, definition_json TEXT, example_json TEXT NULL, change_summary TEXT NULL, created_at TEXT NULL)');
         $pdo->exec('CREATE TABLE luna_endpoints (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, name TEXT, endpoint_key TEXT, schema_id INTEGER NULL)');
+
+        return $pdo;
+    }
+
+    private function transferPdo(): PDO
+    {
+        $pdo = $this->memoryPdo();
+        $pdo->exec('CREATE TABLE luna_workspaces (id INTEGER PRIMARY KEY, slug TEXT, name TEXT)');
+        $pdo->exec('CREATE TABLE luna_connection_profiles (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, name TEXT)');
+        $pdo->exec('CREATE TABLE luna_dataset_transfers (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, name TEXT, source_dataset TEXT NULL, target_connection_id INTEGER NULL, target_table TEXT NULL)');
+        $pdo->exec('CREATE TABLE luna_dataset_transfer_fields (id INTEGER PRIMARY KEY, transfer_id INTEGER, dataset_field TEXT, target_column TEXT)');
+        $pdo->exec('CREATE TABLE luna_dataset_transfer_groups (id INTEGER PRIMARY KEY, transfer_id INTEGER, name TEXT)');
+        $pdo->exec('CREATE TABLE luna_dataset_transfer_runs (id INTEGER PRIMARY KEY, transfer_id INTEGER, created_at TEXT)');
+
+        return $pdo;
+    }
+
+    private function woocommercePdo(): PDO
+    {
+        $pdo = $this->memoryPdo();
+        $pdo->exec('CREATE TABLE luna_workspaces (id INTEGER PRIMARY KEY, slug TEXT, name TEXT)');
+        $pdo->exec('CREATE TABLE luna_connection_profiles (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, name TEXT)');
+        $pdo->exec('CREATE TABLE luna_woocommerce_connections (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, connection_id INTEGER, name TEXT, connection_token TEXT)');
+        $pdo->exec('CREATE TABLE luna_woocommerce_webhook_configs (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, woocommerce_connection_id INTEGER, webhook_name TEXT, topic TEXT)');
+        $pdo->exec('CREATE TABLE luna_woocommerce_webhook_events (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, woocommerce_connection_id INTEGER, topic TEXT)');
+        $pdo->exec('CREATE TABLE luna_woocommerce_transfer_queue (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, woocommerce_connection_id INTEGER, status TEXT)');
+        $pdo->exec('CREATE TABLE luna_woocommerce_transfer_runs (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, woocommerce_connection_id INTEGER, queue_id INTEGER NULL, status TEXT)');
+        $pdo->exec('CREATE TABLE luna_export_profiles (id INTEGER PRIMARY KEY, workspace_id INTEGER NULL, connection_id INTEGER NULL, integration_type TEXT, profile_key TEXT, name TEXT)');
 
         return $pdo;
     }

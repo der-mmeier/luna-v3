@@ -70,7 +70,7 @@ Diese Regeln gelten fÃ¼r alle kommenden Versionen:
 | `v2.6.0` | abgeschlossen | Schema Registry & Validation |
 | `v2.7.0` | abgeschlossen | WooCommerce Runtime Module |
 | `v2.7.1` | abgeschlossen | TransferDB Foundation & Runtime Storage |
-| `v2.7.2` | abgeschlossen | Admin Cleanup, Deletion Safety & TransferDB Workspace Sharing |
+| `v2.7.2` | abgeschlossen / merged pending | Admin Cleanup, Deletion Safety & TransferDB Workspace Sharing |
 | `v2.8.0` | nächster Meilenstein | Exportable Webhook Runtime Packages |
 
 ---
@@ -521,7 +521,7 @@ Abgrenzung:
 
 ### v2.7.2 - Admin Cleanup, Deletion Safety & TransferDB Workspace Sharing
 
-Status: abgeschlossen
+Status: abgeschlossen / merged pending
 
 Ziel:
 
@@ -530,7 +530,9 @@ Luna wird administrativ aufräumbar und TransferDB-Connections können kontrolli
 Umgesetzt:
 
 - Zentraler Delete-/Dependency-Guard für präzise Blocker-Meldungen.
+- Connections löschen läuft über den Guard und meldet Jobs, Mappings, Endpoints, Transfers, WooCommerce-Anbindungen, Reports, Dataset Sources, Target Actions und Workspace-Defaults mit Namen.
 - Jobs können inklusive eigener Runs, Logs und Reports gelöscht werden.
+- Transfers können per POST gelöscht werden; vorhandene Transfer Runs blockieren mit konkreter Run-ID.
 - Reports haben CRUD-Grundbestand mit JSON-Konfigurationsvalidierung.
 - Prozesse können inklusive Steps, Triggern, Runs und Logs gelöscht werden.
 - Schemas liefern konkrete Blocker-Meldungen, wenn Endpoints sie referenzieren.
@@ -538,6 +540,7 @@ Umgesetzt:
 - TransferDB-Auswahl findet Owner- und freigegebene TransferDB-Connections.
 - Endpoint-Snapshots können aus freigegebenen TransferDBs gespeichert werden.
 - TransferDB-Management-Aktionen bleiben auf die ausgewählte TransferDB beschränkt und fassen keine Fremdtabellen an.
+- WooCommerce-Anbindungen, lokale Webhook-Prüfkonfigurationen und WooCommerce-Exportprofile sind kontrolliert löschbar; externe WooCommerce-Daten werden nicht verändert.
 - Smoke-/Codex-Testdaten werden durch löschbare Jobs/Reports und testlokale Fixtures nicht weiter vervielfältigt.
 
 Abgrenzung:

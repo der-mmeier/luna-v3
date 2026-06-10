@@ -144,6 +144,10 @@ final class AdminDeleteActionsTest extends TestCase
             '/admin/mappings/1/delete',
             '/admin/mappings/1/fields/2/sort-order',
             '/admin/endpoints/1/delete',
+            '/admin/transfers/1/delete',
+            '/admin/woocommerce/1/delete',
+            '/admin/woocommerce/1/webhooks/2/delete',
+            '/admin/woocommerce/1/exports/2/delete',
         ] as $path) {
             self::assertNull($routes->match(new \Luna\Http\Request('GET', $path)), $path);
             self::assertNotNull($routes->match(new \Luna\Http\Request('POST', $path)), $path);

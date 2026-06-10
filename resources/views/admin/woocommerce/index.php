@@ -36,7 +36,15 @@
                     <td>
                         <?= ! empty($item['hpos_enabled']) && ! empty($item['hpos_authoritative']) ? 'gültig' : 'nicht validiert' ?>
                     </td>
-                    <td><a class="btn btn-sm btn-outline-primary" href="/admin/woocommerce/<?= (int) $item['id'] ?>">Öffnen</a></td>
+                    <td>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <a class="btn btn-sm btn-outline-primary" href="/admin/woocommerce/<?= (int) $item['id'] ?>">Öffnen</a>
+                            <form method="post" action="/admin/woocommerce/<?= (int) $item['id'] ?>/delete" onsubmit="return confirm('Diese WooCommerce-Anbindung wirklich löschen? Lokale Luna-Kinddaten werden entfernt, externe WooCommerce-Daten bleiben unverändert.');">
+                                <input type="hidden" name="confirm_delete" value="1">
+                                <button class="btn btn-sm btn-outline-danger" type="submit">Löschen</button>
+                            </form>
+                        </div>
+                    </td>
                 </tr>
             <?php endforeach; ?>
             <?php if (($items ?? []) === []): ?>

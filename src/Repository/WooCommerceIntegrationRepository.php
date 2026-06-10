@@ -194,6 +194,79 @@ final class WooCommerceIntegrationRepository
         $statement->execute($payload);
     }
 
+    public function findWebhookConfig(int $id): ?array
+    {
+        $statement = $this->pdo()->prepare('SELECT * FROM luna_woocommerce_webhook_configs WHERE id = :id');
+        $statement->execute(['id' => $id]);
+        $row = $statement->fetch(PDO::FETCH_ASSOC);
+
+        return $row === false ? null : $row;
+    }
+
+    public function deleteWebhookConfig(int $id, int $woocommerceConnectionId): void
+    {
+        $statement = $this->pdo()->prepare(
+            'DELETE FROM luna_woocommerce_webhook_configs
+             WHERE id = :id AND woocommerce_connection_id = :connection_id',
+        );
+        $statement->execute([
+            'id' => $id,
+            'connection_id' => $woocommerceConnectionId,
+        ]);
+    }
+
+    public function canDeleteConnection(int $id): DeleteCheckResult
+    {
+        $connection = $this->findConnection($id);
+        if ($connection === null) {
+            return DeleteCheckResult::allowed();
+        }
+
+        $exportProfiles = $this->exportProfileNamesForConnection($id);
+        if ($exportProfiles === []) {
+            return DeleteCheckResult::allowed();
+        }
+
+        return DeleteCheckResult::blocked(
+            sprintf(
+                'WooCommerce-Anbindung "%s" kann nicht gelöscht werden, weil noch Exportprofile existieren. Bitte löschen Sie diese Profile zuerst.',
+                (string) ($connection['name'] ?? ('#' . $id)),
+            ),
+            $exportProfiles,
+            ['export_profiles' => count($exportProfiles)],
+        );
+    }
+
+    public function deleteConnection(int $id): void
+    {
+        $pdo = $this->pdo();
+        $pdo->beginTransaction();
+
+        try {
+            foreach ([
+                'luna_woocommerce_transfer_runs',
+                'luna_woocommerce_transfer_queue',
+                'luna_woocommerce_webhook_events',
+                'luna_woocommerce_webhook_configs',
+                'luna_woocommerce_order_itemmeta',
+                'luna_woocommerce_order_meta',
+                'luna_woocommerce_order_items',
+                'luna_woocommerce_order_addresses',
+                'luna_woocommerce_order_headers',
+            ] as $table) {
+                if ($this->tableExists($table) && $this->columnExists($table, 'woocommerce_connection_id')) {
+                    $pdo->prepare(sprintf('DELETE FROM %s WHERE woocommerce_connection_id = :id', $table))->execute(['id' => $id]);
+                }
+            }
+
+            $pdo->prepare('DELETE FROM luna_woocommerce_connections WHERE id = :id')->execute(['id' => $id]);
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
     public function secretForTopic(int $woocommerceConnectionId, string $topic): ?string
     {
         $statement = $this->pdo()->prepare(
@@ -477,6 +550,54 @@ final class WooCommerceIntegrationRepository
     private function now(): string
     {
         return date('Y-m-d H:i:s');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function exportProfileNamesForConnection(int $id): array
+    {
+        if (! $this->tableExists('luna_export_profiles') || ! $this->columnExists('luna_export_profiles', 'connection_id')) {
+            return [];
+        }
+
+        $statement = $this->pdo()->prepare(
+            "SELECT name, profile_key
+             FROM luna_export_profiles
+             WHERE integration_type = 'woocommerce' AND connection_id = :id
+             ORDER BY name",
+        );
+        $statement->execute(['id' => $id]);
+
+        $names = [];
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $profile) {
+            $label = trim((string) ($profile['name'] ?? '')) ?: (string) ($profile['profile_key'] ?? '');
+            $names[] = 'Exportprofil "' . $label . '"';
+        }
+
+        return $names;
+    }
+
+    private function tableExists(string $table): bool
+    {
+        try {
+            $this->pdo()->query(sprintf('SELECT 1 FROM %s WHERE 1 = 0', $table));
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function columnExists(string $table, string $column): bool
+    {
+        try {
+            $this->pdo()->query(sprintf('SELECT %s FROM %s WHERE 1 = 0', $column, $table));
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     private function pdo(): PDO

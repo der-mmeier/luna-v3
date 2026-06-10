@@ -134,17 +134,20 @@ Luna administrativ aufräumbar machen, präzise Löschblocker anzeigen und Trans
 - `src/Repository/WorkspaceRepository.php`
 - `src/Repository/JobRepository.php`
 - `src/Repository/ReportRepository.php`
+- `src/Repository/DatasetTransferRepository.php`
+- `src/Repository/WooCommerceIntegrationRepository.php`
+- `src/Repository/ExportProfileRepository.php`
 - `src/TransferDb/*`
 - `routes/web.php`
 - `bin/luna`
-- Admin-Views für Connections, Workspaces, Jobs, Reports, Prozesse, Schemas und Endpoints
+- Admin-Views für Connections, Workspaces, Jobs, Reports, Prozesse, Schemas, Endpoints, Transfers und WooCommerce
 - `tests/Unit/AdminCleanupTransferDbSharingTest.php`
 - `tests/Unit/AdminDeleteActionsTest.php`
 - `ROADMAP.md`, `docs/ROADMAP.md`, `CHANGELOG.md`, `docs/CODEX_PROTOCOL.md`
 
 ### Ergebnis
 
-Connections behalten einen Owner-Workspace und können explizit für weitere Workspaces freigegeben werden. TransferDB-Management läuft gegen die ausgewählte TransferDB und zeigt vorhandene/fehlende Tabellen. Jobs, Reports und Prozesse sind kontrolliert löschbar. Schema- und Connection-Löschungen liefern konkrete Blocker mit Entitätstyp und Namen.
+Connections behalten einen Owner-Workspace und können explizit für weitere Workspaces freigegeben werden. TransferDB-Management läuft gegen die ausgewählte TransferDB und zeigt vorhandene/fehlende Tabellen. Jobs, Reports, Prozesse, Transfers, WooCommerce-Anbindungen, lokale WooCommerce-Webhook-Prüfkonfigurationen und WooCommerce-Exportprofile sind kontrolliert löschbar. Schema-, Transfer- und Connection-Löschungen liefern konkrete Blocker mit Entitätstyp und Namen.
 
 ### Offene Punkte
 
@@ -152,7 +155,7 @@ Weitere Ressourcenfreigaben wie Schemas, Deployment Targets oder Target Actions 
 
 ### Commit-Hash
 
-Noch nicht committed.
+Noch nicht committed. Nachtrag: Connections, Transfers und WooCommerce Admin Cleanup ergänzt.
 ---
 
 ## 2026-06-02 â€” 1.8.0 Dataset Sources Foundation

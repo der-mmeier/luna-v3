@@ -231,6 +231,46 @@ final class DatasetTransferRepository
         $statement->execute(['id' => $fieldId]);
     }
 
+    public function canDelete(int $id): DeleteCheckResult
+    {
+        $transfer = $this->find($id);
+        if ($transfer === null) {
+            return DeleteCheckResult::allowed();
+        }
+
+        $blockingNames = $this->runNamesForTransfer($id);
+        if ($blockingNames === []) {
+            return DeleteCheckResult::allowed();
+        }
+
+        return DeleteCheckResult::blocked(
+            sprintf(
+                'Transfer "%s" kann nicht gelöscht werden, weil noch Transfer Runs existieren. Bitte prüfen oder bereinigen Sie diese Runs zuerst.',
+                (string) ($transfer['name'] ?? ('#' . $id)),
+            ),
+            $blockingNames,
+            ['transfer_runs' => count($blockingNames)],
+        );
+    }
+
+    public function delete(int $id): void
+    {
+        $pdo = $this->pdo();
+        $pdo->beginTransaction();
+
+        try {
+            $pdo->prepare('DELETE FROM luna_dataset_transfer_fields WHERE transfer_id = :id')->execute(['id' => $id]);
+            if ($this->tableExists('luna_dataset_transfer_groups')) {
+                $pdo->prepare('DELETE FROM luna_dataset_transfer_groups WHERE transfer_id = :id')->execute(['id' => $id]);
+            }
+            $pdo->prepare('DELETE FROM luna_dataset_transfers WHERE id = :id')->execute(['id' => $id]);
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
     /**
      * @param array<string, mixed> $data
      *
@@ -302,6 +342,44 @@ final class DatasetTransferRepository
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    private function tableExists(string $table): bool
+    {
+        try {
+            $this->pdo()->query(sprintf('SELECT 1 FROM %s WHERE 1 = 0', $table));
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function runNamesForTransfer(int $id): array
+    {
+        if (! $this->tableExists('luna_dataset_transfer_runs') || ! $this->columnExists('luna_dataset_transfer_runs', 'transfer_id')) {
+            return [];
+        }
+
+        $createdColumn = $this->columnExists('luna_dataset_transfer_runs', 'created_at') ? 'created_at' : 'id';
+        $statement = $this->pdo()->prepare(
+            sprintf(
+                'SELECT id, %s AS created_at FROM luna_dataset_transfer_runs WHERE transfer_id = :id ORDER BY id DESC LIMIT 10',
+                $createdColumn,
+            ),
+        );
+        $statement->execute(['id' => $id]);
+
+        $names = [];
+        foreach ($statement->fetchAll() as $run) {
+            $createdAt = (string) ($run['created_at'] ?? '');
+            $names[] = 'Transfer Run #' . (int) $run['id'] . ($createdAt === '' ? '' : ' vom ' . $createdAt);
+        }
+
+        return $names;
     }
 
     private function pdo(): PDO

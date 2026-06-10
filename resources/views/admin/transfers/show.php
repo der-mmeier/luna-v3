@@ -18,7 +18,13 @@ $datasetFieldNames = array_map(static fn (array $datasetField): string => (strin
         <h1 class="h3 mb-1"><?= htmlspecialchars((string) ($transfer['name'] ?? 'Transfer'), ENT_QUOTES, 'UTF-8') ?></h1>
         <p class="text-body-secondary mb-0">Ein Dataset Row wird in genau eine Ziel-Zeile übersetzt.</p>
     </div>
-    <a class="btn btn-outline-secondary" href="/admin/transfers">Zurück</a>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-secondary" href="/admin/transfers">Zurück</a>
+        <form method="post" action="/admin/transfers/<?= (int) ($transfer['id'] ?? 0) ?>/delete" onsubmit="return confirm('Diesen Transfer wirklich löschen?');">
+            <input type="hidden" name="confirm_delete" value="1">
+            <button class="btn btn-outline-danger" type="submit">Löschen</button>
+        </form>
+    </div>
 </div>
 
 <?php foreach ($errors ?? [] as $error): ?>

@@ -39,7 +39,15 @@
                     </td>
                     <td><?= htmlspecialchars((string) ($transfer['operation_type'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
                     <td><?= htmlspecialchars((string) ($transfer['status'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
-                    <td><a class="btn btn-sm btn-outline-primary" href="/admin/transfers/<?= (int) $transfer['id'] ?>">Öffnen</a></td>
+                    <td>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <a class="btn btn-sm btn-outline-primary" href="/admin/transfers/<?= (int) $transfer['id'] ?>">Öffnen</a>
+                            <form method="post" action="/admin/transfers/<?= (int) $transfer['id'] ?>/delete" onsubmit="return confirm('Diesen Transfer wirklich löschen?');">
+                                <input type="hidden" name="confirm_delete" value="1">
+                                <button class="btn btn-sm btn-outline-danger" type="submit">Löschen</button>
+                            </form>
+                        </div>
+                    </td>
                 </tr>
             <?php endforeach; ?>
             <?php if (($transfers ?? []) === []): ?>
