@@ -194,6 +194,36 @@ final class WooCommerceIntegrationRepository
         $statement->execute($payload);
     }
 
+    public function findWebhookConfig(int $id): ?array
+    {
+        $statement = $this->pdo()->prepare(
+            'SELECT * FROM luna_woocommerce_webhook_configs WHERE id = :id',
+        );
+        $statement->execute(['id' => $id]);
+        $row = $statement->fetch(PDO::FETCH_ASSOC);
+
+        if ($row === false) {
+            return null;
+        }
+
+        $row['has_secret'] = ! empty($row['secret_encrypted']);
+        unset($row['secret_encrypted']);
+
+        return $row;
+    }
+
+    public function deleteWebhookConfig(int $id): void
+    {
+        $statement = $this->pdo()->prepare('DELETE FROM luna_woocommerce_webhook_configs WHERE id = :id');
+        $statement->execute(['id' => $id]);
+    }
+
+    public function deleteConnection(int $id): void
+    {
+        $statement = $this->pdo()->prepare('DELETE FROM luna_woocommerce_connections WHERE id = :id');
+        $statement->execute(['id' => $id]);
+    }
+
     public function secretForTopic(int $woocommerceConnectionId, string $topic): ?string
     {
         $statement = $this->pdo()->prepare(

@@ -6,6 +6,7 @@ use Luna\Connections\ConnectionProfileData;
 use Luna\Connections\ConnectionTester;
 use Luna\Connections\ExternalDatabaseConfig;
 use Luna\Connections\ExternalPdoConnectionFactory;
+use Luna\Admin\DeletionGuard;
 use Luna\Core\Application;
 use Luna\Dataset\DatasetRegistry;
 use Luna\Deployment\DeploymentTargetUrlBuilder;
@@ -1084,6 +1085,42 @@ if (! function_exists('deleteBlockedMessage')) {
     }
 }
 
+if (! function_exists('reportValues')) {
+    function reportValues(Request $request): array
+    {
+        return [
+            'workspace_id' => $request->post('workspace_id'),
+            'type' => trim((string) $request->post('type', 'manual')) ?: 'manual',
+            'subject' => trim((string) $request->post('subject', '')),
+            'body' => trim((string) $request->post('body', '')),
+            'recipients' => trim((string) $request->post('recipients', '')),
+            'status' => trim((string) $request->post('status', 'created')) ?: 'created',
+        ];
+    }
+}
+
+if (! function_exists('reportErrors')) {
+    function reportErrors(array $values): array
+    {
+        $errors = [];
+        if (trim((string) ($values['subject'] ?? '')) === '') {
+            $errors[] = 'Betreff ist erforderlich.';
+        }
+        if (trim((string) ($values['body'] ?? '')) === '') {
+            $errors[] = 'Inhalt ist erforderlich.';
+        }
+
+        return $errors;
+    }
+}
+
+if (! function_exists('deleteGuardMessage')) {
+    function deleteGuardMessage(DeletionGuard $guard, array $check): string
+    {
+        return $guard->message($check);
+    }
+}
+
 if (! function_exists('connectionTablesJsonResponse')) {
     function connectionTablesJsonResponse(Closure $connections, Closure $pdoFactory, Closure $configFor, int $connectionId): Response
     {
@@ -1491,6 +1528,7 @@ return static function (RouteCollection $routes, Application $app): void {
     $processRunner = static fn (): ProcessRunner => $app->services()->get(ProcessRunner::class);
     $triggerUrlBuilder = static fn (): TriggerUrlBuilder => $app->services()->get(TriggerUrlBuilder::class);
     $reportMailer = static fn (): ReportMailer => $app->services()->get('reports.mailer');
+    $deletionGuard = static fn (): DeletionGuard => $app->services()->get(DeletionGuard::class);
     $validator = static fn (): MappingValidator => $app->services()->get('mapping.validator');
     $pdoFactory = static fn (): ExternalPdoConnectionFactory => $app->services()->get('connections.pdo_factory');
     $transferDbStatus = static fn (): TransferDbStatusService => $app->services()->get(TransferDbStatusService::class);
@@ -1732,7 +1770,7 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.workspaces.transferdb_migrate', 'web');
 
-    $routes->post('/admin/workspaces/{id}/delete', static function (Request $request) use ($admin, $workspaces, $audit): Response {
+    $routes->post('/admin/workspaces/{id}/delete', static function (Request $request) use ($admin, $workspaces, $audit, $deletionGuard): Response {
         $id = (int) $request->route('id');
         $workspace = $workspaces()->find($id);
 
@@ -1751,7 +1789,7 @@ return static function (RouteCollection $routes, Application $app): void {
         }
 
         try {
-            $check = $workspaces()->canDelete($id);
+            $check = $deletionGuard()->canDelete('workspace', $id);
         } catch (Throwable) {
             return $admin('admin/workspaces/show', [
                 'title' => 'Workspace bearbeiten',
@@ -1762,13 +1800,13 @@ return static function (RouteCollection $routes, Application $app): void {
             ]);
         }
 
-        if (! $check->allowed) {
+        if (! $check['can_delete']) {
             return $admin('admin/workspaces/show', [
                 'title' => 'Workspace bearbeiten',
                 'active' => 'workspaces',
                 'workspace' => $workspace,
                 'values' => $workspace,
-                'errors' => [deleteBlockedMessage($check->message, $check->blockingNames)],
+                'errors' => [deleteGuardMessage($deletionGuard(), $check)],
             ]);
         }
 
@@ -2033,7 +2071,7 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.connections.transferdb_migrate', 'web');
 
-    $routes->post('/admin/connections/{id}/delete', static function (Request $request) use ($admin, $connections, $audit): Response {
+    $routes->post('/admin/connections/{id}/delete', static function (Request $request) use ($admin, $connections, $audit, $deletionGuard): Response {
         $id = (int) $request->route('id');
         $profile = $connections()->find($id);
 
@@ -2051,7 +2089,7 @@ return static function (RouteCollection $routes, Application $app): void {
         }
 
         try {
-            $check = $connections()->canDelete($id);
+            $check = $deletionGuard()->canDelete('connection', $id);
         } catch (Throwable) {
             return $admin('admin/connections/show', [
                 'title' => $profile['name'] ?? 'Connection',
@@ -2061,12 +2099,12 @@ return static function (RouteCollection $routes, Application $app): void {
             ]);
         }
 
-        if (! $check->allowed) {
+        if (! $check['can_delete']) {
             return $admin('admin/connections/show', [
                 'title' => $profile['name'] ?? 'Connection',
                 'active' => 'connections',
                 'connection' => $profile,
-                'alert' => ['type' => 'danger', 'message' => deleteBlockedMessage($check->message, $check->blockingNames)],
+                'alert' => ['type' => 'danger', 'message' => deleteGuardMessage($deletionGuard(), $check)],
             ]);
         }
 
@@ -2335,7 +2373,7 @@ return static function (RouteCollection $routes, Application $app): void {
         ]));
     }, 'admin.mappings.update', 'web');
 
-    $routes->post('/admin/mappings/{id}/delete', static function (Request $request) use ($admin, $mappings, $audit): Response {
+    $routes->post('/admin/mappings/{id}/delete', static function (Request $request) use ($admin, $mappings, $audit, $deletionGuard): Response {
         $id = (int) $request->route('id');
         $set = $mappings()->find($id);
 
@@ -2353,7 +2391,7 @@ return static function (RouteCollection $routes, Application $app): void {
         }
 
         try {
-            $check = $mappings()->canDeleteSet($id);
+            $check = $deletionGuard()->canDelete('mapping', $id);
         } catch (Throwable) {
             return $admin('admin/mappings/show', mappingViewData($mappings, $id, [
                 'title' => 'Mapping',
@@ -2363,11 +2401,11 @@ return static function (RouteCollection $routes, Application $app): void {
             ]));
         }
 
-        if (! $check->allowed) {
+        if (! $check['can_delete']) {
             return $admin('admin/mappings/show', mappingViewData($mappings, $id, [
                 'title' => 'Mapping',
                 'active' => 'mappings',
-                'alert' => ['type' => 'danger', 'message' => deleteBlockedMessage($check->message, $check->blockingNames)],
+                'alert' => ['type' => 'danger', 'message' => deleteGuardMessage($deletionGuard(), $check)],
                 'validation' => null,
             ]));
         }
@@ -2678,6 +2716,52 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/jobs/' . $id]);
     }, 'admin.jobs.update', 'web');
 
+    $routes->post('/admin/jobs/{id}/delete', static function (Request $request) use ($admin, $jobs, $runs, $audit, $deletionGuard): Response {
+        $id = (int) $request->route('id');
+        $job = $jobs()->find($id);
+        if ($job === null) {
+            return Response::notFound();
+        }
+
+        if (! deleteConfirmed($request)) {
+            return $admin('admin/jobs/show', [
+                'title' => 'Job',
+                'active' => 'jobs',
+                'job' => $job,
+                'runs' => $runs()->runsForJob($id),
+                'alert' => ['type' => 'danger', 'message' => 'Löschen wurde nicht bestätigt.'],
+            ]);
+        }
+
+        $check = $deletionGuard()->canDelete('job', $id);
+        if (! $check['can_delete']) {
+            return $admin('admin/jobs/show', [
+                'title' => 'Job',
+                'active' => 'jobs',
+                'job' => $job,
+                'runs' => $runs()->runsForJob($id),
+                'alert' => ['type' => 'danger', 'message' => deleteGuardMessage($deletionGuard(), $check)],
+            ]);
+        }
+
+        try {
+            $jobs()->delete($id);
+            $audit()->log(empty($job['workspace_id']) ? null : (int) $job['workspace_id'], 'job.deleted', 'job', (string) $id, 'Job gelöscht.', [
+                'name' => $job['name'] ?? '',
+            ]);
+        } catch (Throwable) {
+            return $admin('admin/jobs/show', [
+                'title' => 'Job',
+                'active' => 'jobs',
+                'job' => $job,
+                'runs' => $runs()->runsForJob($id),
+                'alert' => ['type' => 'danger', 'message' => 'Job konnte nicht gelöscht werden.'],
+            ]);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/jobs']);
+    }, 'admin.jobs.delete', 'web');
+
     $routes->post('/admin/jobs/{id}/dry-run', static function (Request $request) use ($jobRunner): Response {
         $runId = $jobRunner()->runJob((int) $request->route('id'), true);
         return new Response('', 302, ['Location' => '/admin/jobs/runs/' . $runId]);
@@ -2825,10 +2909,56 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/schemas/' . $id]);
     }, 'admin.schemas.status', 'web');
 
-    $routes->post('/admin/schemas/{id}/delete', static function (Request $request) use ($schemas): Response {
+    $routes->post('/admin/schemas/{id}/delete', static function (Request $request) use ($admin, $schemas, $workspaces, $deletionGuard): Response {
         $id = (int) $request->route('id');
-        if ($request->post('confirm_delete') === '1') {
+        $schema = $schemas()->find($id);
+        if ($schema === null) {
+            return Response::notFound();
+        }
+
+        if (! deleteConfirmed($request)) {
+            return $admin('admin/schemas/show', [
+                'title' => 'Schema',
+                'active' => 'schemas',
+                'schema' => $schema,
+                'workspaces' => safeList($workspaces),
+                'values' => $schema,
+                'errors' => ['Löschen wurde nicht bestätigt.'],
+                'validationInput' => (string) ($schema['example_json'] ?? ''),
+                'validationResult' => null,
+                'revisions' => $schemas()->revisionsForSchema($id),
+            ]);
+        }
+
+        $check = $deletionGuard()->canDelete('schema', $id);
+        if (! $check['can_delete']) {
+            return $admin('admin/schemas/show', [
+                'title' => 'Schema',
+                'active' => 'schemas',
+                'schema' => $schema,
+                'workspaces' => safeList($workspaces),
+                'values' => $schema,
+                'errors' => [deleteGuardMessage($deletionGuard(), $check)],
+                'validationInput' => (string) ($schema['example_json'] ?? ''),
+                'validationResult' => null,
+                'revisions' => $schemas()->revisionsForSchema($id),
+            ]);
+        }
+
+        try {
             $schemas()->delete($id);
+        } catch (Throwable) {
+            return $admin('admin/schemas/show', [
+                'title' => 'Schema',
+                'active' => 'schemas',
+                'schema' => $schema,
+                'workspaces' => safeList($workspaces),
+                'values' => $schema,
+                'errors' => ['Schema konnte nicht gelöscht werden.'],
+                'validationInput' => (string) ($schema['example_json'] ?? ''),
+                'validationResult' => null,
+                'revisions' => $schemas()->revisionsForSchema($id),
+            ]);
         }
 
         return new Response('', 302, ['Location' => '/admin/schemas']);
@@ -2919,13 +3049,39 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/target-actions']);
     }, 'admin.target_actions.toggle', 'web');
 
-    $routes->post('/admin/target-actions/{id}/delete', static function (Request $request) use ($targetActions): Response {
+    $routes->post('/admin/target-actions/{id}/delete', static function (Request $request) use ($admin, $targetActions, $workspaces, $deletionGuard): Response {
         $id = (int) $request->route('id');
-        if ($targetActions()->find($id) === null) {
+        $action = $targetActions()->find($id);
+        if ($action === null) {
             return Response::notFound();
         }
 
-        $targetActions()->delete($id);
+        $check = $deletionGuard()->canDelete('target_action', $id);
+        if (! deleteConfirmed($request) || ! $check['can_delete']) {
+            return $admin('admin/target-actions/show', [
+                'title' => 'Target Action',
+                'active' => 'target-actions',
+                'action' => $action,
+                'workspaces' => safeList($workspaces),
+                'types' => TargetActionRepository::ALL_TYPES,
+                'values' => $action,
+                'errors' => [! deleteConfirmed($request) ? 'Löschen wurde nicht bestätigt.' : deleteGuardMessage($deletionGuard(), $check)],
+            ]);
+        }
+
+        try {
+            $targetActions()->delete($id);
+        } catch (Throwable) {
+            return $admin('admin/target-actions/show', [
+                'title' => 'Target Action',
+                'active' => 'target-actions',
+                'action' => $action,
+                'workspaces' => safeList($workspaces),
+                'types' => TargetActionRepository::ALL_TYPES,
+                'values' => $action,
+                'errors' => ['Target Action konnte nicht gelöscht werden.'],
+            ]);
+        }
 
         return new Response('', 302, ['Location' => '/admin/target-actions']);
     }, 'admin.target_actions.delete', 'web');
@@ -3024,6 +3180,37 @@ return static function (RouteCollection $routes, Application $app): void {
 
         return new Response('', 302, ['Location' => '/admin/processes/' . $id]);
     }, 'admin.processes.update', 'web');
+
+    $routes->post('/admin/processes/{id}/delete', static function (Request $request) use ($admin, $processes, $processShowData, $deletionGuard): Response {
+        $id = (int) $request->route('id');
+        $process = $processes()->find($id);
+        if ($process === null) {
+            return Response::notFound();
+        }
+
+        if (! deleteConfirmed($request)) {
+            return $admin('admin/processes/show', $processShowData($process, [
+                'alert' => ['type' => 'danger', 'message' => 'Löschen wurde nicht bestätigt.'],
+            ]));
+        }
+
+        $check = $deletionGuard()->canDelete('process', $id);
+        if (! $check['can_delete']) {
+            return $admin('admin/processes/show', $processShowData($process, [
+                'alert' => ['type' => 'danger', 'message' => deleteGuardMessage($deletionGuard(), $check)],
+            ]));
+        }
+
+        try {
+            $processes()->delete($id);
+        } catch (Throwable) {
+            return $admin('admin/processes/show', $processShowData($process, [
+                'alert' => ['type' => 'danger', 'message' => 'Prozess konnte nicht gelöscht werden.'],
+            ]));
+        }
+
+        return new Response('', 302, ['Location' => '/admin/processes']);
+    }, 'admin.processes.delete', 'web');
 
     $routes->post('/admin/processes/{id}/steps', static function (Request $request) use ($admin, $processes, $targetActions, $schemas, $processShowData): Response {
         $id = (int) $request->route('id');
@@ -3320,6 +3507,47 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/transfers/' . $id]);
     }, 'admin.transfers.update', 'web');
 
+    $routes->post('/admin/transfers/{id}/delete', static function (Request $request) use ($admin, $workspaces, $connections, $datasets, $datasetTransfers, $deletionGuard): Response {
+        $id = (int) $request->route('id');
+        $transfer = $datasetTransfers()->find($id);
+        if ($transfer === null) {
+            return Response::notFound();
+        }
+
+        $renderShow = static function (array $errors) use ($admin, $workspaces, $connections, $datasets, $datasetTransfers, $transfer, $id): Response {
+            return $admin('admin/transfers/show', [
+                'title' => 'Transfer',
+                'active' => 'transfers',
+                'transfer' => $transfer,
+                'fields' => $datasetTransfers()->fieldsForTransfer($id),
+                'groups' => datasetTransferGroupsWithFields($datasetTransfers(), $id),
+                'workspaces' => safeList($workspaces),
+                'connections' => safeList($connections),
+                'datasets' => $datasets()->all(),
+                'datasetFields' => $datasets()->fields((string) $transfer['source_dataset']),
+                'result' => null,
+                'errors' => $errors,
+            ]);
+        };
+
+        if (! deleteConfirmed($request)) {
+            return $renderShow(['Löschen wurde nicht bestätigt.']);
+        }
+
+        $check = $deletionGuard()->canDelete('transfer', $id);
+        if (! $check['can_delete']) {
+            return $renderShow([deleteGuardMessage($deletionGuard(), $check)]);
+        }
+
+        try {
+            $datasetTransfers()->delete($id);
+        } catch (Throwable) {
+            return $renderShow(['Transfer konnte nicht gelöscht werden.']);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/transfers']);
+    }, 'admin.transfers.delete', 'web');
+
     $routes->post('/admin/transfers/{id}/fields', static function (Request $request) use ($datasetTransfers): Response {
         $id = (int) $request->route('id');
         if ($datasetTransfers()->find($id) === null) {
@@ -3597,6 +3825,56 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/woocommerce/' . $id]);
     }, 'admin.woocommerce.webhooks.update', 'web');
 
+    $routes->post('/admin/woocommerce/{id}/webhooks/{webhookId}/delete', static function (Request $request) use ($woocommerce): Response {
+        $id = (int) $request->route('id');
+        $webhookId = (int) $request->route('webhookId');
+        $connection = $woocommerce()->findConnection($id);
+        $webhook = $woocommerce()->findWebhookConfig($webhookId);
+        if ($connection === null || $webhook === null || (int) ($webhook['woocommerce_connection_id'] ?? 0) !== $id) {
+            return Response::notFound();
+        }
+
+        if (deleteConfirmed($request)) {
+            $woocommerce()->deleteWebhookConfig($webhookId);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/woocommerce/' . $id]);
+    }, 'admin.woocommerce.webhooks.delete', 'web');
+
+    $routes->post('/admin/woocommerce/{id}/delete', static function (Request $request) use ($woocommerce, $woocommerceShowResponse, $deletionGuard): Response {
+        $id = (int) $request->route('id');
+        $connection = $woocommerce()->findConnection($id);
+        if ($connection === null) {
+            return Response::notFound();
+        }
+
+        if (! deleteConfirmed($request)) {
+            return $woocommerceShowResponse($request, $connection, [
+                'type' => 'danger',
+                'message' => 'Löschen wurde nicht bestätigt.',
+            ]);
+        }
+
+        $check = $deletionGuard()->canDelete('woocommerce', $id);
+        if (! $check['can_delete']) {
+            return $woocommerceShowResponse($request, $connection, [
+                'type' => 'danger',
+                'message' => deleteGuardMessage($deletionGuard(), $check),
+            ]);
+        }
+
+        try {
+            $woocommerce()->deleteConnection($id);
+        } catch (Throwable) {
+            return $woocommerceShowResponse($request, $connection, [
+                'type' => 'danger',
+                'message' => 'WooCommerce-Anbindung konnte nicht gelöscht werden.',
+            ]);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/woocommerce']);
+    }, 'admin.woocommerce.delete', 'web');
+
     $routes->post('/admin/woocommerce/{id}/initial-transfer', static function (Request $request) use ($admin, $app, $woocommerce, $exportProfiles): Response {
         $id = (int) $request->route('id');
         $connection = $woocommerce()->findConnection($id);
@@ -3767,6 +4045,34 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/woocommerce/' . $id]);
     }, 'admin.woocommerce.exports.toggle', 'web');
 
+    $routes->post('/admin/woocommerce/{id}/exports/{profileId}/delete', static function (Request $request) use ($woocommerce, $exportProfiles, $woocommerceShowResponse): Response {
+        $id = (int) $request->route('id');
+        $profileId = (int) $request->route('profileId');
+        $connection = $woocommerce()->findConnection($id);
+        $profile = $exportProfiles()->find($profileId);
+        if ($connection === null || $profile === null || (int) ($profile['connection_id'] ?? 0) !== $id) {
+            return Response::notFound();
+        }
+
+        if (! deleteConfirmed($request)) {
+            return $woocommerceShowResponse($request, $connection, [
+                'type' => 'danger',
+                'message' => 'Löschen wurde nicht bestätigt.',
+            ]);
+        }
+
+        try {
+            $exportProfiles()->delete($profileId);
+        } catch (Throwable) {
+            return $woocommerceShowResponse($request, $connection, [
+                'type' => 'danger',
+                'message' => 'WooCommerce-Exportprofil konnte nicht gelöscht werden.',
+            ]);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/woocommerce/' . $id]);
+    }, 'admin.woocommerce.exports.delete', 'web');
+
     $routes->post('/admin/woocommerce/{id}/exports/{profileId}/test', static function (Request $request) use ($woocommerce, $exportProfiles, $woocommerceExport, $woocommerceShowResponse): Response {
         $id = (int) $request->route('id');
         $connection = $woocommerce()->findConnection($id);
@@ -3834,16 +4140,120 @@ return static function (RouteCollection $routes, Application $app): void {
         'title' => 'Reports',
         'active' => 'reports',
         'reports' => safeList($reports),
+        'workspaces' => safeList($workspaces),
+        'values' => ['type' => 'manual', 'status' => 'created'],
+        'errors' => [],
     ]), 'admin.reports', 'web');
 
-    $routes->get('/admin/reports/{id}', static function (Request $request) use ($admin, $reports): Response {
-        return $admin('admin/reports/show', ['title' => 'Report', 'active' => 'reports', 'report' => $reports()->find((int) $request->route('id')), 'result' => null]);
+    $routes->post('/admin/reports', static function (Request $request) use ($admin, $reports, $workspaces): Response {
+        $values = reportValues($request);
+        $errors = reportErrors($values);
+        if ($errors !== []) {
+            return $admin('admin/reports/index', [
+                'title' => 'Reports',
+                'active' => 'reports',
+                'reports' => safeList($reports),
+                'workspaces' => safeList($workspaces),
+                'values' => $values,
+                'errors' => $errors,
+            ]);
+        }
+
+        $id = $reports()->create($values);
+
+        return new Response('', 302, ['Location' => '/admin/reports/' . $id]);
+    }, 'admin.reports.store', 'web');
+
+    $routes->get('/admin/reports/{id}', static function (Request $request) use ($admin, $reports, $workspaces): Response {
+        $report = $reports()->find((int) $request->route('id'));
+
+        return $admin('admin/reports/show', [
+            'title' => 'Report',
+            'active' => 'reports',
+            'report' => $report,
+            'workspaces' => safeList($workspaces),
+            'values' => $report ?? [],
+            'errors' => [],
+            'result' => null,
+        ]);
     }, 'admin.reports.show', 'web');
 
-    $routes->post('/admin/reports/{id}/send', static function (Request $request) use ($admin, $reports, $reportMailer): Response {
+    $routes->post('/admin/reports/{id}', static function (Request $request) use ($admin, $reports, $workspaces): Response {
+        $id = (int) $request->route('id');
+        $report = $reports()->find($id);
+        if ($report === null) {
+            return Response::notFound();
+        }
+
+        $values = reportValues($request);
+        $errors = reportErrors($values);
+        if ($errors !== []) {
+            return $admin('admin/reports/show', [
+                'title' => 'Report',
+                'active' => 'reports',
+                'report' => $report,
+                'workspaces' => safeList($workspaces),
+                'values' => $values + ['id' => $id],
+                'errors' => $errors,
+                'result' => null,
+            ]);
+        }
+
+        $reports()->update($id, $values);
+
+        return new Response('', 302, ['Location' => '/admin/reports/' . $id]);
+    }, 'admin.reports.update', 'web');
+
+    $routes->post('/admin/reports/{id}/delete', static function (Request $request) use ($admin, $reports, $workspaces): Response {
+        $id = (int) $request->route('id');
+        $report = $reports()->find($id);
+        if ($report === null) {
+            return Response::notFound();
+        }
+
+        if (! deleteConfirmed($request)) {
+            return $admin('admin/reports/show', [
+                'title' => 'Report',
+                'active' => 'reports',
+                'report' => $report,
+                'workspaces' => safeList($workspaces),
+                'values' => $report,
+                'errors' => ['Löschen wurde nicht bestätigt.'],
+                'result' => null,
+            ]);
+        }
+
+        try {
+            $reports()->delete($id);
+        } catch (Throwable) {
+            return $admin('admin/reports/show', [
+                'title' => 'Report',
+                'active' => 'reports',
+                'report' => $report,
+                'workspaces' => safeList($workspaces),
+                'values' => $report,
+                'errors' => ['Report konnte nicht gelöscht werden.'],
+                'result' => null,
+            ]);
+        }
+
+        return new Response('', 302, ['Location' => '/admin/reports']);
+    }, 'admin.reports.delete', 'web');
+
+    $routes->post('/admin/reports/{id}/send', static function (Request $request) use ($admin, $reports, $reportMailer, $workspaces): Response {
         $id = (int) $request->route('id');
         $result = $reportMailer()->send($id);
-        return $admin('admin/reports/show', ['title' => 'Report', 'active' => 'reports', 'report' => $reports()->find($id), 'result' => $result]);
+        $report = $reports()->find($id);
+
+        return $admin('admin/reports/show', [
+            'title' => 'Report',
+            'active' => 'reports',
+            'report' => $report,
+            'workspaces' => safeList($workspaces),
+            'values' => $report ?? [],
+            'errors' => [],
+            'result' => $result,
+        ]);
     }, 'admin.reports.send', 'web');
 
     $routes->get('/admin/deployment-targets', static fn (): Response => $admin('admin/deployment-targets/index', [
@@ -3957,8 +4367,37 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/deployment-targets']);
     }, 'admin.deployment_targets.toggle', 'web');
 
-    $routes->post('/admin/deployment-targets/{id}/delete', static function (Request $request) use ($deploymentTargets): Response {
-        $deploymentTargets()->delete((int) $request->route('id'));
+    $routes->post('/admin/deployment-targets/{id}/delete', static function (Request $request) use ($admin, $deploymentTargets, $workspaces, $deletionGuard): Response {
+        $id = (int) $request->route('id');
+        $target = $deploymentTargets()->find($id);
+        if ($target === null) {
+            return Response::notFound();
+        }
+
+        $check = $deletionGuard()->canDelete('deployment_target', $id);
+        if (! deleteConfirmed($request) || ! $check['can_delete']) {
+            return $admin('admin/deployment-targets/edit', [
+                'title' => 'Deployment Target bearbeiten',
+                'active' => 'deployment-targets',
+                'workspaces' => safeList($workspaces),
+                'target' => $target,
+                'values' => $target,
+                'errors' => [! deleteConfirmed($request) ? 'Löschen wurde nicht bestätigt.' : deleteGuardMessage($deletionGuard(), $check)],
+            ]);
+        }
+
+        try {
+            $deploymentTargets()->delete($id);
+        } catch (Throwable) {
+            return $admin('admin/deployment-targets/edit', [
+                'title' => 'Deployment Target bearbeiten',
+                'active' => 'deployment-targets',
+                'workspaces' => safeList($workspaces),
+                'target' => $target,
+                'values' => $target,
+                'errors' => ['Deployment Target konnte nicht gelöscht werden.'],
+            ]);
+        }
 
         return new Response('', 302, ['Location' => '/admin/deployment-targets']);
     }, 'admin.deployment_targets.delete', 'web');
@@ -4195,7 +4634,7 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.endpoints.export.download', 'web');
 
-    $routes->post('/admin/endpoints/{id}/delete', static function (Request $request) use ($admin, $endpoints, $audit, $workspaces, $mappings, $jobs, $schemas): Response {
+    $routes->post('/admin/endpoints/{id}/delete', static function (Request $request) use ($admin, $endpoints, $audit, $workspaces, $mappings, $jobs, $schemas, $deletionGuard): Response {
         $id = (int) $request->route('id');
         $endpoint = $endpoints()->find($id);
 
@@ -4205,6 +4644,24 @@ return static function (RouteCollection $routes, Application $app): void {
 
         if (! deleteConfirmed($request)) {
             return new Response('', 302, ['Location' => '/admin/endpoints/' . $id]);
+        }
+
+        $check = $deletionGuard()->canDelete('endpoint', $id);
+        if (! $check['can_delete']) {
+            $config = json_decode((string) ($endpoint['config_json'] ?? '{}'), true) ?: [];
+
+            return $admin('admin/endpoints/show', [
+                'title' => 'Endpoint',
+                'active' => 'endpoints',
+                'endpoint' => $endpoint,
+                'workspaces' => safeList($workspaces),
+                'mappings' => safeList($mappings),
+                'jobs' => safeList($jobs),
+                'schemas' => $schemas()->all(),
+                'staticResponse' => isset($config['static_response']) ? (json_encode($config['static_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '') : '',
+                'hasSecret' => $endpoints()->hasSecret($id),
+                'alert' => ['type' => 'danger', 'message' => deleteGuardMessage($deletionGuard(), $check)],
+            ]);
         }
 
         try {

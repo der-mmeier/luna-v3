@@ -230,6 +230,12 @@ final class ExportProfileRepository
         ]);
     }
 
+    public function delete(int $profileId): void
+    {
+        $statement = $this->pdo()->prepare('DELETE FROM luna_export_profiles WHERE id = :id');
+        $statement->execute(['id' => $profileId]);
+    }
+
     /**
      * @param array<string, mixed> $profile
      */

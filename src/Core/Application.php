@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Luna\Core;
 
 use Luna\Config\Config;
+use Luna\Admin\DeletionGuard;
 use Luna\Api\EndpointAccessGuard;
 use Luna\Api\EndpointJsonResponseFactory;
 use Luna\Api\EndpointResponseBuilder;
@@ -155,6 +156,7 @@ final class Application
         $this->services->set(DatabaseConfig::class, $databaseConfig);
         $this->services->set(SystemDatabase::class, $systemDatabase);
         $this->services->set(MigrationRunner::class, $migrationRunner);
+        $this->services->set(DeletionGuard::class, new DeletionGuard($systemDatabase));
 
         $externalPdoFactory = new ExternalPdoConnectionFactory();
         $this->services->set(ExternalPdoConnectionFactory::class, $externalPdoFactory);
@@ -420,6 +422,7 @@ final class Application
         $this->services->set('security.encryption', $this->services->get(EncryptionService::class));
         $this->services->set('database.system', $systemDatabase);
         $this->services->set('database.migrations', $migrationRunner);
+        $this->services->set('admin.deletion_guard', $this->services->get(DeletionGuard::class));
         $this->services->set('connections.pdo_factory', $externalPdoFactory);
         $this->services->set('connections.tester', $this->services->get(ConnectionTester::class));
         $this->services->set('transferdb.resolver', $this->services->get(TransferDbConnectionResolver::class));

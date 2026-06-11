@@ -88,6 +88,39 @@ final class DatasetTransferRepository
         $statement->execute($payload);
     }
 
+    public function canDelete(int $id): DeleteCheckResult
+    {
+        $runs = $this->runNamesForTransfer($id);
+        if ($runs !== []) {
+            return DeleteCheckResult::blocked(
+                'Dieser Transfer kann nicht gelöscht werden, weil noch Transfer-Läufe vorhanden sind.',
+                $runs,
+                ['transfer_runs' => count($runs)],
+            );
+        }
+
+        return DeleteCheckResult::allowed();
+    }
+
+    public function delete(int $id): void
+    {
+        $pdo = $this->pdo();
+        $pdo->beginTransaction();
+
+        try {
+            $statement = $pdo->prepare('DELETE FROM luna_dataset_transfer_fields WHERE transfer_id = :id');
+            $statement->execute(['id' => $id]);
+            $statement = $pdo->prepare('DELETE FROM luna_dataset_transfer_groups WHERE transfer_id = :id');
+            $statement->execute(['id' => $id]);
+            $statement = $pdo->prepare('DELETE FROM luna_dataset_transfers WHERE id = :id');
+            $statement->execute(['id' => $id]);
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            $pdo->rollBack();
+            throw $exception;
+        }
+    }
+
     /**
      * @return list<array<string, mixed>>
      */
@@ -302,6 +335,27 @@ final class DatasetTransferRepository
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function runNamesForTransfer(int $transferId): array
+    {
+        if (! $this->columnExists('luna_dataset_transfer_runs', 'transfer_id')) {
+            return [];
+        }
+
+        $statement = $this->pdo()->prepare('SELECT id, created_at FROM luna_dataset_transfer_runs WHERE transfer_id = :id ORDER BY id DESC LIMIT 10');
+        $statement->execute(['id' => $transferId]);
+        $names = [];
+
+        foreach ($statement->fetchAll() as $row) {
+            $suffix = empty($row['created_at']) ? '' : ' vom ' . (string) $row['created_at'];
+            $names[] = 'Transfer-Lauf #' . (int) $row['id'] . $suffix;
+        }
+
+        return $names;
     }
 
     private function pdo(): PDO
