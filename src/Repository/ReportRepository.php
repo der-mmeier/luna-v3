@@ -28,6 +28,36 @@ final class ReportRepository
         return (int) $this->database->pdo()->lastInsertId();
     }
 
+    public function update(int $id, array $data): void
+    {
+        $statement = $this->database->pdo()->prepare(
+            'UPDATE luna_reports
+             SET workspace_id = :workspace_id,
+                 type = :type,
+                 subject = :subject,
+                 body = :body,
+                 recipients = :recipients,
+                 status = :status,
+                 updated_at = NOW()
+             WHERE id = :id',
+        );
+        $statement->execute([
+            'id' => $id,
+            'workspace_id' => empty($data['workspace_id']) ? null : (int) $data['workspace_id'],
+            'type' => trim((string) ($data['type'] ?? 'manual')) ?: 'manual',
+            'subject' => trim((string) ($data['subject'] ?? '')),
+            'body' => trim((string) ($data['body'] ?? '')),
+            'recipients' => trim((string) ($data['recipients'] ?? '')) ?: null,
+            'status' => trim((string) ($data['status'] ?? 'created')) ?: 'created',
+        ]);
+    }
+
+    public function delete(int $id): void
+    {
+        $statement = $this->database->pdo()->prepare('DELETE FROM luna_reports WHERE id = :id');
+        $statement->execute(['id' => $id]);
+    }
+
     public function find(int $id): ?array
     {
         $statement = $this->database->pdo()->prepare('SELECT * FROM luna_reports WHERE id = :id');
@@ -38,7 +68,12 @@ final class ReportRepository
 
     public function all(): array
     {
-        return $this->database->pdo()->query('SELECT * FROM luna_reports ORDER BY created_at DESC, id DESC')->fetchAll();
+        return $this->database->pdo()->query(
+            'SELECT r.*, w.name AS workspace_name
+             FROM luna_reports r
+             LEFT JOIN luna_workspaces w ON w.id = r.workspace_id
+             ORDER BY r.created_at DESC, r.id DESC',
+        )->fetchAll();
     }
 
     public function latestForJob(int $jobId): ?array
