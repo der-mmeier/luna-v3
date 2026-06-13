@@ -2,6 +2,7 @@
 
 /** @var array<int, array<string, mixed>> $transfers */
 /** @var string|null $error */
+/** @var array{type: string, message: string}|null $alert */
 ?>
 <div class="d-flex justify-content-between align-items-start mb-4">
     <div>
@@ -13,6 +14,9 @@
 
 <?php if (! empty($error)): ?>
     <div class="alert alert-danger"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
+<?php endif; ?>
+<?php if (($alert ?? null) !== null): ?>
+    <div class="alert alert-<?= htmlspecialchars($alert['type'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($alert['message'], ENT_QUOTES, 'UTF-8') ?></div>
 <?php endif; ?>
 
 <div class="card admin-card">
@@ -39,7 +43,7 @@
                     </td>
                     <td><?= htmlspecialchars((string) ($transfer['operation_type'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
                     <td><?= htmlspecialchars((string) ($transfer['status'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
-                    <td><a class="btn btn-sm btn-outline-primary" href="/admin/transfers/<?= (int) $transfer['id'] ?>">Öffnen</a></td>
+                    <td><div class="d-flex gap-2"><a class="btn btn-sm btn-outline-primary" href="/admin/transfers/<?= (int) $transfer['id'] ?>">Öffnen</a><form method="post" action="/admin/transfers/<?= (int) $transfer['id'] ?>/delete" onsubmit="return confirm('Diesen Transfer wirklich löschen? Es werden nur Luna-Administrationsdaten gelöscht.');"><input type="hidden" name="confirm_delete" value="1"><button class="btn btn-sm btn-outline-danger" type="submit">Löschen</button></form></div></td>
                 </tr>
             <?php endforeach; ?>
             <?php if (($transfers ?? []) === []): ?>

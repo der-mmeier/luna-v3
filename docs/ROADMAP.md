@@ -70,7 +70,10 @@ Diese Regeln gelten fÃ¼r alle kommenden Versionen:
 | `v2.6.0` | abgeschlossen | Schema Registry & Validation |
 | `v2.7.0` | abgeschlossen | WooCommerce Runtime Module |
 | `v2.7.1` | abgeschlossen | TransferDB Foundation & Runtime Storage |
-| `v2.8.0` | nächster Meilenstein | Exportable Webhook Runtime Packages |
+| `v2.7.2` | abgeschlossen | Admin Cleanup, Deletion Safety & Missing CRUD Routes |
+| `v2.7.2.1` | abgeschlossen | Admin Cleanup Completion |
+| `v2.7.3` | nächster Meilenstein | Connection Workspace Sharing |
+| `v2.8.0` | geplant | Exportable Webhook Runtime Packages |
 
 ---
 
@@ -526,9 +529,39 @@ Nicht-Ziele:
 
 ---
 
-### v2.8.0 - Exportable Webhook Runtime Packages
+### v2.7.2.1 - Admin Cleanup Completion
+
+Status: abgeschlossen
+
+Umgesetzt:
+
+- Jobs Delete ergänzt.
+- Reports CRUD/Delete ergänzt.
+- Connection Delete Guard um konkrete Mapping-, Job-, Dataset-, Transfer-, Process- und WooCommerce-Blocker erweitert.
+- Transfers Delete-Routen und datierte Run-Blocker ergänzt.
+- WooCommerce Delete-Routen und konkrete Luna-Konfigurations-/Runtime-Blocker ergänzt.
+- Delete-Routen-404 für Jobs, Reports, Connections, Transfers und WooCommerce bereinigt.
+- Destruktive Aktionen auf POST beschränkt und konkrete deutsche Blocker-Meldungen ergänzt.
+
+Abgrenzung:
+
+- Keine externen Daten werden gelöscht.
+- Keine WooCommerce-API-Schreibzugriffe.
+- Keine Änderungen an TransferDB-CLI-Semantik, Endpoint Export oder Process Runtime.
+
+---
+
+### v2.7.3 - Connection Workspace Sharing
 
 Status: geplant / nächster Meilenstein
+
+Connection Workspace Sharing bleibt der nächste geplante Meilenstein und ist nicht Teil von v2.7.2.1.
+
+---
+
+### v2.8.0 - Exportable Webhook Runtime Packages
+
+Status: geplant
 
 Ziel:
 
@@ -611,21 +644,17 @@ FÃ¼r jeden Meilenstein gilt:
 
 ## 11. Nächste konkrete Entscheidung
 
-Der nächste Codex-Prompt sollte auf `v2.8.0 - Exportable Webhook Runtime Packages` gehen.
+Der nächste Codex-Prompt sollte auf `v2.7.3 - Connection Workspace Sharing` gehen.
 
 Er soll ausdrücklich nicht bauen:
 
-- keine vollständige Luna-Admin-App öffentlich deployen,
+- keine Exportable Webhook Runtime implementieren,
 - keine WooCommerce-Schreibaktionen,
-- keine PRO-/Lizenzserverlogik,
-- keine Vermischung von Trigger, Prozess und Adapter-Fachlogik.
+- keine TransferDB-/Endpoint-/Process-/Schema-Funktionen regressieren.
 
 Er soll bauen:
 
-- deploybare Webhook-Runtime-Pakete,
-- TransferDB-Schreibpfad aus exportierter Runtime,
-- HMAC-/Secret-Prüfung ohne Secret-Export,
-- nachvollziehbare Runtime-Metadaten ohne Luna-Admin-Zwang.
+- Connection Workspace Sharing gemäß eigenem v2.7.3-Scope.
 
 
 

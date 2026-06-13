@@ -1,6 +1,7 @@
 <?php
 
 /** @var array<int, array<string, mixed>> $items */
+/** @var array{type: string, message: string}|null $alert */
 ?>
 <div class="d-flex justify-content-between align-items-start mb-4">
     <div>
@@ -9,6 +10,9 @@
     </div>
     <a class="btn btn-primary" href="/admin/woocommerce/create">Anbindung anlegen</a>
 </div>
+<?php if (($alert ?? null) !== null): ?>
+    <div class="alert alert-<?= htmlspecialchars($alert['type'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($alert['message'], ENT_QUOTES, 'UTF-8') ?></div>
+<?php endif; ?>
 
 <div class="card admin-card">
     <div class="table-responsive">
@@ -36,7 +40,7 @@
                     <td>
                         <?= ! empty($item['hpos_enabled']) && ! empty($item['hpos_authoritative']) ? 'gültig' : 'nicht validiert' ?>
                     </td>
-                    <td><a class="btn btn-sm btn-outline-primary" href="/admin/woocommerce/<?= (int) $item['id'] ?>">Öffnen</a></td>
+                    <td><div class="d-flex gap-2"><a class="btn btn-sm btn-outline-primary" href="/admin/woocommerce/<?= (int) $item['id'] ?>">Öffnen</a><form method="post" action="/admin/woocommerce/<?= (int) $item['id'] ?>/delete" onsubmit="return confirm('Diese WooCommerce-Anbindung wirklich aus Luna löschen? Im Shop werden keine Daten geändert.');"><input type="hidden" name="confirm_delete" value="1"><button class="btn btn-sm btn-outline-danger" type="submit">Löschen</button></form></div></td>
                 </tr>
             <?php endforeach; ?>
             <?php if (($items ?? []) === []): ?>

@@ -10,8 +10,10 @@ use Throwable;
 
 final class DeletionGuard
 {
-    public function __construct(private readonly SystemDatabase $database)
-    {
+    public function __construct(
+        private readonly SystemDatabase $database,
+        private readonly ?PDO $connection = null,
+    ) {
     }
 
     /**
@@ -39,6 +41,7 @@ final class DeletionGuard
             'target_action' => $this->targetActionBlockers($id),
             'transfer' => $this->transferBlockers($id),
             'job' => $this->jobBlockers($id),
+            'report' => $this->reportBlockers($id),
             'woocommerce' => $this->woocommerceConnectionBlockers($id),
             default => [],
         };
@@ -68,9 +71,12 @@ final class DeletionGuard
             return $label . ' "' . $name . '" kann gelöscht werden.';
         }
 
-        $lines = [
-            $label . ' "' . $name . '" kann nicht gelöscht werden, weil folgende Einträge ihn verwenden:',
-        ];
+        $lines = [$label . ' "' . $name . '" kann nicht gelöscht werden, ' . match ($entity['type']) {
+            'connection', 'woocommerce' => 'weil sie noch verwendet wird:',
+            'transfer' => 'weil noch Läufe oder Runtime-Daten existieren:',
+            'job', 'report' => 'weil er noch verwendet wird:',
+            default => 'weil der Eintrag noch verwendet wird:',
+        }];
 
         foreach (array_slice($blockers, 0, 10) as $blocker) {
             $lines[] = '- ' . $this->typeLabel($blocker['type']) . ' "' . $blocker['name'] . '"';
@@ -111,9 +117,13 @@ final class DeletionGuard
     {
         $blockers = array_merge(
             $this->mappingRowsForConnection($connectionId),
+            $this->jobRowsForConnection($connectionId),
+            $this->datasetRowsForConnection($connectionId),
             $this->rowsByColumn('luna_dataset_transfers', 'target_connection_id', $connectionId, 'transfer', 'name', 'uses connection as target'),
             $this->rowsByColumn('luna_woocommerce_connections', 'connection_id', $connectionId, 'woocommerce', 'name', 'uses connection'),
             $this->rowsByColumn('luna_workspaces', 'transfer_db_connection_id', $connectionId, 'workspace', 'name', 'uses connection as TransferDB'),
+            $this->processStepRows('connection', $connectionId),
+            $this->processStepRows('connection_profile', $connectionId),
             $this->targetActionsReferencingConnection($connectionId),
         );
 
@@ -177,7 +187,15 @@ final class DeletionGuard
      */
     private function transferBlockers(int $transferId): array
     {
-        return $this->rowsByColumn('luna_dataset_transfer_runs', 'transfer_id', $transferId, 'transfer_run', 'id', 'transfer has run history');
+        return $this->runtimeRowsByColumn(
+            'luna_dataset_transfer_runs',
+            'transfer_id',
+            $transferId,
+            'transfer_run',
+            [],
+            ['started_at', 'created_at'],
+            'transfer has run history',
+        );
     }
 
     /**
@@ -191,12 +209,117 @@ final class DeletionGuard
     /**
      * @return list<array{type: string, id: int, name: string, reason: string}>
      */
+    private function reportBlockers(int $reportId): array
+    {
+        return [];
+    }
+
+    /**
+     * @return list<array{type: string, id: int, name: string, reason: string}>
+     */
     private function woocommerceConnectionBlockers(int $woocommerceConnectionId): array
     {
-        return array_merge(
+        return $this->uniqueBlockers(array_merge(
             $this->rowsByColumn('luna_woocommerce_webhook_configs', 'woocommerce_connection_id', $woocommerceConnectionId, 'woocommerce_webhook', 'webhook_name', 'belongs to WooCommerce connection'),
             $this->rowsByColumn('luna_export_profiles', 'connection_id', $woocommerceConnectionId, 'export_profile', 'name', 'uses WooCommerce connection'),
-        );
+            $this->processTriggersReferencingWooCommerceConnection($woocommerceConnectionId),
+            $this->runtimeRowsByColumn('luna_woocommerce_webhook_events', 'woocommerce_connection_id', $woocommerceConnectionId, 'woocommerce_event', ['topic', 'source_order_id'], ['received_at', 'created_at'], 'belongs to WooCommerce connection'),
+            $this->runtimeRowsByColumn('luna_woocommerce_transfer_queue', 'woocommerce_connection_id', $woocommerceConnectionId, 'woocommerce_queue', ['topic', 'source_order_id'], ['created_at'], 'belongs to WooCommerce connection'),
+            $this->runtimeRowsByColumn('luna_woocommerce_transfer_runs', 'woocommerce_connection_id', $woocommerceConnectionId, 'woocommerce_run', ['run_type', 'source_order_id'], ['started_at', 'created_at'], 'belongs to WooCommerce connection'),
+            $this->runtimeRowsByColumn('luna_woocommerce_order_headers', 'woocommerce_connection_id', $woocommerceConnectionId, 'woocommerce_data', ['source_order_id'], ['created_at'], 'cached Luna data belongs to WooCommerce connection'),
+            $this->runtimeRowsByColumn('luna_woocommerce_order_addresses', 'woocommerce_connection_id', $woocommerceConnectionId, 'woocommerce_data', ['source_order_id', 'source_address_id'], ['created_at'], 'cached Luna data belongs to WooCommerce connection'),
+            $this->runtimeRowsByColumn('luna_woocommerce_order_items', 'woocommerce_connection_id', $woocommerceConnectionId, 'woocommerce_data', ['source_order_id', 'source_order_item_id'], ['created_at'], 'cached Luna data belongs to WooCommerce connection'),
+            $this->runtimeRowsByColumn('luna_woocommerce_order_itemmeta', 'woocommerce_connection_id', $woocommerceConnectionId, 'woocommerce_data', ['source_order_id', 'source_item_meta_id'], ['created_at'], 'cached Luna data belongs to WooCommerce connection'),
+            $this->runtimeRowsByColumn('luna_woocommerce_order_meta', 'woocommerce_connection_id', $woocommerceConnectionId, 'woocommerce_data', ['source_order_id', 'source_order_meta_id'], ['created_at'], 'cached Luna data belongs to WooCommerce connection'),
+        ));
+    }
+
+    /**
+     * @return list<array{type: string, id: int, name: string, reason: string}>
+     */
+    private function jobRowsForConnection(int $connectionId): array
+    {
+        $mappingIds = array_column($this->mappingRowsForConnection($connectionId), 'id');
+        if ($mappingIds === [] || ! $this->tableExists('luna_jobs') || ! $this->columnExists('luna_jobs', 'mapping_set_id')) {
+            return [];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($mappingIds), '?'));
+        $statement = $this->pdo()->prepare('SELECT id, name FROM luna_jobs WHERE mapping_set_id IN (' . $placeholders . ') ORDER BY name');
+        $statement->execute(array_values($mappingIds));
+
+        return array_map(static fn (array $row): array => [
+            'type' => 'job',
+            'id' => (int) $row['id'],
+            'name' => trim((string) ($row['name'] ?? '')) ?: '#' . (int) $row['id'],
+            'reason' => 'job uses a mapping for this connection',
+        ], $statement->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    /**
+     * @return list<array{type: string, id: int, name: string, reason: string}>
+     */
+    private function datasetRowsForConnection(int $connectionId): array
+    {
+        $mappingIds = array_column($this->mappingRowsForConnection($connectionId), 'id');
+        if ($mappingIds === [] || ! $this->tableExists('luna_endpoints') || ! $this->columnExists('luna_endpoints', 'mapping_set_id')) {
+            return [];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($mappingIds), '?'));
+        $selectKey = $this->columnExists('luna_endpoints', 'endpoint_key') ? 'endpoint_key' : 'name';
+        $statement = $this->pdo()->prepare(sprintf(
+            'SELECT id, name, %s AS dataset_key FROM luna_endpoints WHERE mapping_set_id IN (%s) ORDER BY name',
+            $selectKey,
+            $placeholders,
+        ));
+        $statement->execute(array_values($mappingIds));
+
+        $blockers = [];
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $name = trim((string) ($row['name'] ?? '')) ?: trim((string) ($row['dataset_key'] ?? ''));
+            $blockers[] = [
+                'type' => 'dataset',
+                'id' => (int) $row['id'],
+                'name' => $name !== '' ? $name : '#' . (int) $row['id'],
+                'reason' => 'dataset uses a mapping for this connection',
+            ];
+        }
+
+        return $blockers;
+    }
+
+    /**
+     * @return list<array{type: string, id: int, name: string, reason: string}>
+     */
+    private function processTriggersReferencingWooCommerceConnection(int $woocommerceConnectionId): array
+    {
+        if (! $this->tableExists('luna_process_triggers') || ! $this->columnExists('luna_process_triggers', 'config_json')) {
+            return [];
+        }
+
+        $statement = $this->pdo()->query('SELECT id, name, config_json FROM luna_process_triggers ORDER BY name');
+        $blockers = [];
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $config = json_decode((string) ($row['config_json'] ?? ''), true);
+            if (! is_array($config) || (string) ($config['provider'] ?? '') !== 'woocommerce') {
+                continue;
+            }
+
+            $referencedId = (int) ($config['woocommerce_connection_id'] ?? $config['integration_id'] ?? 0);
+            if ($referencedId !== $woocommerceConnectionId) {
+                continue;
+            }
+
+            $blockers[] = [
+                'type' => 'process_trigger',
+                'id' => (int) $row['id'],
+                'name' => trim((string) ($row['name'] ?? '')) ?: '#' . (int) $row['id'],
+                'reason' => 'trigger uses WooCommerce connection',
+            ];
+        }
+
+        return $blockers;
     }
 
     /**
@@ -350,6 +473,73 @@ final class DeletionGuard
     }
 
     /**
+     * @param list<string> $detailColumns
+     * @param list<string> $dateColumns
+     * @return list<array{type: string, id: int, name: string, reason: string}>
+     */
+    private function runtimeRowsByColumn(
+        string $table,
+        string $column,
+        int $value,
+        string $type,
+        array $detailColumns,
+        array $dateColumns,
+        string $reason,
+    ): array {
+        if (! $this->tableExists($table) || ! $this->columnExists($table, $column)) {
+            return [];
+        }
+
+        $availableDetails = array_values(array_filter($detailColumns, fn (string $detail): bool => $this->columnExists($table, $detail)));
+        $availableDates = array_values(array_filter($dateColumns, fn (string $date): bool => $this->columnExists($table, $date)));
+        $select = array_merge(['id'], $availableDetails, $availableDates);
+        $statement = $this->pdo()->prepare(sprintf(
+            'SELECT %s FROM %s WHERE %s = :value ORDER BY id',
+            implode(', ', $select),
+            $table,
+            $column,
+        ));
+        $statement->execute(['value' => $value]);
+
+        $blockers = [];
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $details = [];
+            foreach ($availableDetails as $detailColumn) {
+                $detail = trim((string) ($row[$detailColumn] ?? ''));
+                if ($detail !== '') {
+                    $details[] = $detail;
+                }
+            }
+
+            $date = '';
+            foreach ($availableDates as $dateColumn) {
+                $candidate = trim((string) ($row[$dateColumn] ?? ''));
+                if ($candidate !== '') {
+                    $date = $candidate;
+                    break;
+                }
+            }
+
+            $name = '#' . (int) $row['id'];
+            if ($details !== []) {
+                $name .= ' (' . implode(', ', $details) . ')';
+            }
+            if ($date !== '') {
+                $name .= ' vom ' . $date;
+            }
+
+            $blockers[] = [
+                'type' => $type,
+                'id' => (int) $row['id'],
+                'name' => $name,
+                'reason' => $reason,
+            ];
+        }
+
+        return $blockers;
+    }
+
+    /**
      * @return list<array{type: string, id: int, name: string, reason: string}>
      */
     private function rowsByColumn(string $table, string $column, int $value, string $type, string $nameColumn, string $reason): array
@@ -430,10 +620,12 @@ final class DeletionGuard
             'workspace' => 'Workspace',
             'connection' => 'Connection',
             'mapping' => 'Mapping',
+            'dataset' => 'Dataset',
             'endpoint' => 'Endpoint',
             'schema' => 'Schema',
             'process' => 'Prozess',
             'process_step' => 'Prozess-Schritt',
+            'process_trigger' => 'Process Trigger',
             'process_run' => 'Prozesslauf',
             'target_action' => 'Target Action',
             'job' => 'Job',
@@ -443,6 +635,10 @@ final class DeletionGuard
             'deployment_target' => 'Deployment Target',
             'woocommerce' => 'WooCommerce-Anbindung',
             'woocommerce_webhook' => 'WooCommerce-Webhook',
+            'woocommerce_event' => 'WooCommerce-Event',
+            'woocommerce_queue' => 'WooCommerce-Queue-Eintrag',
+            'woocommerce_run' => 'WooCommerce-Lauf',
+            'woocommerce_data' => 'WooCommerce-Runtime-Datensatz',
             'export_profile' => 'Exportprofil',
             'schema_explorer' => 'Schema Explorer',
             default => $type,
@@ -494,6 +690,6 @@ final class DeletionGuard
 
     private function pdo(): PDO
     {
-        return $this->database->pdo();
+        return $this->connection ?? $this->database->pdo();
     }
 }

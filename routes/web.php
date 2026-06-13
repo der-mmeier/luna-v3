@@ -1121,6 +1121,16 @@ if (! function_exists('deleteGuardMessage')) {
     }
 }
 
+if (! function_exists('deleteSuccessAlert')) {
+    /** @return array{type: string, message: string}|null */
+    function deleteSuccessAlert(Request $request, string $entityLabel): ?array
+    {
+        return (string) $request->query('deleted', '') === '1'
+            ? ['type' => 'success', 'message' => $entityLabel . ' wurde gelöscht.']
+            : null;
+    }
+}
+
 if (! function_exists('connectionTablesJsonResponse')) {
     function connectionTablesJsonResponse(Closure $connections, Closure $pdoFactory, Closure $configFor, int $connectionId): Response
     {
@@ -1829,7 +1839,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/workspaces']);
     }, 'admin.workspaces.delete', 'web');
 
-    $routes->get('/admin/connections', static function () use ($admin, $connections): Response {
+    $routes->get('/admin/connections', static function (Request $request) use ($admin, $connections): Response {
         try {
             $profiles = $connections()->all();
             $error = null;
@@ -1843,6 +1853,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'active' => 'connections',
             'connections' => $profiles,
             'error' => $error,
+            'alert' => deleteSuccessAlert($request, 'Connection'),
         ]);
     }, 'admin.connections', 'web');
 
@@ -2127,7 +2138,7 @@ return static function (RouteCollection $routes, Application $app): void {
             ]);
         }
 
-        return new Response('', 302, ['Location' => '/admin/connections']);
+        return new Response('', 302, ['Location' => '/admin/connections?deleted=1']);
     }, 'admin.connections.delete', 'web');
 
     $routes->get('/admin/schema', static function () use ($admin, $connections): Response {
@@ -2677,10 +2688,11 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/jobs/runs/' . $runId]);
     }, 'admin.mappings.run', 'web');
 
-    $routes->get('/admin/jobs', static fn (): Response => $admin('admin/jobs/index', [
+    $routes->get('/admin/jobs', static fn (Request $request): Response => $admin('admin/jobs/index', [
         'title' => 'Jobs',
         'active' => 'jobs',
         'jobs' => safeList($jobs),
+        'alert' => deleteSuccessAlert($request, 'Job'),
     ]), 'admin.jobs', 'web');
 
     $routes->get('/admin/jobs/create', static fn (): Response => $admin('admin/jobs/create', [
@@ -2759,7 +2771,7 @@ return static function (RouteCollection $routes, Application $app): void {
             ]);
         }
 
-        return new Response('', 302, ['Location' => '/admin/jobs']);
+        return new Response('', 302, ['Location' => '/admin/jobs?deleted=1']);
     }, 'admin.jobs.delete', 'web');
 
     $routes->post('/admin/jobs/{id}/dry-run', static function (Request $request) use ($jobRunner): Response {
@@ -3402,7 +3414,7 @@ return static function (RouteCollection $routes, Application $app): void {
         }
     }, 'admin.processes.run', 'web');
 
-    $routes->get('/admin/transfers', static function () use ($admin, $datasetTransfers): Response {
+    $routes->get('/admin/transfers', static function (Request $request) use ($admin, $datasetTransfers): Response {
         try {
             $items = $datasetTransfers()->all();
             $error = null;
@@ -3416,6 +3428,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'active' => 'transfers',
             'transfers' => $items,
             'error' => $error,
+            'alert' => deleteSuccessAlert($request, 'Transfer'),
         ]);
     }, 'admin.transfers', 'web');
 
@@ -3545,7 +3558,7 @@ return static function (RouteCollection $routes, Application $app): void {
             return $renderShow(['Transfer konnte nicht gelöscht werden.']);
         }
 
-        return new Response('', 302, ['Location' => '/admin/transfers']);
+        return new Response('', 302, ['Location' => '/admin/transfers?deleted=1']);
     }, 'admin.transfers.delete', 'web');
 
     $routes->post('/admin/transfers/{id}/fields', static function (Request $request) use ($datasetTransfers): Response {
@@ -3679,10 +3692,11 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.transfers.run', 'web');
 
-    $routes->get('/admin/woocommerce', static fn (): Response => $admin('admin/woocommerce/index', [
+    $routes->get('/admin/woocommerce', static fn (Request $request): Response => $admin('admin/woocommerce/index', [
         'title' => 'WooCommerce - Anbindung',
         'active' => 'woocommerce',
         'items' => safeList(static fn (): WooCommerceIntegrationRepository => $woocommerce()),
+        'alert' => deleteSuccessAlert($request, 'WooCommerce-Anbindung'),
     ]), 'admin.woocommerce', 'web');
 
     $routes->get('/admin/woocommerce/create', static fn (): Response => $admin('admin/woocommerce/create', [
@@ -3872,7 +3886,7 @@ return static function (RouteCollection $routes, Application $app): void {
             ]);
         }
 
-        return new Response('', 302, ['Location' => '/admin/woocommerce']);
+        return new Response('', 302, ['Location' => '/admin/woocommerce?deleted=1']);
     }, 'admin.woocommerce.delete', 'web');
 
     $routes->post('/admin/woocommerce/{id}/initial-transfer', static function (Request $request) use ($admin, $app, $woocommerce, $exportProfiles): Response {
@@ -4136,13 +4150,14 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.datasets.show', 'web');
 
-    $routes->get('/admin/reports', static fn (): Response => $admin('admin/reports/index', [
+    $routes->get('/admin/reports', static fn (Request $request): Response => $admin('admin/reports/index', [
         'title' => 'Reports',
         'active' => 'reports',
         'reports' => safeList($reports),
         'workspaces' => safeList($workspaces),
         'values' => ['type' => 'manual', 'status' => 'created'],
         'errors' => [],
+        'alert' => deleteSuccessAlert($request, 'Report'),
     ]), 'admin.reports', 'web');
 
     $routes->post('/admin/reports', static function (Request $request) use ($admin, $reports, $workspaces): Response {
@@ -4204,7 +4219,7 @@ return static function (RouteCollection $routes, Application $app): void {
         return new Response('', 302, ['Location' => '/admin/reports/' . $id]);
     }, 'admin.reports.update', 'web');
 
-    $routes->post('/admin/reports/{id}/delete', static function (Request $request) use ($admin, $reports, $workspaces): Response {
+    $routes->post('/admin/reports/{id}/delete', static function (Request $request) use ($admin, $reports, $workspaces, $deletionGuard): Response {
         $id = (int) $request->route('id');
         $report = $reports()->find($id);
         if ($report === null) {
@@ -4223,6 +4238,19 @@ return static function (RouteCollection $routes, Application $app): void {
             ]);
         }
 
+        $check = $deletionGuard()->canDelete('report', $id);
+        if (! $check['can_delete']) {
+            return $admin('admin/reports/show', [
+                'title' => 'Report',
+                'active' => 'reports',
+                'report' => $report,
+                'workspaces' => safeList($workspaces),
+                'values' => $report,
+                'errors' => [deleteGuardMessage($deletionGuard(), $check)],
+                'result' => null,
+            ]);
+        }
+
         try {
             $reports()->delete($id);
         } catch (Throwable) {
@@ -4237,7 +4265,7 @@ return static function (RouteCollection $routes, Application $app): void {
             ]);
         }
 
-        return new Response('', 302, ['Location' => '/admin/reports']);
+        return new Response('', 302, ['Location' => '/admin/reports?deleted=1']);
     }, 'admin.reports.delete', 'web');
 
     $routes->post('/admin/reports/{id}/send', static function (Request $request) use ($admin, $reports, $reportMailer, $workspaces): Response {
