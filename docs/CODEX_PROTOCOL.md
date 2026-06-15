@@ -1182,3 +1182,46 @@ Noch nicht committed.
 ### Abschlussprüfung
 
 UI-Umlautprüfung: durchgeführt
+
+---
+
+## 2026-06-13 - v2.7.2.1 Admin Cleanup Completion
+
+### Ziel
+
+Die in v2.7.2 noch unvollständigen Admin-Löschaktionen für Jobs, Reports, Connections, Transfers und WooCommerce-Anbindungen vollständig und sicher abschließen.
+
+### Geänderte Dateien
+
+- `src/Admin/DeletionGuard.php`
+- `src/Repository/ReportRepository.php`
+- `routes/web.php`
+- `resources/views/admin/{jobs,reports,connections,transfers,woocommerce}/*`
+- `tests/Unit/AdminDeleteActionsTest.php`
+- `tests/Unit/DeletionGuardCompletionTest.php`
+- `ROADMAP.md`
+- `docs/ROADMAP.md`
+- `CHANGELOG.md`
+- `docs/CODEX_PROTOCOL.md`
+
+### Ergebnis
+
+Alle betroffenen Admin-Bereiche besitzen sichtbare POST-Delete-Formulare und existierende Routen. Reports können angelegt, bearbeitet und gelöscht werden. Connection-, Transfer- und WooCommerce-Löschungen liefern strukturierte Blocker mit konkreten Namen beziehungsweise Run-ID und Datum. Es werden ausschließlich Luna-Administrationsdaten behandelt; externe Daten und WooCommerce werden nicht verändert. Erfolgreiche Löschungen werden in den Listen bestätigt.
+
+### Sicherheitsannahmen
+
+- Keine Secrets, DSNs oder PDO-/SQL-Fehler werden in Blocker-Meldungen ausgegeben.
+- WooCommerce-Löschaktionen führen keine API-Aufrufe aus.
+- Transfer-Löschungen entfernen keine externen oder TransferDB-Runtime-Daten.
+- Destruktive Aktionen sind nur per POST registriert.
+
+### Qualitäts-Gate
+
+- `composer check`: grün, 225 Tests und 985 Assertions.
+- PHPStan: keine Fehler.
+- Composer Audit: keine bekannten Advisories.
+- TransferDB-CLI-Smokes mit nicht vorhandener Connection-ID beziehungsweise Workspace-Key bestätigten die bestehende Argumentsemantik ohne externe Änderungen.
+
+### Abschlussprüfung
+
+UI-Umlautprüfung: durchgeführt

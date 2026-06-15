@@ -138,12 +138,43 @@ final class AdminDeleteActionsTest extends TestCase
         foreach ([
             '/admin/workspaces/1/delete',
             '/admin/connections/1/delete',
+            '/admin/jobs/1/delete',
+            '/admin/reports/1/delete',
+            '/admin/transfers/1/delete',
+            '/admin/woocommerce/1/delete',
+            '/admin/woocommerce/1/webhooks/2/delete',
+            '/admin/woocommerce/1/exports/2/delete',
             '/admin/mappings/1/delete',
             '/admin/mappings/1/fields/2/sort-order',
             '/admin/endpoints/1/delete',
         ] as $path) {
             self::assertNull($routes->match(new \Luna\Http\Request('GET', $path)), $path);
             self::assertNotNull($routes->match(new \Luna\Http\Request('POST', $path)), $path);
+        }
+    }
+
+    public function testAffectedAdminViewsPostToExistingDeleteRoutes(): void
+    {
+        $basePath = dirname(__DIR__, 2);
+        $forms = [
+            'resources/views/admin/jobs/index.php' => '/admin/jobs/',
+            'resources/views/admin/jobs/show.php' => '/delete',
+            'resources/views/admin/reports/index.php' => '/admin/reports/',
+            'resources/views/admin/reports/show.php' => '/delete',
+            'resources/views/admin/connections/index.php' => '/admin/connections/',
+            'resources/views/admin/connections/show.php' => '/delete',
+            'resources/views/admin/transfers/index.php' => '/admin/transfers/',
+            'resources/views/admin/transfers/show.php' => '/delete',
+            'resources/views/admin/woocommerce/index.php' => '/admin/woocommerce/',
+            'resources/views/admin/woocommerce/show.php' => '/delete',
+        ];
+
+        foreach ($forms as $file => $routeFragment) {
+            $contents = file_get_contents($basePath . '/' . $file);
+            self::assertIsString($contents);
+            self::assertStringContainsString('method="post"', $contents, $file);
+            self::assertStringContainsString($routeFragment, $contents, $file);
+            self::assertStringContainsString('confirm_delete', $contents, $file);
         }
     }
 

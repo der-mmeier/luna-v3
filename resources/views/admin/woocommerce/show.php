@@ -72,8 +72,15 @@ $lastEventLabel = static function (?array $event): string {
 </div>
 
 <?php if ($alert !== null): ?>
-    <div class="alert alert-<?= htmlspecialchars($alert['type'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($alert['message'], ENT_QUOTES, 'UTF-8') ?></div>
+    <div class="alert alert-<?= htmlspecialchars($alert['type'], ENT_QUOTES, 'UTF-8') ?>"><?= nl2br(htmlspecialchars($alert['message'], ENT_QUOTES, 'UTF-8')) ?></div>
 <?php endif; ?>
+
+<div class="d-flex justify-content-end mb-4">
+    <form method="post" action="/admin/woocommerce/<?= (int) $connection['id'] ?>/delete" onsubmit="return confirm('Diese WooCommerce-Anbindung wirklich aus Luna löschen? Im Shop werden keine Daten geändert.');">
+        <input type="hidden" name="confirm_delete" value="1">
+        <button class="btn btn-outline-danger" type="submit">Anbindung löschen</button>
+    </form>
+</div>
 
 <div class="row g-4 mb-4">
     <div class="col-lg-6">
@@ -426,6 +433,10 @@ $lastEventLabel = static function (?array $event): string {
                         <form method="post" action="/admin/woocommerce/<?= (int) $connection['id'] ?>/exports/<?= $profileId ?>/toggle" class="d-inline">
                             <button class="btn btn-sm btn-outline-warning" type="submit"><?= ! empty($profile['is_enabled']) ? 'Deaktivieren' : 'Aktivieren' ?></button>
                         </form>
+                        <form method="post" action="/admin/woocommerce/<?= (int) $connection['id'] ?>/exports/<?= $profileId ?>/delete" class="d-inline" onsubmit="return confirm('Dieses Exportprofil wirklich löschen?');">
+                            <input type="hidden" name="confirm_delete" value="1">
+                            <button class="btn btn-sm btn-outline-danger" type="submit">Löschen</button>
+                        </form>
                     </td>
                 </tr>
             <?php endforeach; ?>
@@ -587,6 +598,10 @@ $lastEventLabel = static function (?array $event): string {
                             <input type="hidden" name="is_required" value="<?= ! empty($webhook['is_required']) ? '1' : '' ?>">
                             <button class="btn btn-sm btn-outline-primary" type="submit">Bearbeiten</button>
                             <a class="btn btn-sm btn-outline-secondary" href="#webhook-setup">Anleitung anzeigen</a>
+                        </form>
+                        <form method="post" action="/admin/woocommerce/<?= (int) $connection['id'] ?>/webhooks/<?= (int) $webhook['id'] ?>/delete" class="mt-1" onsubmit="return confirm('Diese lokale Webhook-Konfiguration wirklich löschen? Im WooCommerce-Shop wird nichts geändert.');">
+                            <input type="hidden" name="confirm_delete" value="1">
+                            <button class="btn btn-sm btn-outline-danger" type="submit">Löschen</button>
                         </form>
                     </td>
                 </tr>

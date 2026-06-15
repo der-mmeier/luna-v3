@@ -2,6 +2,7 @@
 
 /** @var array<int, array<string, mixed>> $connections */
 /** @var string|null $error */
+/** @var array{type: string, message: string}|null $alert */
 ?>
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
@@ -13,6 +14,9 @@
 
 <?php if (! empty($error)): ?>
     <div class="alert alert-danger"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
+<?php endif; ?>
+<?php if (($alert ?? null) !== null): ?>
+    <div class="alert alert-<?= htmlspecialchars($alert['type'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($alert['message'], ENT_QUOTES, 'UTF-8') ?></div>
 <?php endif; ?>
 
 <div class="alert alert-info">Secrets werden verschlüsselt gespeichert und hier nie im Klartext angezeigt.</div>
