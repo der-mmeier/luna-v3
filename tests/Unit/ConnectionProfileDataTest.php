@@ -64,6 +64,7 @@ final class ConnectionProfileDataTest extends TestCase
     public function testOnlySupportedRolesAndDriversValidate(): void
     {
         self::assertSame([], ConnectionProfileData::validate([
+            'workspace_id' => 1,
             'name' => 'Valid',
             'type' => 'target',
             'driver' => 'mariadb',
@@ -72,6 +73,7 @@ final class ConnectionProfileDataTest extends TestCase
             'username' => 'user',
         ]));
         self::assertSame([], ConnectionProfileData::validate([
+            'workspace_id' => 1,
             'name' => 'TransferDB',
             'type' => 'transfer_db',
             'driver' => 'mysql',
@@ -80,6 +82,7 @@ final class ConnectionProfileDataTest extends TestCase
             'username' => 'user',
         ]));
         self::assertSame([], ConnectionProfileData::validate([
+            'workspace_id' => 1,
             'name' => 'Mixed',
             'type' => 'mixed',
             'driver' => 'mysql',

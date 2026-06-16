@@ -47,6 +47,12 @@ final class EndpointExportContractServiceTest extends TestCase
         self::assertSame('number', $schema['properties']['items']['items']['properties']['price']['type']);
         self::assertSame('object', $schema['properties']['items']['items']['properties']['dr_quantities']['type']);
         self::assertSame('PIMCORE-Objects', $mapping['source']['connection_ref']['name']);
+        self::assertSame('pimcore-objects', $mapping['source']['connection_ref']['key']);
+        self::assertSame('database', $mapping['source']['connection_ref']['role']);
+        self::assertSame('asfinstocks', $mapping['source']['connection_ref']['owner_workspace']);
+        self::assertSame('asfinstocks', $mapping['source']['connection_ref']['used_by_workspace']);
+        self::assertSame('owner', $mapping['source']['connection_ref']['availability']);
+        self::assertFalse($mapping['source']['connection_ref']['secret_exported']);
         self::assertTrue($mapping['source']['connection_ref']['secret_free']);
         self::assertArrayHasKey('manifest.json', $checksums);
         self::assertStringNotContainsString('plain-secret', $exported);

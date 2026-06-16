@@ -28,7 +28,7 @@ final class ConnectionProfileRepository
              ORDER BY cp.name',
         );
 
-        return $statement->fetchAll();
+        return $this->withShareData($statement->fetchAll());
     }
 
     public function find(int $id): ?array
@@ -42,7 +42,131 @@ final class ConnectionProfileRepository
         $statement->execute(['id' => $id]);
         $profile = $statement->fetch();
 
-        return $profile === false ? null : $profile;
+        return $profile === false ? null : $this->withShareData([$profile])[0];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function connectionsAvailableForWorkspace(int|string $workspace): array
+    {
+        $workspaceId = $this->workspaceId($workspace);
+        if ($workspaceId === null) {
+            return [];
+        }
+
+        if (! $this->tableExists('luna_connection_workspaces')) {
+            $statement = $this->pdo()->prepare(
+                'SELECT cp.*, w.name AS workspace_name
+                 FROM luna_connection_profiles cp
+                 LEFT JOIN luna_workspaces w ON w.id = cp.workspace_id
+                 WHERE cp.workspace_id = :workspace_id
+                 ORDER BY cp.name',
+            );
+            $statement->execute(['workspace_id' => $workspaceId]);
+
+            return $this->withShareData($statement->fetchAll());
+        }
+
+        $statement = $this->pdo()->prepare(
+            'SELECT DISTINCT cp.*, w.name AS workspace_name
+             FROM luna_connection_profiles cp
+             LEFT JOIN luna_workspaces w ON w.id = cp.workspace_id
+             LEFT JOIN luna_connection_workspaces cw ON cw.connection_id = cp.id
+             WHERE cp.workspace_id = :workspace_id OR cw.workspace_id = :workspace_id
+             ORDER BY cp.name',
+        );
+        $statement->execute(['workspace_id' => $workspaceId]);
+
+        return $this->withShareData($statement->fetchAll());
+    }
+
+    public function connectionIsAvailableForWorkspace(int $connectionId, int|string $workspace): bool
+    {
+        $workspaceId = $this->workspaceId($workspace);
+        if ($workspaceId === null || $connectionId <= 0) {
+            return false;
+        }
+
+        $connection = $this->find($connectionId);
+        if ($connection === null) {
+            return false;
+        }
+
+        if ((int) ($connection['workspace_id'] ?? 0) === $workspaceId) {
+            return true;
+        }
+
+        if (! $this->tableExists('luna_connection_workspaces')) {
+            return false;
+        }
+
+        $statement = $this->pdo()->prepare(
+            'SELECT COUNT(*) FROM luna_connection_workspaces WHERE connection_id = :connection_id AND workspace_id = :workspace_id',
+        );
+        $statement->execute([
+            'connection_id' => $connectionId,
+            'workspace_id' => $workspaceId,
+        ]);
+
+        return (int) $statement->fetchColumn() > 0;
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function sharedWorkspaceIdsForConnection(int $connectionId): array
+    {
+        if (! $this->tableExists('luna_connection_workspaces')) {
+            return [];
+        }
+
+        $statement = $this->pdo()->prepare(
+            'SELECT workspace_id FROM luna_connection_workspaces WHERE connection_id = :connection_id ORDER BY workspace_id',
+        );
+        $statement->execute(['connection_id' => $connectionId]);
+
+        return array_values(array_map('intval', array_column($statement->fetchAll(), 'workspace_id')));
+    }
+
+    /**
+     * @param list<int|string> $workspaceIds
+     */
+    public function syncConnectionWorkspaceShares(int $connectionId, array $workspaceIds): void
+    {
+        $pdo = $this->pdo();
+        $started = ! $pdo->inTransaction();
+        if ($started) {
+            $pdo->beginTransaction();
+        }
+
+        try {
+            $this->syncConnectionWorkspaceSharesInTransaction($connectionId, $workspaceIds);
+            if ($started) {
+                $pdo->commit();
+            }
+        } catch (Throwable $exception) {
+            if ($started) {
+                $pdo->rollBack();
+            }
+            throw $exception;
+        }
+    }
+
+    public function availabilityForWorkspace(array $connection, int|string|null $workspace): string
+    {
+        $workspaceId = $workspace === null ? null : $this->workspaceId($workspace);
+        if ($workspaceId === null) {
+            return 'unavailable';
+        }
+
+        if ((int) ($connection['workspace_id'] ?? 0) === $workspaceId) {
+            return 'owner';
+        }
+
+        return in_array($workspaceId, array_map('intval', (array) ($connection['shared_workspace_ids'] ?? [])), true)
+            ? 'shared'
+            : 'unavailable';
     }
 
     public function create(array $data, array $secrets): int
@@ -60,6 +184,7 @@ final class ConnectionProfileRepository
             $statement->execute($this->profilePayload($data));
             $id = (int) $pdo->lastInsertId();
             $this->storeSecrets($id, $secrets);
+            $this->syncConnectionWorkspaceSharesInTransaction($id, (array) ($data['shared_workspace_ids'] ?? []));
             $pdo->commit();
 
             return $id;
@@ -87,6 +212,7 @@ final class ConnectionProfileRepository
             );
             $statement->execute($payload);
             $this->storeSecrets($id, $secrets);
+            $this->syncConnectionWorkspaceSharesInTransaction($id, (array) ($data['shared_workspace_ids'] ?? []));
             $pdo->commit();
         } catch (\Throwable $exception) {
             $pdo->rollBack();
@@ -100,6 +226,10 @@ final class ConnectionProfileRepository
         $pdo->beginTransaction();
 
         try {
+            if ($this->tableExists('luna_connection_workspaces')) {
+                $statement = $pdo->prepare('DELETE FROM luna_connection_workspaces WHERE connection_id = :id');
+                $statement->execute(['id' => $id]);
+            }
             $statement = $pdo->prepare('DELETE FROM luna_connection_secrets WHERE connection_profile_id = :id');
             $statement->execute(['id' => $id]);
             $statement = $pdo->prepare('DELETE FROM luna_connection_profiles WHERE id = :id');
@@ -196,6 +326,133 @@ final class ConnectionProfileRepository
     }
 
     /**
+     * @param list<int|string> $workspaceIds
+     */
+    private function syncConnectionWorkspaceSharesInTransaction(int $connectionId, array $workspaceIds): void
+    {
+        if (! $this->tableExists('luna_connection_workspaces')) {
+            return;
+        }
+
+        $connection = $this->find($connectionId);
+        if ($connection === null) {
+            return;
+        }
+
+        $ownerWorkspaceId = (int) ($connection['workspace_id'] ?? 0);
+        $validWorkspaceIds = $this->existingWorkspaceIds($workspaceIds);
+        $validWorkspaceIds = array_values(array_filter(
+            array_unique($validWorkspaceIds),
+            static fn (int $workspaceId): bool => $workspaceId > 0 && $workspaceId !== $ownerWorkspaceId,
+        ));
+
+        $delete = $this->pdo()->prepare('DELETE FROM luna_connection_workspaces WHERE connection_id = :connection_id');
+        $delete->execute(['connection_id' => $connectionId]);
+
+        if ($validWorkspaceIds === []) {
+            return;
+        }
+
+        $insert = $this->pdo()->prepare(
+            'INSERT INTO luna_connection_workspaces (connection_id, workspace_id, created_at, updated_at)
+             VALUES (:connection_id, :workspace_id, NOW(), NOW())',
+        );
+        foreach ($validWorkspaceIds as $workspaceId) {
+            $insert->execute([
+                'connection_id' => $connectionId,
+                'workspace_id' => $workspaceId,
+            ]);
+        }
+    }
+
+    /**
+     * @param list<int|string> $workspaceIds
+     * @return list<int>
+     */
+    private function existingWorkspaceIds(array $workspaceIds): array
+    {
+        $ids = array_values(array_filter(array_map('intval', $workspaceIds), static fn (int $id): bool => $id > 0));
+        if ($ids === [] || ! $this->tableExists('luna_workspaces')) {
+            return [];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+        $statement = $this->pdo()->prepare('SELECT id FROM luna_workspaces WHERE id IN (' . $placeholders . ') ORDER BY id');
+        $statement->execute($ids);
+
+        return array_values(array_map('intval', array_column($statement->fetchAll(), 'id')));
+    }
+
+    private function workspaceId(int|string $workspace): ?int
+    {
+        if (is_int($workspace) || ctype_digit((string) $workspace)) {
+            $id = (int) $workspace;
+
+            return $id > 0 ? $id : null;
+        }
+
+        if (! $this->tableExists('luna_workspaces')) {
+            return null;
+        }
+
+        $statement = $this->pdo()->prepare('SELECT id FROM luna_workspaces WHERE slug = :slug');
+        $statement->execute(['slug' => WorkspaceRepository::normalizeSlug((string) $workspace)]);
+        $id = $statement->fetchColumn();
+
+        return $id === false ? null : (int) $id;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $profiles
+     * @return list<array<string, mixed>>
+     */
+    private function withShareData(array $profiles): array
+    {
+        if ($profiles === []) {
+            return [];
+        }
+
+        foreach ($profiles as $index => $profile) {
+            $profiles[$index]['shared_workspace_ids'] = [];
+            $profiles[$index]['shared_workspace_names'] = [];
+        }
+
+        if (! $this->tableExists('luna_connection_workspaces')) {
+            return $profiles;
+        }
+
+        $ids = array_values(array_filter(array_map('intval', array_column($profiles, 'id')), static fn (int $id): bool => $id > 0));
+        if ($ids === []) {
+            return $profiles;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+        $statement = $this->pdo()->prepare(
+            'SELECT cw.connection_id, cw.workspace_id, w.name AS workspace_name
+             FROM luna_connection_workspaces cw
+             INNER JOIN luna_workspaces w ON w.id = cw.workspace_id
+             WHERE cw.connection_id IN (' . $placeholders . ')
+             ORDER BY w.name',
+        );
+        $statement->execute($ids);
+
+        $sharesByConnection = [];
+        foreach ($statement->fetchAll() as $row) {
+            $connectionId = (int) $row['connection_id'];
+            $sharesByConnection[$connectionId]['ids'][] = (int) $row['workspace_id'];
+            $sharesByConnection[$connectionId]['names'][] = (string) $row['workspace_name'];
+        }
+
+        foreach ($profiles as $index => $profile) {
+            $connectionId = (int) ($profile['id'] ?? 0);
+            $profiles[$index]['shared_workspace_ids'] = $sharesByConnection[$connectionId]['ids'] ?? [];
+            $profiles[$index]['shared_workspace_names'] = $sharesByConnection[$connectionId]['names'] ?? [];
+        }
+
+        return $profiles;
+    }
+
+    /**
      * @return list<string>
      */
     private function mappingNamesForConnection(int $connectionId): array
@@ -254,6 +511,17 @@ final class ConnectionProfileRepository
     {
         try {
             $this->pdo()->query(sprintf('SELECT %s FROM %s WHERE 1 = 0', $column, $table));
+
+            return true;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private function tableExists(string $table): bool
+    {
+        try {
+            $this->pdo()->query(sprintf('SELECT 1 FROM %s WHERE 1 = 0', $table));
 
             return true;
         } catch (Throwable) {

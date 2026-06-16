@@ -34,6 +34,7 @@ final class ConnectionProfileData
 
         return [
             'workspace_id' => empty($data['workspace_id']) ? null : (int) $data['workspace_id'],
+            'shared_workspace_ids' => self::workspaceIds((array) ($data['shared_workspace_ids'] ?? [])),
             'name' => trim((string) ($data['name'] ?? '')),
             'type' => $type,
             'driver' => $driver,
@@ -60,6 +61,10 @@ final class ConnectionProfileData
             if (trim((string) ($values[$key] ?? '')) === '') {
                 $errors[] = $label . ' ist erforderlich.';
             }
+        }
+
+        if (empty($values['workspace_id'])) {
+            $errors[] = 'Owner Workspace ist erforderlich.';
         }
 
         if (! in_array((string) ($values['type'] ?? ''), self::roles(), true)) {
@@ -93,5 +98,22 @@ final class ConnectionProfileData
         }
 
         return ! empty($data['read_only']) ? 1 : 0;
+    }
+
+    /**
+     * @param array<int|string, mixed> $values
+     * @return list<int>
+     */
+    private static function workspaceIds(array $values): array
+    {
+        $ids = [];
+        foreach ($values as $value) {
+            $id = (int) $value;
+            if ($id > 0) {
+                $ids[$id] = $id;
+            }
+        }
+
+        return array_values($ids);
     }
 }

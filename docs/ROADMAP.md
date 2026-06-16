@@ -72,8 +72,8 @@ Diese Regeln gelten fÃ¼r alle kommenden Versionen:
 | `v2.7.1` | abgeschlossen | TransferDB Foundation & Runtime Storage |
 | `v2.7.2` | abgeschlossen | Admin Cleanup, Deletion Safety & Missing CRUD Routes |
 | `v2.7.2.1` | abgeschlossen | Admin Cleanup Completion |
-| `v2.7.3` | nächster Meilenstein | Connection Workspace Sharing |
-| `v2.8.0` | geplant | Exportable Webhook Runtime Packages |
+| `v2.7.3` | abgeschlossen | Connection Workspace Sharing |
+| `v2.8.0` | nächster Meilenstein | Exportable Webhook Runtime Packages |
 
 ---
 
@@ -553,15 +553,26 @@ Abgrenzung:
 
 ### v2.7.3 - Connection Workspace Sharing
 
-Status: geplant / nächster Meilenstein
+Status: abgeschlossen
 
-Connection Workspace Sharing bleibt der nächste geplante Meilenstein und ist nicht Teil von v2.7.2.1.
+Umgesetzt:
+
+- Owner Workspace bleibt eindeutig über `connections.workspace_id`.
+- Pivot-Tabelle `luna_connection_workspaces` für explizite Workspace-Freigaben eingeführt.
+- Connections können mehreren Workspaces freigegeben werden, ohne global zu werden.
+- Connection-Selects nutzen Owner/shared Visibility für Mapping, Lookup, Transfers, WooCommerce und TransferDB-Auswahl.
+- TransferDB kann workspaceübergreifend genutzt werden, wenn sie freigegeben ist.
+- Endpoint Snapshots können eine shared TransferDB über die Workspace-TransferDB-Konfiguration verwenden.
+- Delete Guard blockiert Connection-Löschung bei vorhandenen Shares und nennt Workspace-Namen.
+- Workspace-Löschung entfernt nur eingehende Shares und löscht keine fremden Connections.
+- Exportpakete enthalten Connection-Referenzen mit Owner-/Workspace-Kontext, Availability und `secret_exported: false`.
+- Bestehende Connections behalten ihren bisherigen Workspace als Owner; neue Shares starten leer.
 
 ---
 
 ### v2.8.0 - Exportable Webhook Runtime Packages
 
-Status: geplant
+Status: geplant / nächster Meilenstein
 
 Ziel:
 
@@ -644,17 +655,16 @@ FÃ¼r jeden Meilenstein gilt:
 
 ## 11. Nächste konkrete Entscheidung
 
-Der nächste Codex-Prompt sollte auf `v2.7.3 - Connection Workspace Sharing` gehen.
+Der nächste Codex-Prompt sollte auf `v2.8.0 - Exportable Webhook Runtime Packages` gehen.
 
 Er soll ausdrücklich nicht bauen:
 
-- keine Exportable Webhook Runtime implementieren,
 - keine WooCommerce-Schreibaktionen,
 - keine TransferDB-/Endpoint-/Process-/Schema-Funktionen regressieren.
 
 Er soll bauen:
 
-- Connection Workspace Sharing gemäß eigenem v2.7.3-Scope.
+- Exportable Webhook Runtime Packages gemäß eigenem v2.8.0-Scope.
 
 
 

@@ -38,6 +38,7 @@ final class TransferDbFoundationTest extends TestCase
         self::assertContains('transfer_db', ConnectionProfileData::roles());
 
         $values = ConnectionProfileData::normalize([
+            'workspace_id' => 1,
             'name' => 'Toolbox TransferDB',
             'type' => 'transfer_db',
             'driver' => 'mysql',

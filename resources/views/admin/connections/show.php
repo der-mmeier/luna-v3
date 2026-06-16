@@ -38,6 +38,13 @@ $typeLabels = [
                 <?php endforeach; ?>
                 <dt class="col-sm-3">Typ</dt>
                 <dd class="col-sm-9"><?= htmlspecialchars($typeLabels[(string) ($connection['type'] ?? '')] ?? (string) ($connection['type'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></dd>
+                <dt class="col-sm-3">Owner Workspace</dt>
+                <dd class="col-sm-9"><?= htmlspecialchars((string) ($connection['workspace_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></dd>
+                <dt class="col-sm-3">Freigegeben für</dt>
+                <dd class="col-sm-9">
+                    <?php $sharedNames = (array) ($connection['shared_workspace_names'] ?? []); ?>
+                    <?= $sharedNames === [] ? '<span class="text-body-secondary">-</span>' : htmlspecialchars(implode(', ', array_map('strval', $sharedNames)), ENT_QUOTES, 'UTF-8') ?>
+                </dd>
                 <dt class="col-sm-3">Read-only</dt>
                 <dd class="col-sm-9"><?= (int) $connection['read_only'] === 1 ? 'Ja' : 'Nein' ?></dd>
                 <dt class="col-sm-3">Aktiv</dt>
