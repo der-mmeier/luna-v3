@@ -45,7 +45,7 @@ final class EndpointExportSanitizer
     public function isSensitiveKey(string $key): bool
     {
         $normalized = strtolower(str_replace(['-', ' '], '_', $key));
-        if (in_array($normalized, ['secret_free', 'contains_secrets', 'connections_exported_as_references_only'], true)) {
+        if (in_array($normalized, ['secret_free', 'secret_exported', 'contains_secrets', 'connections_exported_as_references_only'], true)) {
             return false;
         }
 

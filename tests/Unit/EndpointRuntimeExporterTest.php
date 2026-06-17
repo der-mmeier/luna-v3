@@ -49,6 +49,11 @@ final class EndpointRuntimeExporterTest extends TestCase
         self::assertSame('numeric_greater_than', $config['source_filters'][0]['operator']);
         self::assertArrayHasKey(1, $config['connections']);
         self::assertSame('LUNA_CONN_PIMCORE_OBJECTS_DATABASE', $config['connections'][1]['database_env']);
+        self::assertSame('pimcore-objects', $config['connections'][1]['key']);
+        self::assertSame('asfinstocks', $config['connections'][1]['owner_workspace']);
+        self::assertSame('asfinstocks', $config['connections'][1]['used_by_workspace']);
+        self::assertSame('owner', $config['connections'][1]['availability']);
+        self::assertFalse($config['connections'][1]['secret_exported']);
 
         $exported = $this->readExport($target);
         self::assertStringContainsString('LUNA_ENDPOINT_ISR_PRICES_SECRET=', $exported);

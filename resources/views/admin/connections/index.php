@@ -27,7 +27,8 @@
             <thead>
             <tr>
                 <th>Name</th>
-                <th>Workspace</th>
+                <th>Owner Workspace</th>
+                <th>Freigegeben für</th>
                 <th>Typ</th>
                 <th>Driver</th>
                 <th>Host</th>
@@ -42,6 +43,10 @@
                 <tr>
                     <td><?= htmlspecialchars((string) $connection['name'], ENT_QUOTES, 'UTF-8') ?></td>
                     <td><?= htmlspecialchars((string) ($connection['workspace_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
+                    <td>
+                        <?php $sharedNames = (array) ($connection['shared_workspace_names'] ?? []); ?>
+                        <?= $sharedNames === [] ? '<span class="text-body-secondary">-</span>' : htmlspecialchars(implode(', ', array_map('strval', $sharedNames)), ENT_QUOTES, 'UTF-8') ?>
+                    </td>
                     <td>
                         <?php if ((string) $connection['type'] === 'transfer_db'): ?>
                             <span class="badge text-bg-info">TransferDB</span>
@@ -83,7 +88,7 @@
                 </tr>
             <?php endforeach; ?>
             <?php if (($connections ?? []) === []): ?>
-                <tr><td colspan="9" class="text-body-secondary">Noch keine Connections angelegt.</td></tr>
+                <tr><td colspan="10" class="text-body-secondary">Noch keine Connections angelegt.</td></tr>
             <?php endif; ?>
             </tbody>
         </table>

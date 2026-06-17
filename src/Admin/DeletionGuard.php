@@ -72,7 +72,8 @@ final class DeletionGuard
         }
 
         $lines = [$label . ' "' . $name . '" kann nicht gelöscht werden, ' . match ($entity['type']) {
-            'connection', 'woocommerce' => 'weil sie noch verwendet wird:',
+            'connection' => $this->onlyShareBlockers($blockers) ? 'weil sie noch für folgende Workspaces freigegeben ist:' : 'weil sie noch verwendet wird:',
+            'woocommerce' => 'weil sie noch verwendet wird:',
             'transfer' => 'weil noch Läufe oder Runtime-Daten existieren:',
             'job', 'report' => 'weil er noch verwendet wird:',
             default => 'weil der Eintrag noch verwendet wird:',
@@ -116,6 +117,7 @@ final class DeletionGuard
     private function connectionBlockers(int $connectionId): array
     {
         $blockers = array_merge(
+            $this->workspaceShareRowsForConnection($connectionId),
             $this->mappingRowsForConnection($connectionId),
             $this->jobRowsForConnection($connectionId),
             $this->datasetRowsForConnection($connectionId),
@@ -411,6 +413,32 @@ final class DeletionGuard
     /**
      * @return list<array{type: string, id: int, name: string, reason: string}>
      */
+    private function workspaceShareRowsForConnection(int $connectionId): array
+    {
+        if (! $this->tableExists('luna_connection_workspaces') || ! $this->tableExists('luna_workspaces')) {
+            return [];
+        }
+
+        $statement = $this->pdo()->prepare(
+            'SELECT w.id, w.name
+             FROM luna_connection_workspaces cw
+             INNER JOIN luna_workspaces w ON w.id = cw.workspace_id
+             WHERE cw.connection_id = :connection_id
+             ORDER BY w.name',
+        );
+        $statement->execute(['connection_id' => $connectionId]);
+
+        return array_map(static fn (array $row): array => [
+            'type' => 'workspace_share',
+            'id' => (int) $row['id'],
+            'name' => trim((string) ($row['name'] ?? '')) ?: '#' . (int) $row['id'],
+            'reason' => 'connection is shared with workspace',
+        ], $statement->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    /**
+     * @return list<array{type: string, id: int, name: string, reason: string}>
+     */
     private function targetActionsReferencingConnection(int $connectionId): array
     {
         if (! $this->tableExists('luna_target_actions') || ! $this->columnExists('luna_target_actions', 'config_json')) {
@@ -618,6 +646,7 @@ final class DeletionGuard
     {
         return match ($type) {
             'workspace' => 'Workspace',
+            'workspace_share' => 'Workspace',
             'connection' => 'Connection',
             'mapping' => 'Mapping',
             'dataset' => 'Dataset',
@@ -664,6 +693,14 @@ final class DeletionGuard
         }
 
         return $unique;
+    }
+
+    /**
+     * @param list<array{type: string, id: int, name: string, reason: string}> $blockers
+     */
+    private function onlyShareBlockers(array $blockers): bool
+    {
+        return $blockers !== [] && array_unique(array_column($blockers, 'type')) === ['workspace_share'];
     }
 
     private function tableExists(string $table): bool

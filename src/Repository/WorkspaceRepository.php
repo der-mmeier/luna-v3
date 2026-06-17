@@ -138,8 +138,22 @@ final class WorkspaceRepository
 
     public function delete(int $id): void
     {
-        $statement = $this->pdo()->prepare('DELETE FROM luna_workspaces WHERE id = :id');
-        $statement->execute(['id' => $id]);
+        $pdo = $this->pdo();
+        $pdo->beginTransaction();
+
+        try {
+            if ($this->tableExists('luna_connection_workspaces')) {
+                $statement = $pdo->prepare('DELETE FROM luna_connection_workspaces WHERE workspace_id = :id');
+                $statement->execute(['id' => $id]);
+            }
+
+            $statement = $pdo->prepare('DELETE FROM luna_workspaces WHERE id = :id');
+            $statement->execute(['id' => $id]);
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            $pdo->rollBack();
+            throw $exception;
+        }
     }
 
     public function slugExists(string $slug, ?int $ignoreId = null): bool
@@ -180,6 +194,17 @@ final class WorkspaceRepository
     {
         try {
             $this->pdo()->query(sprintf('SELECT %s FROM %s WHERE 1 = 0', $column, $table));
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function tableExists(string $table): bool
+    {
+        try {
+            $this->pdo()->query(sprintf('SELECT 1 FROM %s WHERE 1 = 0', $table));
 
             return true;
         } catch (\Throwable) {

@@ -35,6 +35,10 @@ final class TransferDbConnectionResolver
             throw new RuntimeException('Für diesen Workspace ist keine TransferDB konfiguriert.');
         }
 
+        if (! $this->connections->connectionIsAvailableForWorkspace($connectionId, (int) $workspace['id'])) {
+            throw new RuntimeException('Die konfigurierte TransferDB-Connection ist für diesen Workspace nicht freigegeben.');
+        }
+
         $resolved = $this->resolveConnection($connectionId);
 
         return [

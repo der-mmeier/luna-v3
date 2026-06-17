@@ -163,6 +163,7 @@ if (! function_exists('processValues')) {
     {
         return [
             'workspace_id' => $request->post('workspace_id'),
+            'shared_workspace_ids' => (array) $request->post('shared_workspace_ids', []),
             'name' => (string) $request->post('name', ''),
             'process_key' => (string) $request->post('process_key', ''),
             'description' => (string) $request->post('description', ''),
@@ -428,7 +429,7 @@ if (! function_exists('mappingFieldsData')) {
 
         try {
             $source = $connections()->find((int) $data['mapping']['source_connection_id']);
-            $data['connections'] = $connections()->all();
+            $data['connections'] = connectionOptionsForWorkspace($connections, $data['mapping']['workspace_id'] ?? null);
 
             if ($source !== null && ! empty($data['mapping']['source_table'])) {
                 $sourceConfig = ExternalDatabaseConfig::fromProfile($source, $connections()->secretsFor((int) $source['id']));
@@ -1041,6 +1042,7 @@ if (! function_exists('connectionValues')) {
     {
         $values = [
             'workspace_id' => $request->post('workspace_id'),
+            'shared_workspace_ids' => (array) $request->post('shared_workspace_ids', []),
             'name' => (string) $request->post('name', ''),
             'type' => (string) $request->post('type', 'source'),
             'driver' => (string) $request->post('driver', 'mysql'),
@@ -1474,16 +1476,74 @@ if (! function_exists('transferDbConnectionOptions')) {
      */
     function transferDbConnectionOptions(Closure $connections, ?int $workspaceId): array
     {
+        if ($workspaceId === null || $workspaceId <= 0) {
+            return [];
+        }
+
+        try {
+            $available = $connections()->connectionsAvailableForWorkspace($workspaceId);
+        } catch (Throwable) {
+            $available = [];
+        }
+
         return array_values(array_filter(
-            safeList($connections),
+            $available,
             static fn (array $connection): bool => in_array((string) ($connection['type'] ?? ''), ['transfer_db', 'mixed'], true)
-                && ! empty($connection['is_active'])
-                && (
-                    empty($connection['workspace_id'])
-                    || $workspaceId === null
-                    || (int) $connection['workspace_id'] === $workspaceId
-                ),
+                && ! empty($connection['is_active']),
         ));
+    }
+}
+
+if (! function_exists('connectionOptionsForWorkspace')) {
+    /**
+     * @return list<array<string, mixed>>
+     */
+    function connectionOptionsForWorkspace(Closure $connections, mixed $workspaceId): array
+    {
+        $id = (int) $workspaceId;
+        if ($id <= 0) {
+            return [];
+        }
+
+        try {
+            return $connections()->connectionsAvailableForWorkspace($id);
+        } catch (Throwable) {
+            return [];
+        }
+    }
+}
+
+if (! function_exists('connectionAvailabilityErrors')) {
+    /**
+     * @param array<string, int|string|null> $connectionFields
+     * @return list<string>
+     */
+    function connectionAvailabilityErrors(Closure $connections, mixed $workspaceId, array $connectionFields): array
+    {
+        $id = (int) $workspaceId;
+        if ($id <= 0) {
+            return [];
+        }
+
+        $errors = [];
+        foreach ($connectionFields as $label => $connectionId) {
+            $connectionId = (int) $connectionId;
+            if ($connectionId <= 0) {
+                continue;
+            }
+
+            try {
+                $available = $connections()->connectionIsAvailableForWorkspace($connectionId, $id);
+            } catch (Throwable) {
+                $available = false;
+            }
+
+            if (! $available) {
+                $errors[] = $label . ' ist für diesen Workspace nicht freigegeben.';
+            }
+        }
+
+        return $errors;
     }
 }
 
@@ -1709,6 +1769,9 @@ return static function (RouteCollection $routes, Application $app): void {
 
         $values = workspaceValues($request);
         $errors = workspaceErrors($values, $workspaces(), $id);
+        $errors = array_merge($errors, connectionAvailabilityErrors($connections, $id, [
+            'Default TransferDB Connection' => $values['transfer_db_connection_id'] ?? null,
+        ]));
 
         if ($errors !== []) {
             return $admin('admin/workspaces/show', [
@@ -1878,7 +1941,7 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.connections.create', 'web');
 
-    $routes->post('/admin/connections', static function (Request $request) use ($admin, $connections, $workspaces): Response {
+    $routes->post('/admin/connections', static function (Request $request) use ($admin, $connections, $workspaces, $audit): Response {
         $values = connectionValues($request);
         $errors = ConnectionProfileData::validate($values);
 
@@ -1897,6 +1960,19 @@ return static function (RouteCollection $routes, Application $app): void {
 
         try {
             $id = $connections()->create($values, ConnectionProfileData::secretsFromPassword((string) $request->post('password', '')));
+            foreach ((array) ($values['shared_workspace_ids'] ?? []) as $sharedWorkspaceId) {
+                if ((int) $sharedWorkspaceId <= 0 || (int) $sharedWorkspaceId === (int) ($values['workspace_id'] ?? 0)) {
+                    continue;
+                }
+                $audit()->log(
+                    (int) $values['workspace_id'],
+                    'connection_workspace_share_added',
+                    'connection_profile',
+                    (string) $id,
+                    'Connection Workspace-Freigabe hinzugefügt.',
+                    ['name' => $values['name'] ?? '', 'shared_workspace_id' => (int) $sharedWorkspaceId],
+                );
+            }
 
             return new Response('', 302, ['Location' => '/admin/connections/' . $id]);
         } catch (Throwable) {
@@ -1933,7 +2009,7 @@ return static function (RouteCollection $routes, Application $app): void {
         ]);
     }, 'admin.connections.edit', 'web');
 
-    $routes->post('/admin/connections/{id}/edit', static function (Request $request) use ($admin, $connections, $workspaces): Response {
+    $routes->post('/admin/connections/{id}/edit', static function (Request $request) use ($admin, $connections, $workspaces, $audit): Response {
         $id = (int) $request->route('id');
         $profile = $connections()->find($id);
 
@@ -1941,8 +2017,23 @@ return static function (RouteCollection $routes, Application $app): void {
             return Response::notFound();
         }
 
+        $oldShareIds = array_map('intval', (array) ($profile['shared_workspace_ids'] ?? []));
         $values = connectionValues($request);
-        $errors = ConnectionProfileData::validate($values);
+        if ((int) ($values['workspace_id'] ?? 0) !== (int) ($profile['workspace_id'] ?? 0)) {
+            $audit()->log(
+                empty($profile['workspace_id']) ? null : (int) $profile['workspace_id'],
+                'connection_owner_change_blocked',
+                'connection_profile',
+                (string) $id,
+                'Owner Workspace Änderung blockiert.',
+                ['name' => $profile['name'] ?? '', 'requested_workspace_id' => $values['workspace_id'] ?? null],
+            );
+            $values['workspace_id'] = $profile['workspace_id'];
+            $errors = ['Owner Workspace kann nach Erstellung nicht geändert werden.'];
+        } else {
+            $errors = [];
+        }
+        $errors = array_merge($errors, ConnectionProfileData::validate($values));
 
         if ($errors !== []) {
             return $admin('admin/connections/edit', [
@@ -1960,6 +2051,28 @@ return static function (RouteCollection $routes, Application $app): void {
 
         try {
             $connections()->update($id, $values, ConnectionProfileData::secretsFromPassword((string) $request->post('password', '')));
+            $newProfile = $connections()->find($id) ?? $profile;
+            $newShareIds = array_map('intval', (array) ($newProfile['shared_workspace_ids'] ?? []));
+            foreach (array_diff($newShareIds, $oldShareIds) as $sharedWorkspaceId) {
+                $audit()->log(
+                    (int) $profile['workspace_id'],
+                    'connection_workspace_share_added',
+                    'connection_profile',
+                    (string) $id,
+                    'Connection Workspace-Freigabe hinzugefügt.',
+                    ['name' => $profile['name'] ?? '', 'shared_workspace_id' => (int) $sharedWorkspaceId],
+                );
+            }
+            foreach (array_diff($oldShareIds, $newShareIds) as $sharedWorkspaceId) {
+                $audit()->log(
+                    (int) $profile['workspace_id'],
+                    'connection_workspace_share_removed',
+                    'connection_profile',
+                    (string) $id,
+                    'Connection Workspace-Freigabe entfernt.',
+                    ['name' => $profile['name'] ?? '', 'shared_workspace_id' => (int) $sharedWorkspaceId],
+                );
+            }
         } catch (Throwable) {
             return $admin('admin/connections/edit', [
                 'title' => 'Connection bearbeiten',
@@ -2295,7 +2408,7 @@ return static function (RouteCollection $routes, Application $app): void {
         'title' => 'Mapping anlegen',
         'active' => 'mappings',
         'workspaces' => safeList($workspaces),
-        'connections' => safeList($connections),
+        'connections' => connectionOptionsForWorkspace($connections, null),
         'values' => ['status' => 'draft', 'mapping_mode' => 'transfer'],
         'errors' => [],
     ]), 'admin.mappings.create', 'web');
@@ -2303,13 +2416,17 @@ return static function (RouteCollection $routes, Application $app): void {
     $routes->post('/admin/mappings', static function (Request $request) use ($admin, $mappings, $audit, $workspaces, $connections): Response {
         $values = mappingSetValues($request);
         $errors = mappingSetErrors($values);
+        $errors = array_merge($errors, connectionAvailabilityErrors($connections, $values['workspace_id'] ?? null, [
+            'Primary Source Connection' => $values['source_connection_id'] ?? null,
+            'Target Connection' => $values['target_connection_id'] ?? null,
+        ]));
 
         if ($errors !== []) {
             return $admin('admin/mappings/create', [
                 'title' => 'Mapping anlegen',
                 'active' => 'mappings',
                 'workspaces' => safeList($workspaces),
-                'connections' => safeList($connections),
+                'connections' => connectionOptionsForWorkspace($connections, $values['workspace_id'] ?? null),
                 'values' => $values,
                 'errors' => $errors,
             ]);
@@ -2332,7 +2449,7 @@ return static function (RouteCollection $routes, Application $app): void {
                 'title' => 'Mapping anlegen',
                 'active' => 'mappings',
                 'workspaces' => safeList($workspaces),
-                'connections' => safeList($connections),
+                'connections' => connectionOptionsForWorkspace($connections, $values['workspace_id'] ?? null),
                 'values' => $values,
                 'errors' => ['Mapping Set konnte nicht gespeichert werden.'],
             ]);
@@ -2354,13 +2471,17 @@ return static function (RouteCollection $routes, Application $app): void {
         $id = (int) $request->route('id');
         $values = mappingSetValues($request);
         $errors = mappingSetErrors($values);
+        $errors = array_merge($errors, connectionAvailabilityErrors($connections, $values['workspace_id'] ?? null, [
+            'Primary Source Connection' => $values['source_connection_id'] ?? null,
+            'Target Connection' => $values['target_connection_id'] ?? null,
+        ]));
 
         if ($errors !== []) {
             return $admin('admin/mappings/create', [
                 'title' => 'Mapping bearbeiten',
                 'active' => 'mappings',
                 'workspaces' => safeList($workspaces),
-                'connections' => safeList($connections),
+                'connections' => connectionOptionsForWorkspace($connections, $values['workspace_id'] ?? null),
                 'values' => $values + ['id' => $id],
                 'errors' => $errors,
             ]);
@@ -2508,6 +2629,9 @@ return static function (RouteCollection $routes, Application $app): void {
         $set = $mappings()->find($id);
         $values = mappingFieldValues($request);
         $errors = mappingFieldErrors($set, $values, $connections());
+        $errors = array_merge($errors, connectionAvailabilityErrors($connections, is_array($set) ? ($set['workspace_id'] ?? null) : null, [
+            'Lookup Connection' => $values['lookup_connection_id'] ?? null,
+        ]));
         if ($errors !== []) {
             return $admin('admin/mappings/fields', mappingFieldsData($mappings, $connections, $pdoFactory, $sourceRows, $id, $values, [
                 'title' => 'Feldzuordnungen',
@@ -2537,6 +2661,9 @@ return static function (RouteCollection $routes, Application $app): void {
         $set = $mappings()->find($id);
         $values = mappingFieldValues($request);
         $errors = mappingFieldErrors($set, $values, $connections());
+        $errors = array_merge($errors, connectionAvailabilityErrors($connections, is_array($set) ? ($set['workspace_id'] ?? null) : null, [
+            'Lookup Connection' => $values['lookup_connection_id'] ?? null,
+        ]));
         if ($errors !== []) {
             return $admin('admin/mappings/fields', mappingFieldsData($mappings, $connections, $pdoFactory, $sourceRows, $id, $values, [
                 'title' => 'Feldzuordnungen',
@@ -3437,7 +3564,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'title' => 'Transfer anlegen',
             'active' => 'transfers',
             'workspaces' => safeList($workspaces),
-            'connections' => safeList($connections),
+            'connections' => connectionOptionsForWorkspace($connections, null),
             'datasets' => $datasets()->all(),
             'values' => ['status' => 'draft', 'operation_type' => 'upsert'],
             'errors' => [],
@@ -3447,13 +3574,16 @@ return static function (RouteCollection $routes, Application $app): void {
     $routes->post('/admin/transfers', static function (Request $request) use ($admin, $workspaces, $connections, $datasets, $datasetTransfers, $datasetTransferRunner): Response {
         $values = datasetTransferValues($request);
         $errors = datasetTransferErrors($values, [], $datasetTransferRunner());
+        $errors = array_merge($errors, connectionAvailabilityErrors($connections, $values['workspace_id'] ?? null, [
+            'Target Connection' => $values['target_connection_id'] ?? null,
+        ]));
 
         if ($errors !== []) {
             return $admin('admin/transfers/create', [
                 'title' => 'Transfer anlegen',
                 'active' => 'transfers',
                 'workspaces' => safeList($workspaces),
-                'connections' => safeList($connections),
+                'connections' => connectionOptionsForWorkspace($connections, $values['workspace_id'] ?? null),
                 'datasets' => $datasets()->all(),
                 'values' => $values,
                 'errors' => $errors,
@@ -3480,7 +3610,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'fields' => $datasetTransfers()->fieldsForTransfer($id),
             'groups' => datasetTransferGroupsWithFields($datasetTransfers(), $id),
             'workspaces' => safeList($workspaces),
-            'connections' => safeList($connections),
+            'connections' => connectionOptionsForWorkspace($connections, $transfer['workspace_id'] ?? null),
             'datasets' => $datasets()->all(),
             'datasetFields' => $datasets()->fields((string) $transfer['source_dataset']),
             'result' => null,
@@ -3498,6 +3628,9 @@ return static function (RouteCollection $routes, Application $app): void {
         $values = datasetTransferValues($request);
         $fields = $datasetTransfers()->fieldsForTransfer($id);
         $errors = datasetTransferErrors($values, $fields, $datasetTransferRunner());
+        $errors = array_merge($errors, connectionAvailabilityErrors($connections, $values['workspace_id'] ?? null, [
+            'Target Connection' => $values['target_connection_id'] ?? null,
+        ]));
 
         if ($errors !== []) {
             return $admin('admin/transfers/show', [
@@ -3507,7 +3640,7 @@ return static function (RouteCollection $routes, Application $app): void {
                 'fields' => $fields,
                 'groups' => datasetTransferGroupsWithFields($datasetTransfers(), $id),
                 'workspaces' => safeList($workspaces),
-                'connections' => safeList($connections),
+                'connections' => connectionOptionsForWorkspace($connections, $values['workspace_id'] ?? null),
                 'datasets' => $datasets()->all(),
                 'datasetFields' => $datasets()->fields((string) $values['source_dataset']),
                 'result' => null,
@@ -3535,7 +3668,7 @@ return static function (RouteCollection $routes, Application $app): void {
                 'fields' => $datasetTransfers()->fieldsForTransfer($id),
                 'groups' => datasetTransferGroupsWithFields($datasetTransfers(), $id),
                 'workspaces' => safeList($workspaces),
-                'connections' => safeList($connections),
+                'connections' => connectionOptionsForWorkspace($connections, $transfer['workspace_id'] ?? null),
                 'datasets' => $datasets()->all(),
                 'datasetFields' => $datasets()->fields((string) $transfer['source_dataset']),
                 'result' => null,
@@ -3656,7 +3789,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'fields' => $datasetTransfers()->fieldsForTransfer($id),
             'groups' => datasetTransferGroupsWithFields($datasetTransfers(), $id),
             'workspaces' => safeList($workspaces),
-            'connections' => safeList($connections),
+            'connections' => connectionOptionsForWorkspace($connections, $transfer['workspace_id'] ?? null),
             'datasets' => $datasets()->all(),
             'datasetFields' => $datasets()->fields((string) $transfer['source_dataset']),
             'result' => $result,
@@ -3684,7 +3817,7 @@ return static function (RouteCollection $routes, Application $app): void {
             'fields' => $datasetTransfers()->fieldsForTransfer($id),
             'groups' => datasetTransferGroupsWithFields($datasetTransfers(), $id),
             'workspaces' => safeList($workspaces),
-            'connections' => safeList($connections),
+            'connections' => connectionOptionsForWorkspace($connections, $transfer['workspace_id'] ?? null),
             'datasets' => $datasets()->all(),
             'datasetFields' => $datasets()->fields((string) $transfer['source_dataset']),
             'result' => $result,
@@ -3703,7 +3836,7 @@ return static function (RouteCollection $routes, Application $app): void {
         'title' => 'WooCommerce-Anbindung anlegen',
         'active' => 'woocommerce',
         'workspaces' => safeList($workspaces),
-        'connections' => safeList($connections),
+        'connections' => connectionOptionsForWorkspace($connections, null),
         'values' => ['name' => '', 'workspace_id' => '', 'connection_id' => ''],
         'errors' => [],
     ]), 'admin.woocommerce.create', 'web');
@@ -3711,13 +3844,16 @@ return static function (RouteCollection $routes, Application $app): void {
     $routes->post('/admin/woocommerce', static function (Request $request) use ($admin, $woocommerce, $workspaces, $connections): Response {
         $values = woocommerceConnectionValues($request);
         $errors = woocommerceConnectionErrors($values);
+        $errors = array_merge($errors, connectionAvailabilityErrors($connections, $values['workspace_id'] ?? null, [
+            'WooCommerce-Connection' => $values['connection_id'] ?? null,
+        ]));
 
         if ($errors !== []) {
             return $admin('admin/woocommerce/create', [
                 'title' => 'WooCommerce-Anbindung anlegen',
                 'active' => 'woocommerce',
                 'workspaces' => safeList($workspaces),
-                'connections' => safeList($connections),
+                'connections' => connectionOptionsForWorkspace($connections, $values['workspace_id'] ?? null),
                 'values' => $values,
                 'errors' => $errors,
             ]);

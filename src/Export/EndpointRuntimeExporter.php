@@ -271,10 +271,19 @@ final class EndpointRuntimeExporter
         foreach ($connections as $id => $profile) {
             $envPrefix = $this->connectionEnvPrefix((string) ($profile['name'] ?? 'connection'), $usedEnvPrefixes);
             $usedEnvPrefixes[$envPrefix] = true;
+            $ownerWorkspace = empty($profile['workspace_id']) ? null : $this->workspaces->find((int) $profile['workspace_id']);
+            $usedByWorkspaceId = empty($endpoint['workspace_id']) ? null : (int) $endpoint['workspace_id'];
+            $usedByWorkspace = $usedByWorkspaceId === null ? null : $this->workspaces->find($usedByWorkspaceId);
             $connectionProfiles[$id] = [
                 'id' => $id,
+                'key' => $this->referenceKey((string) ($profile['name'] ?? 'connection')),
                 'name' => (string) ($profile['name'] ?? ''),
+                'role' => (string) ($profile['type'] ?? ''),
                 'driver' => (string) ($profile['driver'] ?? 'mysql'),
+                'owner_workspace' => $ownerWorkspace === null ? null : (string) ($ownerWorkspace['slug'] ?? $ownerWorkspace['name'] ?? ''),
+                'used_by_workspace' => $usedByWorkspace === null ? null : (string) ($usedByWorkspace['slug'] ?? $usedByWorkspace['name'] ?? ''),
+                'availability' => $this->connections->availabilityForWorkspace($profile, $usedByWorkspaceId),
+                'secret_exported' => false,
                 'host_env' => $envPrefix . '_HOST',
                 'database_env' => $envPrefix . '_DATABASE',
                 'username_env' => $envPrefix . '_USERNAME',
@@ -522,6 +531,14 @@ final class EndpointRuntimeExporter
         }
 
         return $candidate;
+    }
+
+    private function referenceKey(string $name): string
+    {
+        $key = strtolower(trim($name));
+        $key = preg_replace('/[^a-z0-9]+/', '-', $key) ?? '';
+
+        return trim($key, '-');
     }
 
     private function envToken(string $value): string

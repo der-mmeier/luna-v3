@@ -1225,3 +1225,57 @@ Alle betroffenen Admin-Bereiche besitzen sichtbare POST-Delete-Formulare und exi
 ### Abschlussprüfung
 
 UI-Umlautprüfung: durchgeführt
+
+---
+
+## 2026-06-16 - v2.7.3 Connection Workspace Sharing
+
+### Ziel
+
+Connections bleiben eindeutig einem Owner Workspace zugeordnet und können zusätzlich für weitere Workspaces freigegeben werden. Andere Entitäten bleiben workspacegebunden.
+
+### Geänderte Dateien
+
+- `database/migrations/2026_06_16_000022_create_connection_workspaces.sql`
+- `src/Connections/ConnectionProfileData.php`
+- `src/Repository/ConnectionProfileRepository.php`
+- `src/Repository/WorkspaceRepository.php`
+- `src/Admin/DeletionGuard.php`
+- `src/TransferDb/TransferDbConnectionResolver.php`
+- `src/Export/EndpointExportContractService.php`
+- `src/Export/EndpointExportSanitizer.php`
+- `src/Export/EndpointRuntimeExporter.php`
+- `routes/web.php`
+- `resources/views/admin/connections/*`
+- `tests/Unit/ConnectionWorkspaceSharingTest.php`
+- `tests/Unit/ConnectionProfileDataTest.php`
+- `tests/Unit/TransferDbFoundationTest.php`
+- `tests/Unit/EndpointRuntimeExporterTest.php`
+- `tests/Unit/EndpointExportContractServiceTest.php`
+- `ROADMAP.md`
+- `docs/ROADMAP.md`
+- `CHANGELOG.md`
+- `docs/CODEX_PROTOCOL.md`
+
+### Ergebnis
+
+`luna_connection_workspaces` speichert explizite Freigaben. Das Connection-Repository stellt zentrale Methoden für Owner/shared Visibility, Availability-Prüfung und Share-Sync bereit. Admin-Formulare zeigen Owner Workspace und Freigaben; Owner-Wechsel wird im Edit blockiert. Mapping-, Lookup-, Transfer-, WooCommerce- und TransferDB-Auswahl nutzen workspacebezogene Connection-Optionen. Der Delete Guard blockiert Connection-Löschung bei Shares mit konkreten Workspace-Namen. Workspace-Löschung entfernt nur eingehende Shares. Endpoint-Exporte enthalten secretfreie Connection-Referenzen mit Owner-/Used-by-/Availability-Kontext.
+
+### Sicherheitsannahmen
+
+- Shares sind reine Referenzen und kopieren keine Secrets.
+- Exportpakete enthalten weiterhin keine Passwörter, API Keys, Secret-Blobs oder DSNs mit Passwort.
+- Workspace-Löschung löscht keine fremden Connections.
+- TransferDB-Prüfungen verwenden nur Connections, die dem Workspace gehören oder freigegeben sind.
+
+### Offene Punkte
+
+Keine v2.8.0-Funktionalität implementiert. Exportable Webhook Runtime Packages bleiben der nächste Meilenstein.
+
+### Commit-Hash
+
+Noch nicht committed.
+
+### Abschlussprüfung
+
+UI-Umlautprüfung: durchgeführt

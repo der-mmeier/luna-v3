@@ -9,12 +9,17 @@
 /** @var string $formAction */
 /** @var string $heading */
 /** @var string $lead */
+/** @var array<string, mixed>|null $connection */
 $values = $values ?? [];
 $roles = $roles ?? ['source', 'transfer', 'target'];
 $drivers = $drivers ?? ['mysql', 'mariadb'];
 $formAction = $formAction ?? '/admin/connections';
 $heading = $heading ?? 'Connection anlegen';
 $lead = $lead ?? 'Für Luna können mehrere MySQL/MariaDB-Verbindungen pro Workspace verwaltet werden. TransferDB-Connections speichern Runtime- und Staging-Daten.';
+$connection = $connection ?? null;
+$isEdit = $connection !== null && ! empty($connection['id']);
+$selectedOwnerId = (int) ($values['workspace_id'] ?? 0);
+$sharedWorkspaceIds = array_map('intval', (array) ($values['shared_workspace_ids'] ?? []));
 $roleLabels = [
     'source' => 'Source',
     'transfer' => 'Transfer',
@@ -45,17 +50,34 @@ $roleLabels = [
 <form class="card admin-card" method="post" action="<?= htmlspecialchars($formAction, ENT_QUOTES, 'UTF-8') ?>">
     <div class="card-body row g-3">
         <div class="col-md-6">
-            <label class="form-label" for="workspace_id">Workspace optional</label>
-            <select class="form-select" id="workspace_id" name="workspace_id">
-                <option value="">Kein Workspace</option>
+            <label class="form-label" for="workspace_id">Owner Workspace</label>
+            <?php if ($isEdit): ?>
+                <input type="hidden" name="workspace_id" value="<?= $selectedOwnerId ?>">
+            <?php endif; ?>
+            <select class="form-select" id="workspace_id" name="workspace_id" required <?= $isEdit ? 'disabled' : '' ?>>
+                <option value="">Bitte wählen</option>
                 <?php foreach ($workspaces ?? [] as $workspace): ?>
                     <option value="<?= (int) $workspace['id'] ?>" <?= (string) ($values['workspace_id'] ?? '') === (string) $workspace['id'] ? 'selected' : '' ?>><?= htmlspecialchars((string) $workspace['name'], ENT_QUOTES, 'UTF-8') ?></option>
                 <?php endforeach; ?>
             </select>
+            <div class="form-text"><?= $isEdit ? 'Der Owner Workspace kann nach Erstellung nicht geändert werden.' : 'Die Connection gehört dem Owner Workspace.' ?></div>
         </div>
         <div class="col-md-6">
             <label class="form-label" for="name">Name</label>
             <input class="form-control" id="name" name="name" value="<?= htmlspecialchars((string) ($values['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" required>
+        </div>
+        <div class="col-12">
+            <label class="form-label" for="shared_workspace_ids">Freigegeben für Workspaces</label>
+            <select class="form-select" id="shared_workspace_ids" name="shared_workspace_ids[]" multiple size="<?= max(3, min(8, count($workspaces ?? []))) ?>">
+                <?php foreach ($workspaces ?? [] as $workspace): ?>
+                    <?php $workspaceId = (int) $workspace['id']; ?>
+                    <?php if ($workspaceId === $selectedOwnerId): ?>
+                        <?php continue; ?>
+                    <?php endif; ?>
+                    <option value="<?= $workspaceId ?>" <?= in_array($workspaceId, $sharedWorkspaceIds, true) ? 'selected' : '' ?>><?= htmlspecialchars((string) $workspace['name'], ENT_QUOTES, 'UTF-8') ?></option>
+                <?php endforeach; ?>
+            </select>
+            <div class="form-text">Freigegebene Workspaces dürfen sie in Mappings, Datasets, Transfers, Target Actions und Exporten verwenden. Der Owner wird nicht zusätzlich als Freigabe gespeichert.</div>
         </div>
         <div class="col-md-3">
             <label class="form-label" for="type">Verwendung</label>

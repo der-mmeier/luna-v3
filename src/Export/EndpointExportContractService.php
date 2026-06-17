@@ -240,7 +240,7 @@ final class EndpointExportContractService
                 'type' => (string) ($field['transform_type'] ?? 'direct'),
                 'sources' => $this->sources((string) ($field['source_column'] ?? '')),
                 'default_value' => $field['default_value'] ?? null,
-                'lookup_connection_ref' => empty($field['lookup_connection_id']) ? null : $this->connectionReference((int) $field['lookup_connection_id']),
+                'lookup_connection_ref' => empty($field['lookup_connection_id']) ? null : $this->connectionReference((int) $field['lookup_connection_id'], empty($mapping['workspace_id']) ? null : (int) $mapping['workspace_id']),
                 'lookup_table' => $field['lookup_table'] ?? null,
                 'lookup_key_column' => $field['lookup_key_column'] ?? null,
                 'lookup_value_column' => $field['lookup_value_column'] ?? null,
@@ -269,14 +269,14 @@ final class EndpointExportContractService
             'name' => (string) $mapping['name'],
             'mode' => (string) ($mapping['mapping_mode'] ?? ''),
             'source' => [
-                'connection_ref' => empty($mapping['source_connection_id']) ? null : $this->connectionReference((int) $mapping['source_connection_id']),
+                'connection_ref' => empty($mapping['source_connection_id']) ? null : $this->connectionReference((int) $mapping['source_connection_id'], empty($mapping['workspace_id']) ? null : (int) $mapping['workspace_id']),
                 'table' => $mapping['source_table'] ?? null,
                 'filters' => $documentFilters,
             ],
             'fields' => $documentFields,
             'lookups' => array_values(array_filter(array_map(
                 fn (array $field): ?array => empty($field['lookup_connection_id']) ? null : [
-                    'connection_ref' => $this->connectionReference((int) $field['lookup_connection_id']),
+                    'connection_ref' => $this->connectionReference((int) $field['lookup_connection_id'], empty($mapping['workspace_id']) ? null : (int) $mapping['workspace_id']),
                     'table' => $field['lookup_table'] ?? null,
                     'key_column' => $field['lookup_key_column'] ?? null,
                     'value_column' => $field['lookup_value_column'] ?? null,
@@ -289,19 +289,28 @@ final class EndpointExportContractService
     /**
      * @return array<string, mixed>|null
      */
-    private function connectionReference(int $connectionId): ?array
+    private function connectionReference(int $connectionId, ?int $usedByWorkspaceId = null): ?array
     {
         $connection = $this->connections->find($connectionId);
         if ($connection === null) {
             return null;
         }
 
+        $ownerWorkspace = empty($connection['workspace_id']) ? null : $this->workspaces->find((int) $connection['workspace_id']);
+        $usedByWorkspace = $usedByWorkspaceId === null ? null : $this->workspaces->find($usedByWorkspaceId);
+
         return [
             'id' => (int) $connection['id'],
+            'key' => $this->referenceKey((string) $connection['name']),
             'name' => (string) $connection['name'],
+            'role' => (string) ($connection['type'] ?? ''),
             'type' => (string) ($connection['type'] ?? $connection['driver'] ?? ''),
             'driver' => (string) ($connection['driver'] ?? ''),
             'read_only' => ! empty($connection['read_only']),
+            'owner_workspace' => $ownerWorkspace === null ? null : (string) ($ownerWorkspace['slug'] ?? $ownerWorkspace['name'] ?? ''),
+            'used_by_workspace' => $usedByWorkspace === null ? null : (string) ($usedByWorkspace['slug'] ?? $usedByWorkspace['name'] ?? ''),
+            'availability' => $this->connections->availabilityForWorkspace($connection, $usedByWorkspaceId),
+            'secret_exported' => false,
             'secret_free' => true,
         ];
     }
@@ -350,6 +359,7 @@ final class EndpointExportContractService
         }
         $lines[] = '';
         $lines[] = 'Dieses Exportpaket enthält keine Zugangsdaten, Tokens oder Passwörter. Connections werden nur als Referenzen beschrieben.';
+        $lines[] = 'Die Connection muss im Zielsystem vorhanden und für den Ziel-Workspace freigegeben sein. Secrets werden nicht exportiert.';
         $lines[] = 'Kundeneigene Mappings, Endpoints und produktive Datenflüsse liegen in der Verantwortung des Betreibers der Luna-Installation.';
         $lines[] = 'Ein Deployment Target ist nur URL- und Umgebungsmetadatum und enthält keine Secrets.';
         $lines[] = '';
@@ -429,5 +439,13 @@ final class EndpointExportContractService
         $normalized = str_replace('\\', '/', $path);
 
         return str_starts_with($normalized, $base) ? substr($normalized, strlen($base)) : $normalized;
+    }
+
+    private function referenceKey(string $name): string
+    {
+        $key = strtolower(trim($name));
+        $key = preg_replace('/[^a-z0-9]+/', '-', $key) ?? '';
+
+        return trim($key, '-');
     }
 }
